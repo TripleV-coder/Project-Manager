@@ -647,6 +647,20 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ notifications, unreadCount }));
     }
 
+    // GET /api/admin/maintenance - Statut mode maintenance
+    if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Pour l'instant, retourner des valeurs par défaut
+      return handleCORS(NextResponse.json({
+        enabled: false,
+        message: 'L\'application est actuellement en maintenance. Nous serons de retour bientôt.'
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'API PM - Gestion de Projets',
       path: path
