@@ -1098,11 +1098,11 @@ export async function POST(request) {
     // POST /api/roles - Créer rôle personnalisé
     if (path === '/roles' || path === '/roles/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.admin_config) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { nom, description, permissions, visible_menus } = body;
+      const { nom, description, permissions, visibleMenus } = body;
 
       if (!nom) {
         return handleCORS(NextResponse.json({ 
@@ -1124,10 +1124,10 @@ export async function POST(request) {
         is_custom: true,
         is_predefined: false,
         permissions: permissions || {},
-        visible_menus: visible_menus || {}
+        visibleMenus: visibleMenus || {}
       });
 
-      await createAuditLog(user, 'création', 'role', role._id, `Création rôle personnalisé ${nom}`);
+      await createAuditLog(user, 'création', 'rôle', role._id, `Création rôle personnalisé ${nom}`);
 
       return handleCORS(NextResponse.json({
         message: 'Rôle créé avec succès',
