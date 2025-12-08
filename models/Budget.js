@@ -6,7 +6,7 @@ const expenseSchema = new mongoose.Schema({
   catégorie: { type: String, required: true },
   description: { type: String, required: true },
   montant: { type: Number, required: true },
-  devise: { type: String, default: 'EUR' },
+  devise: { type: String, default: 'FCFA' },
   
   // Type de dépense
   type: {

@@ -37,7 +37,7 @@ const projectSchema = new mongoose.Schema({
   budget: {
     prévisionnel: { type: Number, default: 0 },
     réel: { type: Number, default: 0 },
-    devise: { type: String, default: 'EUR' },
+    devise: { type: String, default: 'FCFA' },
     catégories: [{
       nom: String,
       montant_prévu: Number,

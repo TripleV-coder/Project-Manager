@@ -116,7 +116,7 @@ export default function BudgetPage() {
                 <CardTitle className="text-sm font-medium text-gray-600">Budget Total</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-gray-900">{budgetTotal.toLocaleString('fr-FR')} €</div>
+                <div className="text-3xl font-bold text-gray-900">{budgetTotal.toLocaleString('fr-FR')} FCFA</div>
               </CardContent>
             </Card>
             <Card>
@@ -124,7 +124,7 @@ export default function BudgetPage() {
                 <CardTitle className="text-sm font-medium text-gray-600">Dépensé</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-red-600">{dépenses.toLocaleString('fr-FR')} €</div>
+                <div className="text-3xl font-bold text-red-600">{dépenses.toLocaleString('fr-FR')} FCFA</div>
               </CardContent>
             </Card>
             <Card>
@@ -132,7 +132,7 @@ export default function BudgetPage() {
                 <CardTitle className="text-sm font-medium text-gray-600">Restant</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-green-600">{restant.toLocaleString('fr-FR')} €</div>
+                <div className="text-3xl font-bold text-green-600">{restant.toLocaleString('fr-FR')} FCFA</div>
               </CardContent>
             </Card>
             <Card>
@@ -153,8 +153,8 @@ export default function BudgetPage() {
               <div className="space-y-2">
                 <Progress value={pourcentage} className="h-4" />
                 <div className="flex justify-between text-sm text-gray-600">
-                  <span>{dépenses.toLocaleString('fr-FR')} € dépensés</span>
-                  <span>{budgetTotal.toLocaleString('fr-FR')} € budget total</span>
+                  <span>{dépenses.toLocaleString('fr-FR')} FCFA dépensés</span>
+                  <span>{budgetTotal.toLocaleString('fr-FR')} FCFA budget total</span>
                 </div>
                 {pourcentage > 80 && (
                   <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-lg mt-4">
@@ -201,7 +201,7 @@ export default function BudgetPage() {
                         <TableCell>
                           <Badge variant="outline">{expense.catégorie}</Badge>
                         </TableCell>
-                        <TableCell className="font-medium">{expense.montant.toLocaleString('fr-FR')} €</TableCell>
+                        <TableCell className="font-medium">{expense.montant.toLocaleString('fr-FR')} FCFA</TableCell>
                         <TableCell>
                           <Badge variant={expense.validé ? 'default' : 'secondary'}>
                             {expense.validé ? 'Validé' : 'En attente'}
