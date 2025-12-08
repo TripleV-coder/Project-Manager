@@ -112,18 +112,20 @@ export default function Dashboard() {
   };
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', active: true, visible: true },
-    { icon: FolderKanban, label: 'Projets', active: false, visible: user?.role?.visible_menus?.projects },
-    { icon: ListTodo, label: 'Kanban', active: false, visible: user?.role?.visible_menus?.kanban },
-    { icon: ListTodo, label: 'Backlog', active: false, visible: user?.role?.visible_menus?.backlog },
-    { icon: Calendar, label: 'Sprints', active: false, visible: user?.role?.visible_menus?.sprints },
-    { icon: TrendingUp, label: 'Roadmap', active: false, visible: user?.role?.visible_menus?.roadmap },
-    { icon: CheckCircle2, label: 'Tâches', active: false, visible: user?.role?.visible_menus?.tasks },
-    { icon: FileText, label: 'Fichiers', active: false, visible: user?.role?.visible_menus?.files },
-    { icon: MessageSquare, label: 'Commentaires', active: false, visible: user?.role?.visible_menus?.comments },
-    { icon: Clock, label: 'Timesheets', active: false, visible: user?.role?.visible_menus?.timesheets },
-    { icon: Euro, label: 'Budget', active: false, visible: user?.role?.visible_menus?.budget },
-    { icon: FileText, label: 'Rapports', active: false, visible: user?.role?.visible_menus?.reports },
+    { icon: LayoutDashboard, label: 'Dashboard', active: true, visible: true, href: '/dashboard' },
+    { icon: FolderKanban, label: 'Projets', active: false, visible: user?.role?.visible_menus?.projects, href: '/dashboard/projects' },
+    { icon: ListTodo, label: 'Kanban', active: false, visible: user?.role?.visible_menus?.kanban, href: '/dashboard/kanban' },
+    { icon: ListTodo, label: 'Backlog', active: false, visible: user?.role?.visible_menus?.backlog, href: '/dashboard/backlog' },
+    { icon: Calendar, label: 'Sprints', active: false, visible: user?.role?.visible_menus?.sprints, href: '/dashboard/sprints' },
+    { icon: TrendingUp, label: 'Roadmap', active: false, visible: user?.role?.visible_menus?.roadmap, href: '/dashboard/roadmap' },
+    { icon: CheckCircle2, label: 'Tâches', active: false, visible: user?.role?.visible_menus?.tasks, href: '/dashboard/tasks' },
+    { icon: FileText, label: 'Fichiers', active: false, visible: user?.role?.visible_menus?.files, href: '/dashboard/files' },
+    { icon: MessageSquare, label: 'Commentaires', active: false, visible: user?.role?.visible_menus?.comments, href: '/dashboard/comments' },
+    { icon: Clock, label: 'Timesheets', active: false, visible: user?.role?.visible_menus?.timesheets, href: '/dashboard/timesheets' },
+    { icon: Euro, label: 'Budget', active: false, visible: user?.role?.visible_menus?.budget, href: '/dashboard/budget' },
+    { icon: FileText, label: 'Rapports', active: false, visible: user?.role?.visible_menus?.reports, href: '/dashboard/reports' },
+    { icon: Users, label: 'Utilisateurs', active: false, visible: user?.role?.permissions?.admin_config, href: '/dashboard/users' },
+    { icon: Settings, label: 'Administration', active: false, visible: user?.role?.visible_menus?.admin, href: '/dashboard/settings' },
   ];
 
   if (loading) {
