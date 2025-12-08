@@ -419,9 +419,19 @@ export async function POST(request) {
   try {
     const url = new URL(request.url);
     const path = url.pathname.replace('/api', '');
-    const body = await request.json();
-
+    
     await connectDB();
+    
+    // Lire le body seulement si nécessaire
+    let body = {};
+    try {
+      const contentType = request.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        body = await request.json();
+      }
+    } catch (e) {
+      // Pas de body, c'est OK pour certaines routes
+    }
 
     // POST /api/auth/first-admin - Création premier administrateur
     if (path === '/auth/first-admin' || path === '/auth/first-admin/') {
