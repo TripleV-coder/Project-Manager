@@ -62,7 +62,7 @@ const taskSchema = new mongoose.Schema({
   // Critères d'acceptation
   acceptance_criteria: [String],
   
-  // Possêde sous-tâches
+  // Possède sous-tâches
   has_subtasks: { type: Boolean, default: false },
   subtasks_count: { type: Number, default: 0 },
   subtasks_completed: { type: Number, default: 0 },
@@ -70,12 +70,5 @@ const taskSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
-
-taskSchema.index({ projet_id: 1, statut: 1 });
-taskSchema.index({ assigné_à: 1 });
-taskSchema.index({ sprint_id: 1 });
-taskSchema.index({ epic_id: 1 });
-taskSchema.index({ parent_id: 1 });
-taskSchema.index({ priorité: 1, ordre_priorité: 1 });
 
 export default mongoose.models.Task || mongoose.model('Task', taskSchema);

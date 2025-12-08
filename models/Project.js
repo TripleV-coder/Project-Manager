@@ -77,10 +77,4 @@ const projectSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
-projectSchema.index({ nom: 1 });
-projectSchema.index({ statut: 1 });
-projectSchema.index({ chef_projet: 1 });
-projectSchema.index({ 'membres.user_id': 1 });
-projectSchema.index({ archivé: 1 });
-
 export default mongoose.models.Project || mongoose.model('Project', projectSchema);
