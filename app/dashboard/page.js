@@ -158,6 +158,7 @@ export default function Dashboard() {
             {menuItems.filter(item => item.visible !== false).map((item, idx) => (
               <button
                 key={idx}
+                onClick={() => router.push(item.href)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   item.active 
                     ? 'bg-indigo-50 text-indigo-600' 
