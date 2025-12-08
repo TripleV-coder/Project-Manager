@@ -839,6 +839,61 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/init-default-template - Créer template par défaut (pour faciliter le démarrage)
+    if (path === '/init-default-template' || path === '/init-default-template/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.admin_config) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Vérifier si template existe déjà
+      const existing = await ProjectTemplate.findOne({ nom: 'Projet Standard' });
+      if (existing) {
+        return handleCORS(NextResponse.json({ 
+          message: 'Template par défaut existe déjà',
+          template: existing
+        }));
+      }
+
+      // Créer template par défaut
+      const template = await ProjectTemplate.create({
+        nom: 'Projet Standard',
+        description: 'Template de projet standard avec champs de base',
+        catégorie: 'Général',
+        champs: [
+          {
+            id: 'client',
+            type: 'texte',
+            label: 'Nom du client',
+            required: false,
+            properties: { variant: 'court', longueur_max: 100 }
+          },
+          {
+            id: 'budget',
+            type: 'nombre',
+            label: 'Budget estimé',
+            required: false,
+            properties: { format: 'monétaire', unité: '€' }
+          },
+          {
+            id: 'objectifs',
+            type: 'texte',
+            label: 'Objectifs du projet',
+            required: false,
+            properties: { variant: 'long' }
+          }
+        ],
+        créé_par: user._id
+      });
+
+      await createAuditLog(user, 'création', 'template', template._id, 'Création template par défaut');
+
+      return handleCORS(NextResponse.json({
+        message: 'Template par défaut créé avec succès',
+        template
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'Endpoint POST non trouvé',
       path: path
