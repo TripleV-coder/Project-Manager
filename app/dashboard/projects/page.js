@@ -50,7 +50,22 @@ export default function ProjectsPage() {
       const templatesData = await templatesRes.json();
 
       setProjects(projectsData.projects || []);
-      setTemplates(templatesData.templates || []);
+      
+      // Si pas de templates, créer template par défaut
+      if (!templatesData.templates || templatesData.templates.length === 0) {
+        const initRes = await fetch('/api/init-default-template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const initData = await initRes.json();
+        setTemplates([initData.template]);
+      } else {
+        setTemplates(templatesData.templates || []);
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error('Erreur chargement:', error);
