@@ -31,7 +31,7 @@ export default function BacklogPage() {
       }
 
       let tasksUrl = '/api/tasks?';
-      if (selectedProject) tasksUrl += `projet_id=${selectedProject}&`;
+      if (selectedProject && selectedProject !== 'all') tasksUrl += `projet_id=${selectedProject}&`;
 
       const [tasksRes, projectsRes] = await Promise.all([
         fetch(tasksUrl, { headers: { 'Authorization': `Bearer ${token}` } }),

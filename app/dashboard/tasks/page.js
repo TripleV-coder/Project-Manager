@@ -52,8 +52,8 @@ export default function TasksPage() {
       }
 
       let tasksUrl = '/api/tasks?';
-      if (selectedProject) tasksUrl += `projet_id=${selectedProject}&`;
-      if (selectedStatus) tasksUrl += `statut=${selectedStatus}&`;
+      if (selectedProject && selectedProject !== 'all') tasksUrl += `projet_id=${selectedProject}&`;
+      if (selectedStatus && selectedStatus !== 'all') tasksUrl += `statut=${selectedStatus}&`;
 
       const [tasksRes, projectsRes, usersRes] = await Promise.all([
         fetch(tasksUrl, { headers: { 'Authorization': `Bearer ${token}` } }),

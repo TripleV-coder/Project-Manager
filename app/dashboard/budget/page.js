@@ -23,7 +23,7 @@ export default function BudgetPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedProject) {
+    if (selectedProject && selectedProject !== 'all') {
       loadProjectBudget();
     }
   }, [selectedProject]);

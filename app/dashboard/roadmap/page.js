@@ -28,7 +28,7 @@ export default function RoadmapPage() {
       }
 
       let tasksUrl = '/api/tasks?';
-      if (selectedProject) tasksUrl += `projet_id=${selectedProject}&`;
+      if (selectedProject && selectedProject !== 'all') tasksUrl += `projet_id=${selectedProject}&`;
 
       const [projectsRes, tasksRes] = await Promise.all([
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
