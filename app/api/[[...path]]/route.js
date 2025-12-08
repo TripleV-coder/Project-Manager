@@ -336,6 +336,27 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ projects }));
     }
 
+    // GET /api/projects/:id - Détails projet
+    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId)
+        .populate('chef_projet', 'nom_complet email avatar')
+        .populate('product_owner', 'nom_complet email avatar')
+        .populate('membres.user_id', 'nom_complet email avatar')
+        .populate('template_id');
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      return handleCORS(NextResponse.json({ project }));
+    }
+
     // GET /api/project-templates - Liste templates projets
     if (path === '/project-templates' || path === '/project-templates/') {
       const user = await authenticate(request);
