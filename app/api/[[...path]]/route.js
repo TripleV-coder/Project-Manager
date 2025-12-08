@@ -1750,6 +1750,13 @@ export async function DELETE(request) {
       }));
     }
 
+    // DELETE /api/notifications/:id - Supprimer notification
+    if (path.match(/^\/notifications\/[^/]+\/?$/)) {
+      const notificationId = path.split('/')[2];
+      await Notification.findByIdAndDelete(notificationId);
+      return handleCORS(NextResponse.json({ message: 'Notification supprimée' }));
+    }
+
     // DELETE /api/tasks/:id - Supprimer tâche
     if (path.match(/^\/tasks\/[^/]+\/?$/)) {
       if (!user.role_id?.permissions?.gererTaches) {
