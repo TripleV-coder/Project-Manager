@@ -2,102 +2,132 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Plus, Settings, Trash2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Shield, Plus, Edit2, Trash2, Save, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 
-const PERMISSIONS_CONFIG = {
-  'Gestion de Projets': [
-    { key: 'voir_tous_projets', label: 'Voir tous les projets du portfolio' },
-    { key: 'voir_ses_projets', label: 'Voir uniquement ses projets assignés' },
-    { key: 'créer_projet', label: 'Créer de nouveaux projets' },
-    { key: 'modifier_charte_projet', label: 'Modifier la charte et informations projet' },
-    { key: 'supprimer_projet', label: 'Supprimer un projet' },
-    { key: 'gérer_membres_projet', label: 'Ajouter/retirer des membres' },
-    { key: 'changer_rôle_membre', label: 'Changer le rôle des membres' },
-  ],
-  'Gestion des Tâches': [
-    { key: 'gérer_tâches', label: 'Créer, modifier et supprimer des tâches' },
-    { key: 'déplacer_tâches', label: 'Déplacer les tâches (Kanban)' },
-    { key: 'prioriser_backlog', label: 'Prioriser le backlog produit' },
-  ],
-  'Planification Agile': [
-    { key: 'gérer_sprints', label: 'Créer et gérer les sprints' },
-  ],
-  'Budget et Finances': [
-    { key: 'voir_budget', label: 'Consulter le budget des projets' },
-    { key: 'modifier_budget', label: 'Modifier le budget des projets' },
-  ],
-  'Suivi du Temps': [
-    { key: 'saisir_temps', label: 'Saisir son propre temps passé' },
-    { key: 'voir_temps_passés', label: 'Voir le temps passé de l\'équipe' },
-  ],
-  'Livrables': [
-    { key: 'valider_livrable', label: 'Valider ou refuser des livrables' },
-  ],
-  'Fichiers et Communication': [
-    { key: 'gérer_fichiers', label: 'Télécharger et gérer des fichiers' },
-    { key: 'commenter', label: 'Commenter et @mentionner' },
-    { key: 'recevoir_notifications', label: 'Recevoir des notifications' },
-  ],
-  'Rapports et Administration': [
-    { key: 'générer_rapports', label: 'Générer et exporter des rapports' },
-    { key: 'voir_audit', label: 'Consulter l\'audit trail' },
-    { key: 'admin_config', label: 'Accès configuration système (Admin uniquement)' },
-  ],
-};
-
-const MENU_CONFIG = {
-  portfolio: 'Vue Portfolio',
-  projects: 'Projets',
-  kanban: 'Board Kanban',
-  backlog: 'Backlog',
-  sprints: 'Sprints',
-  roadmap: 'Roadmap',
-  tasks: 'Tâches',
-  files: 'Fichiers',
-  comments: 'Commentaires',
-  timesheets: 'Feuilles de temps',
-  budget: 'Budget',
-  reports: 'Rapports',
-  notifications: 'Notifications',
-  admin: 'Administration'
-};
-
-const ROLES_DISPLAY_NAMES = {
-  'Admin': 'Administrateur',
-  'Project_Manager': 'Chef de Projet',
-  'Team_Lead': 'Lead Équipe',
-  'Product_Owner': 'Product Owner',
-  'Team_Member': 'Membre Équipe',
-  'Stakeholder_Client': 'Client / Stakeholder',
-  'Viewer': 'Observateur',
-  'Guest': 'Invité'
-};
-
-export default function RolesManagement() {
+export default function RolesPage() {
   const router = useRouter();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [roleToDelete, setRoleToDelete] = useState(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [newRole, setNewRole] = useState({
     nom: '',
     description: '',
     permissions: {},
-    visible_menus: {}
+    visibleMenus: {}
   });
+
+  // Liste complète des 22 permissions atomiques
+  const allPermissions = [
+    {
+      category: 'Projets',
+      items: [
+        { key: 'voirTousProjets', label: 'Voir tous les projets (portfolio global)' },
+        { key: 'voirSesProjets', label: 'Voir uniquement ses projets' },
+        { key: 'creerProjet', label: 'Créer un nouveau projet' },
+        { key: 'supprimerProjet', label: 'Supprimer un projet' },
+        { key: 'modifierCharteProjet', label: 'Modifier la charte / les infos du projet' }
+      ]
+    },
+    {
+      category: 'Équipe',
+      items: [
+        { key: 'gererMembresProjet', label: 'Ajouter / retirer des membres du projet' },
+        { key: 'changerRoleMembre', label: 'Changer le rôle d\'un membre dans un projet' }
+      ]
+    },
+    {
+      category: 'Tâches',
+      items: [
+        { key: 'gererTaches', label: 'Créer / modifier / supprimer des tâches' },
+        { key: 'deplacerTaches', label: 'Déplacer des tâches (Kanban / statut)' },
+        { key: 'prioriserBacklog', label: 'Prioriser le backlog' }
+      ]
+    },
+    {
+      category: 'Sprints',
+      items: [
+        { key: 'gererSprints', label: 'Créer et lancer des sprints' }
+      ]
+    },
+    {
+      category: 'Budget',
+      items: [
+        { key: 'modifierBudget', label: 'Modifier le budget du projet' },
+        { key: 'voirBudget', label: 'Voir le budget du projet' }
+      ]
+    },
+    {
+      category: 'Temps',
+      items: [
+        { key: 'voirTempsPasses', label: 'Voir les temps passés (timesheets)' },
+        { key: 'saisirTemps', label: 'Saisir son propre temps passé' }
+      ]
+    },
+    {
+      category: 'Livrables',
+      items: [
+        { key: 'validerLivrable', label: 'Valider / refuser un livrable' }
+      ]
+    },
+    {
+      category: 'Fichiers',
+      items: [
+        { key: 'gererFichiers', label: 'Télécharger / uploader des fichiers' }
+      ]
+    },
+    {
+      category: 'Communication',
+      items: [
+        { key: 'commenter', label: 'Commenter et @mention' },
+        { key: 'recevoirNotifications', label: 'Recevoir des notifications' }
+      ]
+    },
+    {
+      category: 'Rapports & Audit',
+      items: [
+        { key: 'genererRapports', label: 'Générer des rapports / exports' },
+        { key: 'voirAudit', label: 'Voir l\'historique / audit trail' }
+      ]
+    },
+    {
+      category: 'Administration',
+      items: [
+        { key: 'adminConfig', label: 'Accéder à la configuration globale (Admin seulement)' }
+      ]
+    }
+  ];
+
+  // Liste des menus disponibles
+  const allMenus = [
+    { key: 'portfolio', label: 'Portfolio / Dashboard' },
+    { key: 'projects', label: 'Projets' },
+    { key: 'kanban', label: 'Kanban Board' },
+    { key: 'backlog', label: 'Backlog & Épics' },
+    { key: 'sprints', label: 'Sprints' },
+    { key: 'roadmap', label: 'Roadmap / Gantt' },
+    { key: 'tasks', label: 'Tâches' },
+    { key: 'files', label: 'Fichiers' },
+    { key: 'comments', label: 'Commentaires' },
+    { key: 'timesheets', label: 'Timesheets' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'reports', label: 'Rapports' },
+    { key: 'notifications', label: 'Notifications' },
+    { key: 'admin', label: 'Administration' }
+  ];
 
   useEffect(() => {
     loadRoles();
@@ -106,50 +136,35 @@ export default function RolesManagement() {
   const loadRoles = async () => {
     try {
       const token = localStorage.getItem('pm_token');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch('/api/roles', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
       const data = await response.json();
       setRoles(data.roles || []);
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('Erreur chargement:', error);
+      toast.error('Erreur lors du chargement des rôles');
       setLoading(false);
     }
   };
 
-  const handleOpenDialog = (role = null) => {
-    if (role) {
-      setEditingRole(role);
-      setNewRole({
-        nom: role.nom,
-        description: role.description || '',
-        permissions: { ...role.permissions },
-        visible_menus: { ...role.visible_menus }
-      });
-    } else {
-      setEditingRole(null);
-      setNewRole({
-        nom: '',
-        description: '',
-        permissions: {},
-        visible_menus: Object.keys(MENU_CONFIG).reduce((acc, key) => {
-          acc[key] = true;
-          return acc;
-        }, {})
-      });
-    }
-    setDialogOpen(true);
-  };
-
-  const handleSaveRole = async () => {
+  const handleCreateRole = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const url = editingRole ? `/api/roles/${editingRole._id}` : '/api/roles';
-      const method = editingRole ? 'PUT' : 'POST';
+      if (!newRole.nom || !newRole.description) {
+        toast.error('Le nom et la description sont requis');
+        return;
+      }
 
-      const response = await fetch(url, {
-        method,
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch('/api/roles', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -157,70 +172,115 @@ export default function RolesManagement() {
         body: JSON.stringify(newRole)
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        setDialogOpen(false);
-        setEditingRole(null);
+        toast.success('Rôle créé avec succès');
+        setCreateDialogOpen(false);
+        setNewRole({ nom: '', description: '', permissions: {}, visibleMenus: {} });
         loadRoles();
       } else {
-        const data = await response.json();
-        alert(data.error || 'Erreur lors de la sauvegarde');
+        toast.error(data.error || 'Erreur lors de la création');
       }
     } catch (error) {
       console.error('Erreur:', error);
-      alert('Erreur de connexion');
+      toast.error('Erreur de connexion');
     }
   };
 
-  const handleDeleteRole = async () => {
-    if (!roleToDelete) return;
-    
+  const handleUpdateRole = async (roleId, updates) => {
     try {
       const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/roles/${roleToDelete._id}`, {
+      const response = await fetch(`/api/roles/${roleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('Rôle modifié avec succès');
+        setEditingRole(null);
+        loadRoles();
+      } else {
+        toast.error(data.error || 'Erreur lors de la modification');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    }
+  };
+
+  const handleDeleteRole = async (roleId, roleName) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/roles/${roleId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        setDeleteDialogOpen(false);
-        setRoleToDelete(null);
+        toast.success('Rôle supprimé avec succès');
         loadRoles();
       } else {
-        const data = await response.json();
-        alert(data.error || 'Erreur lors de la suppression');
+        toast.error(data.error || 'Erreur lors de la suppression');
       }
     } catch (error) {
       console.error('Erreur:', error);
-      alert('Erreur de connexion');
+      toast.error('Erreur de connexion');
     }
   };
 
-  const handlePermissionChange = (key, value) => {
+  const togglePermission = (role, permKey) => {
+    const updated = {
+      ...role,
+      permissions: {
+        ...role.permissions,
+        [permKey]: !role.permissions[permKey]
+      }
+    };
+    setEditingRole(updated);
+  };
+
+  const toggleMenu = (role, menuKey) => {
+    const updated = {
+      ...role,
+      visibleMenus: {
+        ...role.visibleMenus,
+        [menuKey]: !role.visibleMenus[menuKey]
+      }
+    };
+    setEditingRole(updated);
+  };
+
+  const toggleNewRolePermission = (permKey) => {
     setNewRole({
       ...newRole,
       permissions: {
         ...newRole.permissions,
-        [key]: value
+        [permKey]: !newRole.permissions[permKey]
       }
     });
   };
 
-  const handleMenuChange = (key, value) => {
+  const toggleNewRoleMenu = (menuKey) => {
     setNewRole({
       ...newRole,
-      visible_menus: {
-        ...newRole.visible_menus,
-        [key]: value
+      visibleMenus: {
+        ...newRole.visibleMenus,
+        [menuKey]: !newRole.visibleMenus[menuKey]
       }
     });
-  };
-
-  const countActivePermissions = (permissions) => {
-    return Object.values(permissions || {}).filter(Boolean).length;
-  };
-
-  const getDisplayName = (roleName) => {
-    return ROLES_DISPLAY_NAMES[roleName] || roleName;
   };
 
   if (loading) {
@@ -233,83 +293,76 @@ export default function RolesManagement() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Rôles</h1>
-          <p className="text-gray-600">Configurez les rôles et leurs permissions d'accès</p>
+          <p className="text-gray-600">Configurez les 8 rôles et leurs 22 permissions atomiques</p>
         </div>
         <Button 
           className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => handleOpenDialog()}
+          onClick={() => setCreateDialogOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
           Créer un rôle personnalisé
         </Button>
       </div>
 
+      {/* Roles List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {roles.map((role) => {
-          const permCount = countActivePermissions(role.permissions);
-          const totalPerms = Object.keys(PERMISSIONS_CONFIG).reduce((acc, cat) => acc + PERMISSIONS_CONFIG[cat].length, 0);
-          
-          return (
-            <Card key={role._id} className="hover:shadow-lg transition-shadow">
+        {roles.map((role, idx) => (
+          <motion.div
+            key={role._id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05 }}
+          >
+            <Card className="h-full hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-1">
                       <Shield className="w-5 h-5 text-indigo-600" />
-                      <CardTitle className="text-lg">{getDisplayName(role.nom)}</CardTitle>
+                      <CardTitle className="text-lg">{role.nom}</CardTitle>
                     </div>
-                    {role.description && (
-                      <CardDescription className="text-sm">
-                        {role.description}
-                      </CardDescription>
-                    )}
+                    <CardDescription>{role.description}</CardDescription>
                   </div>
                   {role.is_predefined && (
-                    <Badge variant="outline" className="bg-blue-50">Système</Badge>
+                    <Badge variant="secondary">Système</Badge>
                   )}
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span className="text-gray-600 font-medium">Permissions</span>
-                      <Badge className="bg-indigo-100 text-indigo-700">
-                        {permCount} / {totalPerms}
-                      </Badge>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-indigo-600 h-2 rounded-full transition-all"
-                        style={{ width: `${(permCount / totalPerms) * 100}%` }}
-                      />
-                    </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Permissions activées</span>
+                    <span className="font-medium">
+                      {Object.values(role.permissions || {}).filter(Boolean).length} / 22
+                    </span>
                   </div>
-
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Menus visibles</span>
+                    <span className="font-medium">
+                      {Object.values(role.visibleMenus || {}).filter(Boolean).length} / 14
+                    </span>
+                  </div>
                   <Separator />
-
                   <div className="flex gap-2">
                     <Button 
-                      size="sm" 
                       variant="outline" 
+                      size="sm" 
                       className="flex-1"
-                      onClick={() => handleOpenDialog(role)}
+                      onClick={() => setEditingRole(role)}
                     >
-                      <Settings className="w-3 h-3 mr-1" />
-                      {role.is_predefined ? 'Voir' : 'Configurer'}
+                      <Edit2 className="w-3 h-3 mr-1" />
+                      Configurer
                     </Button>
                     {!role.is_predefined && (
                       <Button 
-                        size="sm" 
                         variant="outline" 
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => {
-                          setRoleToDelete(role);
-                          setDeleteDialogOpen(true);
-                        }}
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteRole(role._id, role.nom)}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -318,147 +371,226 @@ export default function RolesManagement() {
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
+          </motion.div>
+        ))}
       </div>
 
-      {/* Create/Edit Dialog - Suite dans le prochain message à cause de la limite de taille */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+      {/* Edit Role Dialog */}
+      {editingRole && (
+        <Dialog open={!!editingRole} onOpenChange={() => setEditingRole(null)}>
+          <DialogContent className="max-w-5xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-indigo-600" />
+                Configuration : {editingRole.nom}
+              </DialogTitle>
+              <DialogDescription>
+                {editingRole.description}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Tabs defaultValue="permissions" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="permissions">Permissions (22)</TabsTrigger>
+                <TabsTrigger value="menus">Menus Visibles (14)</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="permissions">
+                <ScrollArea className="h-[500px] pr-4">
+                  <div className="space-y-6">
+                    {allPermissions.map((category) => (
+                      <div key={category.category}>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <div className="w-1 h-4 bg-indigo-600 rounded-full" />
+                          {category.category}
+                        </h3>
+                        <div className="space-y-3 ml-3">
+                          {category.items.map((perm) => (
+                            <div 
+                              key={perm.key} 
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                              <Checkbox
+                                id={`edit-${perm.key}`}
+                                checked={editingRole.permissions?.[perm.key] || false}
+                                onCheckedChange={() => togglePermission(editingRole, perm.key)}
+                              />
+                              <label
+                                htmlFor={`edit-${perm.key}`}
+                                className="flex-1 cursor-pointer text-sm"
+                              >
+                                {perm.label}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="menus">
+                <ScrollArea className="h-[500px] pr-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {allMenus.map((menu) => (
+                      <div 
+                        key={menu.key}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <Checkbox
+                          id={`menu-edit-${menu.key}`}
+                          checked={editingRole.visibleMenus?.[menu.key] || false}
+                          onCheckedChange={() => toggleMenu(editingRole, menu.key)}
+                        />
+                        <label
+                          htmlFor={`menu-edit-${menu.key}`}
+                          className="flex-1 cursor-pointer text-sm"
+                        >
+                          {menu.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setEditingRole(null)}>
+                <X className="w-4 h-4 mr-1" />
+                Annuler
+              </Button>
+              <Button 
+                className="bg-indigo-600 hover:bg-indigo-700"
+                onClick={() => handleUpdateRole(editingRole._id, {
+                  permissions: editingRole.permissions,
+                  visibleMenus: editingRole.visibleMenus
+                })}
+              >
+                <Save className="w-4 h-4 mr-1" />
+                Enregistrer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Create Role Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>
-              {editingRole ? `Configurer: ${getDisplayName(editingRole.nom)}` : 'Créer un nouveau rôle'}
-            </DialogTitle>
+            <DialogTitle>Créer un rôle personnalisé</DialogTitle>
             <DialogDescription>
-              {editingRole?.is_predefined 
-                ? 'Les rôles système ne peuvent pas être modifiés.'
-                : 'Définissez les permissions et accès pour ce rôle'}
+              Définissez un nouveau rôle avec des permissions spécifiques
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[60vh] pr-4">
-            <div className="space-y-6 py-4">
-              {!editingRole?.is_predefined && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Nom du rôle</Label>
-                    <Input
-                      value={newRole.nom}
-                      onChange={(e) => setNewRole({ ...newRole, nom: e.target.value })}
-                      placeholder="Ex: Consultant Senior"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Textarea
-                      value={newRole.description}
-                      onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
-                      placeholder="Description du rôle..."
-                      rows={2}
-                    />
-                  </div>
-
-                  <Separator />
-                </>
-              )}
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Permissions</h3>
-
-                {Object.entries(PERMISSIONS_CONFIG).map(([category, perms]) => (
-                  <Card key={category}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-medium">{category}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {perms.map((perm) => (
-                        <div key={perm.key} className="flex items-start justify-between gap-4">
-                          <Label 
-                            htmlFor={perm.key} 
-                            className="text-sm font-normal cursor-pointer flex-1"
-                          >
-                            {perm.label}
-                          </Label>
-                          <Switch
-                            id={perm.key}
-                            checked={newRole.permissions[perm.key] || false}
-                            onCheckedChange={(checked) => handlePermissionChange(perm.key, checked)}
-                            disabled={editingRole?.is_predefined}
-                          />
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nom du rôle</Label>
+                <Input
+                  value={newRole.nom}
+                  onChange={(e) => setNewRole({ ...newRole, nom: e.target.value })}
+                  placeholder="Ex: Consultant Externe"
+                />
               </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Menus Accessibles</h3>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      {Object.entries(MENU_CONFIG).map(([key, label]) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <Label 
-                            htmlFor={`menu-${key}`} 
-                            className="text-sm font-normal cursor-pointer"
-                          >
-                            {label}
-                          </Label>
-                          <Switch
-                            id={`menu-${key}`}
-                            checked={newRole.visible_menus[key] || false}
-                            onCheckedChange={(checked) => handleMenuChange(key, checked)}
-                            disabled={editingRole?.is_predefined}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={newRole.description}
+                  onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
+                  placeholder="Courte description du rôle"
+                />
               </div>
             </div>
-          </ScrollArea>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              {editingRole?.is_predefined ? 'Fermer' : 'Annuler'}
+            <Tabs defaultValue="permissions" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="permissions">Permissions (22)</TabsTrigger>
+                <TabsTrigger value="menus">Menus Visibles (14)</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="permissions">
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-6">
+                    {allPermissions.map((category) => (
+                      <div key={category.category}>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <div className="w-1 h-4 bg-indigo-600 rounded-full" />
+                          {category.category}
+                        </h3>
+                        <div className="space-y-3 ml-3">
+                          {category.items.map((perm) => (
+                            <div 
+                              key={perm.key} 
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                              <Checkbox
+                                id={`new-${perm.key}`}
+                                checked={newRole.permissions?.[perm.key] || false}
+                                onCheckedChange={() => toggleNewRolePermission(perm.key)}
+                              />
+                              <label
+                                htmlFor={`new-${perm.key}`}
+                                className="flex-1 cursor-pointer text-sm"
+                              >
+                                {perm.label}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="menus">
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {allMenus.map((menu) => (
+                      <div 
+                        key={menu.key}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <Checkbox
+                          id={`menu-new-${menu.key}`}
+                          checked={newRole.visibleMenus?.[menu.key] || false}
+                          onCheckedChange={() => toggleNewRoleMenu(menu.key)}
+                        />
+                        <label
+                          htmlFor={`menu-new-${menu.key}`}
+                          className="flex-1 cursor-pointer text-sm"
+                        >
+                          {menu.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setCreateDialogOpen(false);
+              setNewRole({ nom: '', description: '', permissions: {}, visibleMenus: {} });
+            }}>
+              Annuler
             </Button>
-            {!editingRole?.is_predefined && (
-              <Button 
-                onClick={handleSaveRole} 
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                {editingRole ? 'Enregistrer' : 'Créer le rôle'}
-              </Button>
-            )}
+            <Button 
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={handleCreateRole}
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Créer le rôle
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer le rôle "{roleToDelete?.nom}" ?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteRole}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
