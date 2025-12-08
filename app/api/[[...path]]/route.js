@@ -512,7 +512,7 @@ export async function GET(request) {
     // GET /api/users - Liste utilisateurs (admin uniquement)
     if (path === '/users' || path === '/users/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.admin_config) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -861,7 +861,7 @@ export async function POST(request) {
     // POST /api/users - Créer utilisateur (admin uniquement)
     if (path === '/users' || path === '/users/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.admin_config) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -922,7 +922,7 @@ export async function POST(request) {
     // POST /api/projects - Créer projet
     if (path === '/projects' || path === '/projects/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.créer_projet) {
+      if (!user || !user.role_id?.permissions?.creerProjet) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -991,7 +991,7 @@ export async function POST(request) {
     // POST /api/tasks - Créer tâche
     if (path === '/tasks' || path === '/tasks/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gérer_tâches) {
+      if (!user || !user.role_id?.permissions?.gererTaches) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1067,7 +1067,7 @@ export async function POST(request) {
     // POST /api/project-templates - Créer template
     if (path === '/project-templates' || path === '/project-templates/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.admin_config) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1138,7 +1138,7 @@ export async function POST(request) {
     // POST /api/sprints - Créer sprint
     if (path === '/sprints' || path === '/sprints/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gérer_sprints) {
+      if (!user || !user.role_id?.permissions?.gererSprints) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1317,7 +1317,7 @@ export async function POST(request) {
     // POST /api/init-default-template - Créer template par défaut (pour faciliter le démarrage)
     if (path === '/init-default-template' || path === '/init-default-template/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.admin_config) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1397,7 +1397,7 @@ export async function PUT(request) {
 
     // PUT /api/tasks/:id/move - Déplacer tâche (Kanban)
     if (path.match(/^\/tasks\/[^/]+\/move\/?$/)) {
-      if (!user.role_id?.permissions?.déplacer_tâches) {
+      if (!user.role_id?.permissions?.deplacerTaches) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1464,7 +1464,7 @@ export async function PUT(request) {
 
     // PUT /api/roles/:id - Modifier rôle personnalisé
     if (path.match(/^\/roles\/[^/]+\/?$/)) {
-      if (!user.role_id?.permissions?.admin_config) {
+      if (!user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1705,7 +1705,7 @@ export async function DELETE(request) {
 
     // DELETE /api/tasks/:id - Supprimer tâche
     if (path.match(/^\/tasks\/[^/]+\/?$/)) {
-      if (!user.role_id?.permissions?.gérer_tâches) {
+      if (!user.role_id?.permissions?.gererTaches) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
