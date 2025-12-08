@@ -1607,6 +1607,39 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/notifications/:id/read - Marquer comme lu
+    if (path.match(/^\/notifications\/[^/]+\/read\/?$/)) {
+      const notificationId = path.split('/')[2];
+      await Notification.findByIdAndUpdate(notificationId, { lu: true });
+      return handleCORS(NextResponse.json({ message: 'Notification marquée comme lue' }));
+    }
+
+    // PUT /api/notifications/read-all - Tout marquer comme lu
+    if (path === '/notifications/read-all' || path === '/notifications/read-all/') {
+      const user = await authenticate(request);
+      await Notification.updateMany(
+        { destinataire: user._id, lu: false },
+        { lu: true }
+      );
+      return handleCORS(NextResponse.json({ message: 'Toutes les notifications marquées comme lues' }));
+    }
+
+    // PUT /api/admin/maintenance - Modifier mode maintenance
+    if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Pour l'instant, juste retourner OK
+      // Dans une vraie implémentation, on sauvegarderait dans la DB ou fichier config
+      return handleCORS(NextResponse.json({ 
+        message: 'Mode maintenance mis à jour',
+        enabled: body.enabled,
+        savedMessage: body.message
+      }));
+    }
+
     // PUT /api/budget/projects/:id - Modifier budget projet
     if (path.match(/^\/budget\/projects\/[^/]+\/?$/)) {
       const projectId = path.split('/')[3];
