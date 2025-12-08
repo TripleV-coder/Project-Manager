@@ -1671,6 +1671,38 @@ export async function DELETE(request) {
       return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
     }
 
+    // DELETE /api/roles/:id - Supprimer rôle
+    if (path.match(/^\/roles\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const roleId = path.split('/')[2];
+      const role = await Role.findById(roleId);
+
+      if (!role) {
+        return handleCORS(NextResponse.json({ error: 'Rôle non trouvé' }, { status: 404 }));
+      }
+
+      if (role.is_predefined) {
+        return handleCORS(NextResponse.json({ error: 'Les rôles prédéfinis ne peuvent pas être supprimés' }, { status: 400 }));
+      }
+
+      // Vérifier si des utilisateurs ont ce rôle
+      const usersWithRole = await User.countDocuments({ role_id: roleId });
+      if (usersWithRole > 0) {
+        return handleCORS(NextResponse.json({ error: `Impossible de supprimer : ${usersWithRole} utilisateur(s) ont ce rôle` }, { status: 400 }));
+      }
+
+      await Role.findByIdAndDelete(roleId);
+
+      await createAuditLog(user, 'suppression', 'rôle', roleId, `Suppression rôle ${role.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle supprimé avec succès'
+      }));
+    }
+
     // DELETE /api/tasks/:id - Supprimer tâche
     if (path.match(/^\/tasks\/[^/]+\/?$/)) {
       if (!user.role_id?.permissions?.gérer_tâches) {
