@@ -89,8 +89,4 @@ const projectTemplateSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
-projectTemplateSchema.index({ nom: 1 });
-projectTemplateSchema.index({ catégorie: 1 });
-projectTemplateSchema.index({ tags: 1 });
-
 export default mongoose.models.ProjectTemplate || mongoose.model('ProjectTemplate', projectTemplateSchema);
