@@ -6,34 +6,34 @@ const roleSchema = new mongoose.Schema({
   is_custom: { type: Boolean, default: false },
   is_predefined: { type: Boolean, default: false },
   
-  // 22 permissions atomiques
+  // 22 permissions atomiques (camelCase)
   permissions: {
-    voir_tous_projets: { type: Boolean, default: false },
-    voir_ses_projets: { type: Boolean, default: true },
-    créer_projet: { type: Boolean, default: false },
-    supprimer_projet: { type: Boolean, default: false },
-    modifier_charte_projet: { type: Boolean, default: false },
-    gérer_membres_projet: { type: Boolean, default: false },
-    changer_rôle_membre: { type: Boolean, default: false },
-    gérer_tâches: { type: Boolean, default: false },
-    déplacer_tâches: { type: Boolean, default: true },
-    prioriser_backlog: { type: Boolean, default: false },
-    gérer_sprints: { type: Boolean, default: false },
-    modifier_budget: { type: Boolean, default: false },
-    voir_budget: { type: Boolean, default: false },
-    voir_temps_passés: { type: Boolean, default: false },
-    saisir_temps: { type: Boolean, default: true },
-    valider_livrable: { type: Boolean, default: false },
-    gérer_fichiers: { type: Boolean, default: true },
+    voirTousProjets: { type: Boolean, default: false },
+    voirSesProjets: { type: Boolean, default: true },
+    creerProjet: { type: Boolean, default: false },
+    supprimerProjet: { type: Boolean, default: false },
+    modifierCharteProjet: { type: Boolean, default: false },
+    gererMembresProjet: { type: Boolean, default: false },
+    changerRoleMembre: { type: Boolean, default: false },
+    gererTaches: { type: Boolean, default: false },
+    deplacerTaches: { type: Boolean, default: true },
+    prioriserBacklog: { type: Boolean, default: false },
+    gererSprints: { type: Boolean, default: false },
+    modifierBudget: { type: Boolean, default: false },
+    voirBudget: { type: Boolean, default: false },
+    voirTempsPasses: { type: Boolean, default: false },
+    saisirTemps: { type: Boolean, default: true },
+    validerLivrable: { type: Boolean, default: false },
+    gererFichiers: { type: Boolean, default: true },
     commenter: { type: Boolean, default: true },
-    recevoir_notifications: { type: Boolean, default: true },
-    générer_rapports: { type: Boolean, default: false },
-    voir_audit: { type: Boolean, default: false },
-    admin_config: { type: Boolean, default: false }
+    recevoirNotifications: { type: Boolean, default: true },
+    genererRapports: { type: Boolean, default: false },
+    voirAudit: { type: Boolean, default: false },
+    adminConfig: { type: Boolean, default: false }
   },
   
-  // Contrôle menus visibles
-  visible_menus: {
+  // Contrôle menus visibles (camelCase)
+  visibleMenus: {
     portfolio: { type: Boolean, default: true },
     projects: { type: Boolean, default: true },
     kanban: { type: Boolean, default: true },
