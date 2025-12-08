@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
-userSchema.index({ email: 1 });
+// Indexes (sans l'index email car déjà défini avec unique: true)
 userSchema.index({ role_id: 1 });
 userSchema.index({ status: 1 });
 
