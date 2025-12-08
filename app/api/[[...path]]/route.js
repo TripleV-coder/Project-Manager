@@ -870,6 +870,225 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/roles - Créer rôle personnalisé
+    if (path === '/roles' || path === '/roles/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.admin_config) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { nom, description, permissions, visible_menus } = body;
+
+      if (!nom) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Nom requis' 
+        }, { status: 400 }));
+      }
+
+      // Vérifier si le nom existe déjà
+      const existing = await Role.findOne({ nom });
+      if (existing) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Un rôle avec ce nom existe déjà' 
+        }, { status: 400 }));
+      }
+
+      const role = await Role.create({
+        nom,
+        description,
+        is_custom: true,
+        is_predefined: false,
+        permissions: permissions || {},
+        visible_menus: visible_menus || {}
+      });
+
+      await createAuditLog(user, 'création', 'role', role._id, `Création rôle personnalisé ${nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle créé avec succès',
+        role
+      }));
+    }
+
+    // POST /api/sprints - Créer sprint
+    if (path === '/sprints' || path === '/sprints/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gérer_sprints) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { projet_id, nom, objectif, date_début, date_fin, capacité_équipe } = body;
+
+      if (!projet_id || !nom || !date_début || !date_fin) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Champs requis manquants' 
+        }, { status: 400 }));
+      }
+
+      const sprint = await Sprint.create({
+        projet_id,
+        nom,
+        objectif,
+        date_début,
+        date_fin,
+        capacité_équipe: capacité_équipe || 0,
+        statut: 'Planifié'
+      });
+
+      await createAuditLog(user, 'création', 'sprint', sprint._id, `Création sprint ${nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Sprint créé avec succès',
+        sprint
+      }));
+    }
+
+    // POST /api/timesheets - Créer entrée timesheet
+    if (path === '/timesheets' || path === '/timesheets/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.saisir_temps) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { projet_id, task_id, date, heures, description, type_saisie } = body;
+
+      if (!projet_id || !date || !heures) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Champs requis manquants' 
+        }, { status: 400 }));
+      }
+
+      const timesheet = await TimesheetEntry.create({
+        utilisateur: user._id,
+        projet_id,
+        task_id,
+        date,
+        heures,
+        description,
+        type_saisie: type_saisie || 'manuelle',
+        statut: 'brouillon'
+      });
+
+      await createAuditLog(user, 'création', 'timesheet', timesheet._id, `Saisie temps ${heures}h`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Temps enregistré avec succès',
+        timesheet
+      }));
+    }
+
+    // POST /api/expenses - Créer dépense
+    if (path === '/expenses' || path === '/expenses/') {
+      const user = await authenticate(request);
+      
+      const { projet_id, catégorie, description, montant, date_dépense, type, fournisseur } = body;
+
+      if (!projet_id || !catégorie || !description || !montant || !date_dépense) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Champs requis manquants' 
+        }, { status: 400 }));
+      }
+
+      const expense = await Expense.create({
+        projet_id,
+        catégorie,
+        description,
+        montant,
+        date_dépense,
+        type: type || 'externe',
+        fournisseur,
+        statut: 'en_attente',
+        saisi_par: user._id
+      });
+
+      await createAuditLog(user, 'création', 'expense', expense._id, `Création dépense ${montant}€`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Dépense créée avec succès',
+        expense
+      }));
+    }
+
+    // POST /api/comments - Créer commentaire
+    if (path === '/comments' || path === '/comments/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.commenter) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { entity_type, entity_id, contenu, parent_id, mentions } = body;
+
+      if (!entity_type || !entity_id || !contenu) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Champs requis manquants' 
+        }, { status: 400 }));
+      }
+
+      const comment = await Comment.create({
+        entity_type,
+        entity_id,
+        contenu,
+        parent_id,
+        mentions: mentions || [],
+        auteur: user._id,
+        niveau: parent_id ? 1 : 0
+      });
+
+      // Créer notifications pour les mentions
+      if (mentions && mentions.length > 0) {
+        for (const mentionedUserId of mentions) {
+          await createNotification(
+            mentionedUserId,
+            'mention',
+            'Vous avez été mentionné',
+            `${user.nom_complet} vous a mentionné dans un commentaire`,
+            entity_type,
+            entity_id,
+            '',
+            user._id
+          );
+        }
+      }
+
+      await createAuditLog(user, 'création', 'comment', comment._id, 'Nouveau commentaire');
+
+      return handleCORS(NextResponse.json({
+        message: 'Commentaire créé avec succès',
+        comment
+      }));
+    }
+
+    // POST /api/deliverables - Créer livrable
+    if (path === '/deliverables' || path === '/deliverables/') {
+      const user = await authenticate(request);
+      
+      const { projet_id, type_id, nom, description, assigné_à, date_échéance } = body;
+
+      if (!projet_id || !type_id || !nom) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Champs requis manquants' 
+        }, { status: 400 }));
+      }
+
+      const deliverable = await Deliverable.create({
+        projet_id,
+        type_id,
+        nom,
+        description,
+        assigné_à,
+        date_échéance,
+        statut_global: 'À produire',
+        créé_par: user._id
+      });
+
+      await createAuditLog(user, 'création', 'deliverable', deliverable._id, `Création livrable ${nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Livrable créé avec succès',
+        deliverable
+      }));
+    }
+
     // POST /api/init-default-template - Créer template par défaut (pour faciliter le démarrage)
     if (path === '/init-default-template' || path === '/init-default-template/') {
       const user = await authenticate(request);
