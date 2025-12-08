@@ -1613,6 +1613,39 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/roles/:id - Modifier rôle
+    if (path.match(/^\/roles\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const roleId = path.split('/')[2];
+      const role = await Role.findById(roleId);
+
+      if (!role) {
+        return handleCORS(NextResponse.json({ error: 'Rôle non trouvé' }, { status: 404 }));
+      }
+
+      if (role.is_predefined) {
+        return handleCORS(NextResponse.json({ error: 'Les rôles prédéfinis ne peuvent pas être modifiés' }, { status: 400 }));
+      }
+
+      const updates = {};
+      if (body.nom) updates.nom = body.nom;
+      if (body.description) updates.description = body.description;
+      if (body.permissions) updates.permissions = body.permissions;
+      if (body.visibleMenus) updates.visibleMenus = body.visibleMenus;
+
+      const updatedRole = await Role.findByIdAndUpdate(roleId, updates, { new: true });
+
+      await createAuditLog(user, 'modification', 'rôle', roleId, `Modification rôle ${updatedRole.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle modifié avec succès',
+        role: updatedRole
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'Endpoint PUT non trouvé',
       path: path
