@@ -1237,6 +1237,157 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/roles/:id - Modifier rôle personnalisé
+    if (path.match(/^\/roles\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.admin_config) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const roleId = path.split('/')[2];
+      const { nom, description, permissions, visible_menus } = body;
+
+      const role = await Role.findById(roleId);
+      if (!role) {
+        return handleCORS(NextResponse.json({ error: 'Rôle non trouvé' }, { status: 404 }));
+      }
+
+      if (role.is_predefined) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Les rôles prédéfinis ne peuvent pas être modifiés' 
+        }, { status: 400 }));
+      }
+
+      if (nom) role.nom = nom;
+      if (description !== undefined) role.description = description;
+      if (permissions) role.permissions = permissions;
+      if (visible_menus) role.visible_menus = visible_menus;
+
+      await role.save();
+
+      await createAuditLog(user, 'modification', 'role', role._id, `Modification rôle ${role.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle modifié avec succès',
+        role
+      }));
+    }
+
+    // PUT /api/projects/:id - Modifier projet
+    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Mise à jour des champs
+      Object.keys(body).forEach(key => {
+        if (body[key] !== undefined && key !== '_id') {
+          project[key] = body[key];
+        }
+      });
+
+      await project.save();
+      await createAuditLog(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Projet modifié avec succès',
+        project
+      }));
+    }
+
+    // PUT /api/tasks/:id - Modifier tâche
+    if (path.match(/^\/tasks\/[^/]+\/?$/) && !path.includes('/move')) {
+      const taskId = path.split('/')[2];
+      const task = await Task.findById(taskId);
+
+      if (!task) {
+        return handleCORS(NextResponse.json({ error: 'Tâche non trouvée' }, { status: 404 }));
+      }
+
+      Object.keys(body).forEach(key => {
+        if (body[key] !== undefined && key !== '_id') {
+          task[key] = body[key];
+        }
+      });
+
+      await task.save();
+      await createAuditLog(user, 'modification', 'tâche', task._id, `Modification tâche ${task.titre}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Tâche modifiée avec succès',
+        task
+      }));
+    }
+
+    // PUT /api/sprints/:id - Modifier sprint
+    if (path.match(/^\/sprints\/[^/]+\/?$/) && !path.includes('/start') && !path.includes('/complete')) {
+      const sprintId = path.split('/')[2];
+      const sprint = await Sprint.findById(sprintId);
+
+      if (!sprint) {
+        return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
+      }
+
+      Object.keys(body).forEach(key => {
+        if (body[key] !== undefined && key !== '_id') {
+          sprint[key] = body[key];
+        }
+      });
+
+      await sprint.save();
+      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Modification sprint ${sprint.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Sprint modifié avec succès',
+        sprint
+      }));
+    }
+
+    // PUT /api/timesheets/:id - Modifier timesheet
+    if (path.match(/^\/timesheets\/[^/]+\/?$/) && !path.includes('/submit') && !path.includes('/validate')) {
+      const timesheetId = path.split('/')[2];
+      const timesheet = await TimesheetEntry.findById(timesheetId);
+
+      if (!timesheet) {
+        return handleCORS(NextResponse.json({ error: 'Timesheet non trouvé' }, { status: 404 }));
+      }
+
+      Object.keys(body).forEach(key => {
+        if (body[key] !== undefined && key !== '_id') {
+          timesheet[key] = body[key];
+        }
+      });
+
+      await timesheet.save();
+
+      return handleCORS(NextResponse.json({
+        message: 'Timesheet modifié avec succès',
+        timesheet
+      }));
+    }
+
+    // PUT /api/budget/projects/:id - Modifier budget projet
+    if (path.match(/^\/budget\/projects\/[^/]+\/?$/)) {
+      const projectId = path.split('/')[3];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      if (body.budget) {
+        project.budget = { ...project.budget, ...body.budget };
+        await project.save();
+      }
+
+      return handleCORS(NextResponse.json({
+        message: 'Budget modifié avec succès',
+        budget: project.budget
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'Endpoint PUT non trouvé',
       path: path
