@@ -85,7 +85,7 @@ export default function RoadmapPage() {
             <SelectValue placeholder="Tous les projets" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tous les projets</SelectItem>
+            <SelectItem value="all">Tous les projets</SelectItem>
             {projects.map(p => (
               <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
             ))}

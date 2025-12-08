@@ -278,7 +278,7 @@ export default function KanbanPage() {
                         <SelectValue placeholder="Aucun" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Aucun</SelectItem>
+                        <SelectItem value="all">Aucun</SelectItem>
                         {users.map(u => (
                           <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                         ))}

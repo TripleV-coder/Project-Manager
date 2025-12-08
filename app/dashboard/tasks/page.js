@@ -228,7 +228,7 @@ export default function TasksPage() {
             <SelectValue placeholder="Tous les projets" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tous les projets</SelectItem>
+            <SelectItem value="all">Tous les projets</SelectItem>
             {projects.map(p => (
               <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
             ))}
@@ -239,7 +239,7 @@ export default function TasksPage() {
             <SelectValue placeholder="Tous les statuts" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tous les statuts</SelectItem>
+            <SelectItem value="all">Tous les statuts</SelectItem>
             <SelectItem value="Backlog">Backlog</SelectItem>
             <SelectItem value="À faire">À faire</SelectItem>
             <SelectItem value="En cours">En cours</SelectItem>
@@ -417,7 +417,7 @@ export default function TasksPage() {
                     <SelectValue placeholder="Aucun" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Aucun</SelectItem>
+                    <SelectItem value="all">Aucun</SelectItem>
                     {users.map(u => (
                       <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                     ))}
@@ -497,7 +497,7 @@ export default function TasksPage() {
                   <Select value={editingTask.assigné_à?.toString() || ''} onValueChange={(val) => setEditingTask({ ...editingTask, assigné_à: val })}>
                     <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Aucun</SelectItem>
+                      <SelectItem value="all">Aucun</SelectItem>
                       {users.map(u => (
                         <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                       ))}

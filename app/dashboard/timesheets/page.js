@@ -219,7 +219,7 @@ export default function TimesheetsPage() {
                   <SelectValue placeholder="Aucune" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Aucune</SelectItem>
+                  <SelectItem value="all">Aucune</SelectItem>
                   {tasks.filter(t => t.projet_id === newEntry.projet_id).map(t => (
                     <SelectItem key={t._id} value={t._id}>{t.titre}</SelectItem>
                   ))}
