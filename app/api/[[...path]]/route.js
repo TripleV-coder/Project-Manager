@@ -711,7 +711,7 @@ export async function POST(request) {
 
       await initializeRoles();
 
-      const adminRole = await Role.findOne({ nom: 'Admin' });
+      const adminRole = await Role.findOne({ nom: 'Administrateur' });
       if (!adminRole) {
         return handleCORS(NextResponse.json({ 
           error: 'Erreur d\'initialisation des rôles' 
