@@ -2,21 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Download, Calendar, BarChart3, TrendingUp } from 'lucide-react';
+import { FileText, Download, Calendar, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
 export default function ReportsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedProject, setSelectedProject] = useState('');
+  const [selectedProject, setSelectedProject] = useState('all');
   const [reportType, setReportType] = useState('global');
   const [exportFormat, setExportFormat] = useState('pdf');
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -30,11 +37,19 @@ export default function ReportsPage() {
         return;
       }
 
-      const response = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      setProjects(data.projects || []);
+      const [projectsRes, tasksRes, usersRes] = await Promise.all([
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      const projectsData = await projectsRes.json();
+      const tasksData = await tasksRes.json();
+      const usersData = await usersRes.json();
+
+      setProjects(projectsData.projects || []);
+      setTasks(tasksData.tasks || []);
+      setUsers(usersData.users || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -43,8 +58,176 @@ export default function ReportsPage() {
     }
   };
 
-  const handleGenerateReport = () => {
-    toast.success(`Rapport ${reportType} généré en ${exportFormat.toUpperCase()}`);
+  const generatePDF = (data) => {
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.text('PM - Rapport de Gestion', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, 14, 28);
+    
+    if (reportType === 'global') {
+      doc.setFontSize(16);
+      doc.text('Rapport Global', 14, 40);
+      
+      // Statistiques
+      doc.autoTable({
+        startY: 50,
+        head: [['Métrique', 'Valeur']],
+        body: [
+          ['Nombre de projets', projects.length.toString()],
+          ['Projets actifs', projects.filter(p => p.statut === 'Actif').length.toString()],
+          ['Nombre de tâches', tasks.length.toString()],
+          ['Tâches terminées', tasks.filter(t => t.statut === 'Terminé').length.toString()],
+          ['Nombre d\'utilisateurs', users.length.toString()]
+        ]
+      });
+      
+      // Liste des projets
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 10,
+        head: [['Projet', 'Statut', 'Date début', 'Date fin']],
+        body: projects.map(p => [
+          p.nom,
+          p.statut,
+          new Date(p.date_début).toLocaleDateString('fr-FR'),
+          new Date(p.date_fin).toLocaleDateString('fr-FR')
+        ])
+      });
+    } else if (reportType === 'projet') {
+      const projet = projects.find(p => p._id === selectedProject);
+      if (projet) {
+        doc.setFontSize(16);
+        doc.text(`Rapport Projet: ${projet.nom}`, 14, 40);
+        
+        const projectTasks = tasks.filter(t => t.projet_id === selectedProject);
+        
+        doc.autoTable({
+          startY: 50,
+          head: [['Tâche', 'Statut', 'Priorité', 'Assigné à']],
+          body: projectTasks.map(t => [
+            t.titre,
+            t.statut,
+            t.priorité,
+            users.find(u => u._id === t.assigné_à?.toString())?.nom_complet || 'Non assigné'
+          ])
+        });
+      }
+    } else if (reportType === 'performance') {
+      doc.setFontSize(16);
+      doc.text('Rapport Performance', 14, 40);
+      
+      const userStats = users.map(user => {
+        const userTasks = tasks.filter(t => t.assigné_à?.toString() === user._id);
+        const completedTasks = userTasks.filter(t => t.statut === 'Terminé');
+        return {
+          nom: user.nom_complet,
+          total: userTasks.length,
+          completes: completedTasks.length,
+          taux: userTasks.length > 0 ? ((completedTasks.length / userTasks.length) * 100).toFixed(0) + '%' : '0%'
+        };
+      });
+      
+      doc.autoTable({
+        startY: 50,
+        head: [['Utilisateur', 'Tâches totales', 'Tâches terminées', 'Taux de complétion']],
+        body: userStats.map(s => [s.nom, s.total, s.completes, s.taux])
+      });
+    }
+    
+    doc.save(`rapport_${reportType}_${Date.now()}.pdf`);
+  };
+
+  const generateExcel = (data) => {
+    const wb = XLSX.utils.book_new();
+    
+    if (reportType === 'global') {
+      // Feuille Projets
+      const projectsSheet = XLSX.utils.json_to_sheet(projects.map(p => ({
+        'Nom': p.nom,
+        'Statut': p.statut,
+        'Date début': new Date(p.date_début).toLocaleDateString('fr-FR'),
+        'Date fin': new Date(p.date_fin).toLocaleDateString('fr-FR'),
+        'Budget': p.budget?.budget_total || 0
+      })));
+      XLSX.utils.book_append_sheet(wb, projectsSheet, 'Projets');
+      
+      // Feuille Tâches
+      const tasksSheet = XLSX.utils.json_to_sheet(tasks.map(t => ({
+        'Titre': t.titre,
+        'Statut': t.statut,
+        'Priorité': t.priorité,
+        'Projet': projects.find(p => p._id === t.projet_id)?.nom || 'N/A',
+        'Assigné à': users.find(u => u._id === t.assigné_à?.toString())?.nom_complet || 'Non assigné'
+      })));
+      XLSX.utils.book_append_sheet(wb, tasksSheet, 'Tâches');
+    } else if (reportType === 'projet') {
+      const projet = projects.find(p => p._id === selectedProject);
+      const projectTasks = tasks.filter(t => t.projet_id === selectedProject);
+      
+      const sheet = XLSX.utils.json_to_sheet(projectTasks.map(t => ({
+        'Tâche': t.titre,
+        'Statut': t.statut,
+        'Priorité': t.priorité,
+        'Assigné à': users.find(u => u._id === t.assigné_à?.toString())?.nom_complet || 'Non assigné'
+      })));
+      XLSX.utils.book_append_sheet(wb, sheet, projet?.nom || 'Projet');
+    }
+    
+    XLSX.writeFile(wb, `rapport_${reportType}_${Date.now()}.xlsx`);
+  };
+
+  const generateCSV = (data) => {
+    let csvData = [];
+    
+    if (reportType === 'global') {
+      csvData = projects.map(p => ({
+        'Nom': p.nom,
+        'Statut': p.statut,
+        'Date début': new Date(p.date_début).toLocaleDateString('fr-FR'),
+        'Date fin': new Date(p.date_fin).toLocaleDateString('fr-FR'),
+        'Nombre de tâches': tasks.filter(t => t.projet_id === p._id).length
+      }));
+    } else if (reportType === 'projet') {
+      const projectTasks = tasks.filter(t => t.projet_id === selectedProject);
+      csvData = projectTasks.map(t => ({
+        'Tâche': t.titre,
+        'Statut': t.statut,
+        'Priorité': t.priorité,
+        'Assigné à': users.find(u => u._id === t.assigné_à?.toString())?.nom_complet || 'Non assigné'
+      }));
+    }
+    
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `rapport_${reportType}_${Date.now()}.csv`;
+    link.click();
+  };
+
+  const handleGenerateReport = async () => {
+    setGenerating(true);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (exportFormat === 'pdf') {
+        generatePDF();
+      } else if (exportFormat === 'excel') {
+        generateExcel();
+      } else if (exportFormat === 'csv') {
+        generateCSV();
+      }
+      
+      toast.success(`Rapport ${exportFormat.toUpperCase()} généré avec succès !`);
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur lors de la génération');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const reportTypes = [
@@ -65,12 +248,6 @@ export default function ReportsPage() {
       name: 'Rapport Performance',
       description: 'Équipe et vélocité',
       icon: TrendingUp
-    },
-    {
-      id: 'budget',
-      name: 'Rapport Budget',
-      description: 'Dépenses et prévisions',
-      icon: Calendar
     }
   ];
 
@@ -86,11 +263,10 @@ export default function ReportsPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Générateur de Rapports</h1>
-        <p className="text-gray-600">Créez des rapports personnalisés et exportez-les</p>
+        <p className="text-gray-600">Créez des rapports personnalisés et exportez-les en PDF, Excel ou CSV</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Configuration */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -147,10 +323,9 @@ export default function ReportsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pdf">PDF</SelectItem>
-                    <SelectItem value="excel">Excel</SelectItem>
-                    <SelectItem value="csv">CSV</SelectItem>
-                    <SelectItem value="json">JSON</SelectItem>
+                    <SelectItem value="pdf">PDF (Professionnel)</SelectItem>
+                    <SelectItem value="excel">Excel (.xlsx)</SelectItem>
+                    <SelectItem value="csv">CSV (Données)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -160,73 +335,80 @@ export default function ReportsPage() {
           <Button 
             className="w-full bg-indigo-600 hover:bg-indigo-700"
             onClick={handleGenerateReport}
+            disabled={generating || (reportType === 'projet' && !selectedProject)}
           >
-            <Download className="w-4 h-4 mr-2" />
-            Générer et télécharger
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                Génération...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Générer et télécharger
+              </>
+            )}
           </Button>
         </div>
 
-        {/* Aperçu */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>Aperçu du rapport</CardTitle>
-            <CardDescription>Le rapport contiendra les sections suivantes</CardDescription>
+            <CardTitle>Aperçu du contenu</CardTitle>
+            <CardDescription>Ce qui sera inclus dans le rapport</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {reportType === 'global' && (
                 <>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Vue d'ensemble</div>
-                    <p className="text-sm text-gray-600">Statistiques globales de tous les projets</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Statistiques globales</div>
+                      <p className="text-sm text-gray-600">{projects.length} projets, {tasks.length} tâches, {users.length} utilisateurs</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Projets actifs</div>
-                    <p className="text-sm text-gray-600">Liste et statut de chaque projet</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Liste des projets</div>
+                      <p className="text-sm text-gray-600">Tous les projets avec statut et dates</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Équipes</div>
-                    <p className="text-sm text-gray-600">Répartition et charge de travail</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Répartition des tâches</div>
+                      <p className="text-sm text-gray-600">Tâches par statut et priorité</p>
+                    </div>
                   </div>
                 </>
               )}
               {reportType === 'projet' && (
                 <>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Informations projet</div>
-                    <p className="text-sm text-gray-600">Détails, dates, budget</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Informations projet</div>
+                      <p className="text-sm text-gray-600">Détails, dates, budget</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Tâches et sprints</div>
-                    <p className="text-sm text-gray-600">Progression et vélocité</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Équipe</div>
-                    <p className="text-sm text-gray-600">Membres et contributions</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Liste des tâches</div>
+                      <p className="text-sm text-gray-600">Toutes les tâches du projet</p>
+                    </div>
                   </div>
                 </>
               )}
               {reportType === 'performance' && (
                 <>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Vélocité</div>
-                    <p className="text-sm text-gray-600">Évolution par sprint</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Temps passé</div>
-                    <p className="text-sm text-gray-600">Répartition par équipe et projet</p>
-                  </div>
-                </>
-              )}
-              {reportType === 'budget' && (
-                <>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Budgets</div>
-                    <p className="text-sm text-gray-600">Prévisionnel vs Réalisé</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="font-medium mb-1">Dépenses</div>
-                    <p className="text-sm text-gray-600">Détail par catégorie</p>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <div className="font-medium">Statistiques par utilisateur</div>
+                      <p className="text-sm text-gray-600">Tâches complétées et taux</p>
+                    </div>
                   </div>
                 </>
               )}
