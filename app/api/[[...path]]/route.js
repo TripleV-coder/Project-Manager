@@ -661,6 +661,32 @@ export async function GET(request) {
       }));
     }
 
+    // GET /api/sharepoint/config - Configuration SharePoint
+    if (path === '/sharepoint/config' || path === '/sharepoint/config/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      return handleCORS(NextResponse.json({
+        enabled: false,
+        config: {
+          tenant_id: '',
+          site_id: '',
+          client_id: '',
+          client_secret: '',
+          auto_sync: true,
+          sync_interval: 15
+        },
+        status: {
+          connected: false,
+          last_sync: null,
+          files_synced: 0,
+          errors: 0
+        }
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'API PM - Gestion de Projets',
       path: path
