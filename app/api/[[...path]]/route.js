@@ -668,13 +668,16 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
+      // Récupérer la config SharePoint depuis les settings globaux (ou retourner défaut)
+      // Pour l'instant, on simule avec des valeurs par défaut
+      // Dans une vraie implémentation, stocker dans une collection Settings
       return handleCORS(NextResponse.json({
-        enabled: false,
+        enabled: process.env.SHAREPOINT_ENABLED === 'true' || false,
         config: {
-          tenant_id: '',
-          site_id: '',
-          client_id: '',
-          client_secret: '',
+          tenant_id: process.env.SHAREPOINT_TENANT_ID || '',
+          site_id: process.env.SHAREPOINT_SITE_ID || '',
+          client_id: process.env.SHAREPOINT_CLIENT_ID || '',
+          client_secret: process.env.SHAREPOINT_CLIENT_SECRET ? '********' : '',
           auto_sync: true,
           sync_interval: 15
         },
@@ -685,6 +688,63 @@ export async function GET(request) {
           errors: 0
         }
       }));
+    }
+
+    // GET /api/sprints - Liste sprints
+    if (path === '/sprints' || path === '/sprints/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projetId = url.searchParams.get('projet_id');
+      let query = {};
+      if (projetId) query.projet_id = projetId;
+
+      const sprints = await Sprint.find(query)
+        .sort({ date_début: -1 });
+
+      return handleCORS(NextResponse.json({ sprints }));
+    }
+
+    // GET /api/timesheets - Liste timesheets
+    if (path === '/timesheets' || path === '/timesheets/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projetId = url.searchParams.get('projet_id');
+      const userId = url.searchParams.get('user_id');
+      
+      let query = {};
+      if (projetId) query.projet_id = projetId;
+      if (userId) query.utilisateur = userId;
+      else if (!user.role_id?.permissions?.voirTempsPasses) {
+        query.utilisateur = user._id;
+      }
+
+      const timesheets = await TimesheetEntry.find(query)
+        .populate('utilisateur', 'nom_complet email')
+        .populate('task_id', 'titre')
+        .sort({ date: -1 });
+
+      return handleCORS(NextResponse.json({ timesheets }));
+    }
+
+    // GET /api/audit - Journal d'audit
+    if (path === '/audit' || path === '/audit/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const limit = parseInt(url.searchParams.get('limit')) || 100;
+      const logs = await AuditLog.find()
+        .sort({ timestamp: -1 })
+        .limit(limit);
+
+      return handleCORS(NextResponse.json({ logs }));
     }
 
     return handleCORS(NextResponse.json({ 
