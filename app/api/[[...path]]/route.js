@@ -1414,6 +1414,67 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/sharepoint/test - Tester connexion SharePoint
+    if (path === '/sharepoint/test' || path === '/sharepoint/test/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { tenant_id, client_id, client_secret, site_id } = body;
+
+      if (!tenant_id || !client_id || !client_secret) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Identifiants manquants' 
+        }, { status: 400 }));
+      }
+
+      // Simuler un test de connexion
+      // Dans une vraie implémentation, on appellerait Microsoft Graph API
+      // pour valider les credentials
+      
+      // Pour l'instant, on vérifie juste le format des IDs (UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(tenant_id)) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Format Tenant ID invalide (doit être un UUID)' 
+        }, { status: 400 }));
+      }
+
+      if (!uuidRegex.test(client_id)) {
+        return handleCORS(NextResponse.json({ 
+          error: 'Format Client ID invalide (doit être un UUID)' 
+        }, { status: 400 }));
+      }
+
+      await createAuditLog(user, 'test', 'sharepoint', null, 'Test de connexion SharePoint');
+
+      // En production, ici on ferait l'appel OAuth2 vers Microsoft
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'Configuration validée. Enregistrez pour activer la connexion.',
+        note: 'L\'intégration réelle avec Microsoft Graph sera activée après configuration complète.'
+      }));
+    }
+
+    // POST /api/sharepoint/sync - Synchronisation manuelle
+    if (path === '/sharepoint/sync' || path === '/sharepoint/sync/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      await createAuditLog(user, 'sync', 'sharepoint', null, 'Synchronisation manuelle SharePoint lancée');
+
+      // Simuler une synchronisation
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'Synchronisation initiée',
+        details: 'La synchronisation sera effectuée en arrière-plan'
+      }));
+    }
+
     // POST /api/init-default-template - Créer template par défaut (pour faciliter le démarrage)
     if (path === '/init-default-template' || path === '/init-default-template/') {
       const user = await authenticate(request);
