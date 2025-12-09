@@ -454,7 +454,7 @@ export default function SharePointConfigPage() {
                 <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
                 <div>
                   <p className="font-medium text-gray-900">Créer une application Azure AD</p>
-                  <p>Rendez-vous sur <a href="https://portal.azure.com" target="_blank" rel="noopener" className="text-indigo-600 hover:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration</p>
+                  <p>Rendez-vous sur <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
