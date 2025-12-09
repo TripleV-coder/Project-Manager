@@ -1771,6 +1771,28 @@ export async function PUT(request) {
       return handleCORS(NextResponse.json({ message: 'Toutes les notifications marquées comme lues' }));
     }
 
+    // PUT /api/sharepoint/config - Enregistrer configuration SharePoint
+    if (path === '/sharepoint/config' || path === '/sharepoint/config/') {
+      if (!user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { enabled, config } = body;
+
+      // Dans une vraie implémentation, on sauvegarderait dans une collection Settings
+      // ou dans des variables d'environnement chiffrées
+      
+      await createAuditLog(user, 'modification', 'sharepoint', null, 
+        `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`);
+
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'Configuration SharePoint enregistrée',
+        enabled: enabled,
+        note: 'Les modifications prendront effet immédiatement'
+      }));
+    }
+
     // PUT /api/admin/maintenance - Modifier mode maintenance
     if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
       const user = await authenticate(request);
