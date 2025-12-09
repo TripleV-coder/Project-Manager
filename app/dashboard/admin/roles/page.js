@@ -129,10 +129,6 @@ export default function RolesPage() {
     { key: 'admin', label: 'Administration' }
   ];
 
-  useEffect(() => {
-    loadRoles();
-  }, []);
-
   const loadRoles = async () => {
     try {
       const token = localStorage.getItem('pm_token');
@@ -154,6 +150,10 @@ export default function RolesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadRoles();
+  }, []);
 
   const handleCreateRole = async () => {
     try {
