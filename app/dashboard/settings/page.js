@@ -2,43 +2,61 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, User, Lock, Bell, Globe, Database } from 'lucide-react';
+import {
+  Settings, Globe, Bell, Shield, Palette, Database, Mail,
+  Save, RefreshCw, Check, AlertTriangle, Lock, Clock,
+  Moon, Sun, Monitor
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
-    notifications: {
-      email: true,
-      push: true,
-      mentions: true,
-      taches: true,
-      projets: true
-    },
-    apparence: {
-      theme: 'light',
-      langue: 'fr'
-    },
-    securite: {
-      deux_facteurs: false,
-      sessions_actives: 1
-    }
+    // Général
+    appName: 'PM - Gestion de Projets',
+    appDescription: 'Plateforme de gestion de projets Agile',
+    langue: 'fr',
+    timezone: 'Africa/Douala',
+    devise: 'FCFA',
+    formatDate: 'DD/MM/YYYY',
+    // Notifications
+    emailNotifications: true,
+    pushNotifications: true,
+    notifyTaskAssigned: true,
+    notifyTaskCompleted: true,
+    notifyCommentMention: true,
+    notifySprintStart: true,
+    notifyBudgetAlert: true,
+    // Sécurité
+    sessionTimeout: 30,
+    passwordMinLength: 8,
+    passwordRequireNumbers: true,
+    passwordRequireSymbols: true,
+    maxLoginAttempts: 5,
+    lockoutDuration: 15,
+    twoFactorEnabled: false,
+    // Apparence
+    theme: 'light',
+    primaryColor: '#4f46e5',
+    sidebarCompact: false
   });
 
   useEffect(() => {
-    loadUserData();
+    loadSettings();
   }, []);
 
-  const loadUserData = async () => {
+  const loadSettings = async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -46,29 +64,47 @@ export default function SettingsPage() {
         return;
       }
 
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch('/api/settings', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const data = await response.json();
-      setUser(data);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.settings) {
+          setSettings(prev => ({ ...prev, ...data.settings }));
+        }
+      }
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
       setLoading(false);
     }
   };
 
-  const handleUpdateProfile = async () => {
-    toast.success('Profil mis à jour');
-  };
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ settings })
+      });
 
-  const handleUpdatePassword = async () => {
-    toast.success('Mot de passe modifié');
-  };
-
-  const handleSaveSettings = async () => {
-    toast.success('Paramètres enregistrés');
+      if (response.ok) {
+        toast.success('Paramètres enregistrés avec succès');
+      } else {
+        toast.error('Erreur lors de l\'enregistrement');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -80,213 +116,375 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Paramètres</h1>
-        <p className="text-gray-600">Gérez vos préférences personnelles</p>
+    <div className="p-4 lg:p-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Paramètres</h1>
+          <p className="text-gray-600">Configuration globale de l'application</p>
+        </div>
+        <Button 
+          className="bg-indigo-600 hover:bg-indigo-700"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Enregistrement...</>
+          ) : (
+            <><Save className="w-4 h-4 mr-2" /> Enregistrer</>
+          )}
+        </Button>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile">
-            <User className="w-4 h-4 mr-2" />
-            Profil
+      <Tabs defaultValue="general" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+          <TabsTrigger value="general" className="flex items-center gap-2">
+            <Globe className="w-4 h-4" />
+            <span className="hidden sm:inline">Général</span>
           </TabsTrigger>
-          <TabsTrigger value="security">
-            <Lock className="w-4 h-4 mr-2" />
-            Sécurité
+          <TabsTrigger value="notifications" className="flex items-center gap-2">
+            <Bell className="w-4 h-4" />
+            <span className="hidden sm:inline">Notifications</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications">
-            <Bell className="w-4 h-4 mr-2" />
-            Notifications
+          <TabsTrigger value="security" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            <span className="hidden sm:inline">Sécurité</span>
           </TabsTrigger>
-          <TabsTrigger value="preferences">
-            <Globe className="w-4 h-4 mr-2" />
-            Préférences
+          <TabsTrigger value="appearance" className="flex items-center gap-2">
+            <Palette className="w-4 h-4" />
+            <span className="hidden sm:inline">Apparence</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="profile">
+        {/* Général */}
+        <TabsContent value="general">
           <Card>
             <CardHeader>
-              <CardTitle>Informations personnelles</CardTitle>
-              <CardDescription>Modifiez vos informations de profil</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nom complet</Label>
-                <Input value={user?.nom_complet || ''} placeholder="Votre nom" />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input value={user?.email || ''} type="email" disabled className="bg-gray-50" />
-              </div>
-              <div className="space-y-2">
-                <Label>Poste</Label>
-                <Input placeholder="Chef de projet" />
-              </div>
-              <div className="space-y-2">
-                <Label>Téléphone</Label>
-                <Input placeholder="+33 6 12 34 56 78" />
-              </div>
-              <Button onClick={handleUpdateProfile} className="bg-indigo-600 hover:bg-indigo-700">
-                Enregistrer les modifications
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sécurité du compte</CardTitle>
-              <CardDescription>Gérez la sécurité de votre compte</CardDescription>
+              <CardTitle>Paramètres Généraux</CardTitle>
+              <CardDescription>Configuration de base de l'application</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Changer le mot de passe</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Mot de passe actuel</Label>
-                  <Input type="password" />
+                  <Label>Nom de l'application</Label>
+                  <Input
+                    value={settings.appName}
+                    onChange={(e) => setSettings({ ...settings, appName: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nouveau mot de passe</Label>
-                  <Input type="password" />
+                  <Label>Description</Label>
+                  <Input
+                    value={settings.appDescription}
+                    onChange={(e) => setSettings({ ...settings, appDescription: e.target.value })}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label>Confirmer le mot de passe</Label>
-                  <Input type="password" />
-                </div>
-                <Button onClick={handleUpdatePassword} className="bg-indigo-600 hover:bg-indigo-700">
-                  Changer le mot de passe
-                </Button>
               </div>
 
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">Sessions actives</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Vous êtes actuellement connecté sur {settings.securite.sessions_actives} appareil(s)
-                </p>
-                <Button variant="outline">Déconnecter les autres sessions</Button>
+              <Separator />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Langue</Label>
+                  <Select 
+                    value={settings.langue}
+                    onValueChange={(v) => setSettings({ ...settings, langue: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fr">Français</SelectItem>
+                      <SelectItem value="en">English</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Fuseau horaire</Label>
+                  <Select
+                    value={settings.timezone}
+                    onValueChange={(v) => setSettings({ ...settings, timezone: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Africa/Douala">Afrique/Douala (UTC+1)</SelectItem>
+                      <SelectItem value="Africa/Lagos">Afrique/Lagos (UTC+1)</SelectItem>
+                      <SelectItem value="Europe/Paris">Europe/Paris (UTC+1/+2)</SelectItem>
+                      <SelectItem value="UTC">UTC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Devise</Label>
+                  <Select
+                    value={settings.devise}
+                    onValueChange={(v) => setSettings({ ...settings, devise: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FCFA">FCFA (Franc CFA)</SelectItem>
+                      <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                      <SelectItem value="USD">USD (Dollar US)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Format de date</Label>
+                  <Select
+                    value={settings.formatDate}
+                    onValueChange={(v) => setSettings({ ...settings, formatDate: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DD/MM/YYYY">DD/MM/YYYY (31/12/2024)</SelectItem>
+                      <SelectItem value="MM/DD/YYYY">MM/DD/YYYY (12/31/2024)</SelectItem>
+                      <SelectItem value="YYYY-MM-DD">YYYY-MM-DD (2024-12-31)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Notifications */}
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
-              <CardTitle>Préférences de notifications</CardTitle>
-              <CardDescription>Choisissez quand et comment recevoir les notifications</CardDescription>
+              <CardTitle>Paramètres de Notifications</CardTitle>
+              <CardDescription>Configurez les alertes et notifications</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Notifications par email</p>
-                  <p className="text-sm text-gray-500">Recevez des notifications par email</p>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-5 h-5 text-gray-600" />
+                    <div>
+                      <p className="font-medium">Notifications par email</p>
+                      <p className="text-sm text-gray-500">Recevoir les notifications par email</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.emailNotifications}
+                    onCheckedChange={(v) => setSettings({ ...settings, emailNotifications: v })}
+                  />
                 </div>
-                <Switch
-                  checked={settings.notifications.email}
-                  onCheckedChange={(val) => setSettings({
-                    ...settings,
-                    notifications: { ...settings.notifications, email: val }
-                  })}
-                />
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Bell className="w-5 h-5 text-gray-600" />
+                    <div>
+                      <p className="font-medium">Notifications push</p>
+                      <p className="text-sm text-gray-500">Notifications dans l'application</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.pushNotifications}
+                    onCheckedChange={(v) => setSettings({ ...settings, pushNotifications: v })}
+                  />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Notifications push</p>
-                  <p className="text-sm text-gray-500">Notifications dans le navigateur</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.push}
-                  onCheckedChange={(val) => setSettings({
-                    ...settings,
-                    notifications: { ...settings.notifications, push: val }
-                  })}
-                />
-              </div>
+              <Separator />
+              <p className="text-sm font-medium text-gray-700">Événements déclencheurs</p>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Mentions</p>
-                  <p className="text-sm text-gray-500">Quand quelqu'un vous mentionne</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.mentions}
-                  onCheckedChange={(val) => setSettings({
-                    ...settings,
-                    notifications: { ...settings.notifications, mentions: val }
-                  })}
-                />
+              <div className="space-y-3">
+                {[
+                  { key: 'notifyTaskAssigned', label: 'Tâche assignée', desc: 'Quand une tâche vous est assignée' },
+                  { key: 'notifyTaskCompleted', label: 'Tâche terminée', desc: 'Quand une tâche de votre projet est terminée' },
+                  { key: 'notifyCommentMention', label: 'Mention dans un commentaire', desc: 'Quand vous êtes @mentionné' },
+                  { key: 'notifySprintStart', label: 'Début de sprint', desc: 'Quand un sprint démarre' },
+                  { key: 'notifyBudgetAlert', label: 'Alerte budget', desc: 'Quand le budget dépasse 80%' }
+                ].map((item) => (
+                  <div key={item.key} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+                    <div>
+                      <p className="font-medium text-sm">{item.label}</p>
+                      <p className="text-xs text-gray-500">{item.desc}</p>
+                    </div>
+                    <Switch
+                      checked={settings[item.key]}
+                      onCheckedChange={(v) => setSettings({ ...settings, [item.key]: v })}
+                    />
+                  </div>
+                ))}
               </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Tâches assignées</p>
-                  <p className="text-sm text-gray-500">Quand une tâche vous est assignée</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.taches}
-                  onCheckedChange={(val) => setSettings({
-                    ...settings,
-                    notifications: { ...settings.notifications, taches: val }
-                  })}
-                />
-              </div>
-
-              <Button onClick={handleSaveSettings} className="bg-indigo-600 hover:bg-indigo-700">
-                Enregistrer les préférences
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="preferences">
+        {/* Sécurité */}
+        <TabsContent value="security">
           <Card>
             <CardHeader>
-              <CardTitle>Préférences d'affichage</CardTitle>
-              <CardDescription>Personnalisez l'apparence de l'application</CardDescription>
+              <CardTitle>Paramètres de Sécurité</CardTitle>
+              <CardDescription>Configuration de la sécurité et des accès</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Expiration de session (minutes)</Label>
+                  <Input
+                    type="number"
+                    value={settings.sessionTimeout}
+                    onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) || 30 })}
+                  />
+                  <p className="text-xs text-gray-500">Durée d'inactivité avant déconnexion automatique</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tentatives de connexion max</Label>
+                  <Input
+                    type="number"
+                    value={settings.maxLoginAttempts}
+                    onChange={(e) => setSettings({ ...settings, maxLoginAttempts: parseInt(e.target.value) || 5 })}
+                  />
+                  <p className="text-xs text-gray-500">Nombre de tentatives avant blocage</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Durée de blocage (minutes)</Label>
+                  <Input
+                    type="number"
+                    value={settings.lockoutDuration}
+                    onChange={(e) => setSettings({ ...settings, lockoutDuration: parseInt(e.target.value) || 15 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Longueur min. mot de passe</Label>
+                  <Input
+                    type="number"
+                    value={settings.passwordMinLength}
+                    onChange={(e) => setSettings({ ...settings, passwordMinLength: parseInt(e.target.value) || 8 })}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Exiger des chiffres</p>
+                    <p className="text-sm text-gray-500">Le mot de passe doit contenir des chiffres</p>
+                  </div>
+                  <Switch
+                    checked={settings.passwordRequireNumbers}
+                    onCheckedChange={(v) => setSettings({ ...settings, passwordRequireNumbers: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Exiger des caractères spéciaux</p>
+                    <p className="text-sm text-gray-500">Le mot de passe doit contenir des symboles</p>
+                  </div>
+                  <Switch
+                    checked={settings.passwordRequireSymbols}
+                    onCheckedChange={(v) => setSettings({ ...settings, passwordRequireSymbols: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <div className="flex items-center gap-3">
+                    <Shield className="w-5 h-5 text-yellow-600" />
+                    <div>
+                      <p className="font-medium">Authentification à deux facteurs (2FA)</p>
+                      <p className="text-sm text-gray-500">Sécurité renforcée pour tous les utilisateurs</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.twoFactorEnabled}
+                    onCheckedChange={(v) => setSettings({ ...settings, twoFactorEnabled: v })}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Apparence */}
+        <TabsContent value="appearance">
+          <Card>
+            <CardHeader>
+              <CardTitle>Apparence</CardTitle>
+              <CardDescription>Personnalisez l'interface de l'application</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label>Thème</Label>
-                <Select value={settings.apparence.theme} onValueChange={(val) => setSettings({
-                  ...settings,
-                  apparence: { ...settings.apparence, theme: val }
-                })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Clair</SelectItem>
-                    <SelectItem value="dark">Sombre</SelectItem>
-                    <SelectItem value="auto">Automatique</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { value: 'light', icon: Sun, label: 'Clair' },
+                    { value: 'dark', icon: Moon, label: 'Sombre' },
+                    { value: 'system', icon: Monitor, label: 'Système' }
+                  ].map((theme) => (
+                    <button
+                      key={theme.value}
+                      onClick={() => setSettings({ ...settings, theme: theme.value })}
+                      className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                        settings.theme === theme.value
+                          ? 'border-indigo-600 bg-indigo-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <theme.icon className={`w-6 h-6 ${
+                        settings.theme === theme.value ? 'text-indigo-600' : 'text-gray-400'
+                      }`} />
+                      <span className="text-sm font-medium">{theme.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              <Separator />
 
               <div className="space-y-2">
-                <Label>Langue</Label>
-                <Select value={settings.apparence.langue} onValueChange={(val) => setSettings({
-                  ...settings,
-                  apparence: { ...settings.apparence, langue: val }
-                })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fr">Français</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Español</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Couleur principale</Label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="color"
+                    value={settings.primaryColor}
+                    onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
+                    className="w-12 h-12 rounded-lg cursor-pointer border-2 border-gray-200"
+                  />
+                  <Input
+                    value={settings.primaryColor}
+                    onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
+                    className="w-32"
+                  />
+                  <div className="flex gap-2">
+                    {['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSettings({ ...settings, primaryColor: color })}
+                        className={`w-8 h-8 rounded-full border-2 ${
+                          settings.primaryColor === color ? 'border-gray-900' : 'border-transparent'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <Button onClick={handleSaveSettings} className="bg-indigo-600 hover:bg-indigo-700">
-                Enregistrer
-              </Button>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium">Sidebar compacte</p>
+                  <p className="text-sm text-gray-500">Réduire la taille de la barre latérale</p>
+                </div>
+                <Switch
+                  checked={settings.sidebarCompact}
+                  onCheckedChange={(v) => setSettings({ ...settings, sidebarCompact: v })}
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
