@@ -2295,6 +2295,27 @@ export async function DELETE(request) {
       }));
     }
 
+    // DELETE /api/files/:id - Supprimer fichier
+    if (path.match(/^\/files\/[^/]+\/?$/) && !path.includes('/download') && !path.includes('/upload') && !path.includes('/folder')) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererFichiers) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const fileId = path.split('/')[2];
+      const file = await File.findByIdAndDelete(fileId);
+
+      if (!file) {
+        return handleCORS(NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 }));
+      }
+
+      await createAuditLog(user, 'suppression', 'fichier', fileId, `Suppression fichier ${file.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Fichier supprimé avec succès'
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'Endpoint DELETE non trouvé',
       path: path
