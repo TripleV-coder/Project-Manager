@@ -647,6 +647,46 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ notifications, unreadCount }));
     }
 
+    // GET /api/comments - Liste commentaires
+    if (path === '/comments' || path === '/comments/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projectId = url.searchParams.get('projet_id');
+      const taskId = url.searchParams.get('task_id');
+      
+      let query = {};
+      if (projectId) query.projet_id = projectId;
+      if (taskId) query.task_id = taskId;
+
+      const comments = await Comment.find(query)
+        .populate('auteur', 'nom_complet email')
+        .sort({ créé_le: -1 })
+        .limit(100);
+
+      return handleCORS(NextResponse.json({ comments }));
+    }
+
+    // GET /api/activity - Flux d'activité global
+    if (path === '/activity' || path === '/activity/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      
+      // Récupérer les logs d'audit comme activité
+      const activities = await AuditLog.find()
+        .populate('utilisateur', 'nom_complet')
+        .sort({ timestamp: -1 })
+        .limit(limit);
+
+      return handleCORS(NextResponse.json({ activities }));
+    }
+
     // GET /api/admin/maintenance - Statut mode maintenance
     if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
       const user = await authenticate(request);
