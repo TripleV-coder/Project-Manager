@@ -715,6 +715,37 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ files, folders }));
     }
 
+    // GET /api/files/:id/download - Télécharger fichier
+    if (path.match(/^\/files\/[^/]+\/download\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const fileId = path.split('/')[2];
+      const file = await File.findById(fileId);
+
+      if (!file) {
+        return handleCORS(NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 }));
+      }
+
+      // Extraire les données base64
+      if (file.url && file.url.startsWith('data:')) {
+        const base64Data = file.url.split(',')[1];
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        return new NextResponse(buffer, {
+          headers: {
+            'Content-Type': file.type,
+            'Content-Disposition': `attachment; filename="${file.nom}"`,
+            'Content-Length': buffer.length.toString()
+          }
+        });
+      }
+
+      return handleCORS(NextResponse.json({ error: 'Fichier non disponible' }, { status: 404 }));
+    }
+
     // GET /api/admin/maintenance - Statut mode maintenance
     if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
       const user = await authenticate(request);
