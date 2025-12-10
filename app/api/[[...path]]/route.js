@@ -1829,6 +1829,144 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/users/profile - Modifier son propre profil
+    if (path === '/users/profile' || path === '/users/profile/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const { nom_complet, telephone, poste } = body;
+
+      const updateData = {};
+      if (nom_complet) updateData.nom_complet = nom_complet;
+      if (telephone !== undefined) updateData.telephone = telephone;
+      if (poste !== undefined) updateData.poste = poste;
+
+      await User.findByIdAndUpdate(user._id, updateData);
+
+      return handleCORS(NextResponse.json({
+        message: 'Profil mis à jour avec succès'
+      }));
+    }
+
+    // PUT /api/users/:id - Modifier utilisateur (admin)
+    if (path.match(/^\/users\/[^/]+\/?$/) && !path.includes('/profile')) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererUtilisateurs) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const userId = path.split('/')[2];
+      const targetUser = await User.findById(userId);
+
+      if (!targetUser) {
+        return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
+      }
+
+      const { nom_complet, email, role_id, status } = body;
+
+      if (nom_complet) targetUser.nom_complet = nom_complet;
+      if (email) targetUser.email = email;
+      if (role_id) targetUser.role_id = role_id;
+      if (status) targetUser.status = status;
+
+      await targetUser.save();
+      await createAuditLog(user, 'modification', 'utilisateur', targetUser._id, `Modification utilisateur ${targetUser.nom_complet}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Utilisateur modifié avec succès',
+        user: targetUser
+      }));
+    }
+
+    // PUT /api/sprints/:id/start - Démarrer sprint
+    if (path.match(/^\/sprints\/[^/]+\/start\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererSprints) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const sprintId = path.split('/')[2];
+      const sprint = await Sprint.findById(sprintId);
+
+      if (!sprint) {
+        return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
+      }
+
+      if (sprint.statut !== 'Planifié') {
+        return handleCORS(NextResponse.json({ error: 'Le sprint doit être en statut "Planifié" pour être démarré' }, { status: 400 }));
+      }
+
+      sprint.statut = 'Actif';
+      await sprint.save();
+
+      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Démarrage sprint ${sprint.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Sprint démarré avec succès',
+        sprint
+      }));
+    }
+
+    // PUT /api/sprints/:id/complete - Terminer sprint
+    if (path.match(/^\/sprints\/[^/]+\/complete\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererSprints) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const sprintId = path.split('/')[2];
+      const sprint = await Sprint.findById(sprintId);
+
+      if (!sprint) {
+        return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
+      }
+
+      if (sprint.statut !== 'Actif') {
+        return handleCORS(NextResponse.json({ error: 'Le sprint doit être en statut "Actif" pour être terminé' }, { status: 400 }));
+      }
+
+      sprint.statut = 'Terminé';
+      await sprint.save();
+
+      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Fin sprint ${sprint.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Sprint terminé avec succès',
+        sprint
+      }));
+    }
+
+    // PUT /api/projects/:id - Modifier projet
+    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.modifierProjet) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      Object.keys(body).forEach(key => {
+        if (body[key] !== undefined && key !== '_id' && key !== 'budget') {
+          project[key] = body[key];
+        }
+      });
+
+      await project.save();
+      await createAuditLog(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Projet modifié avec succès',
+        project
+      }));
+    }
+
     // PUT /api/roles/:id - Modifier rôle
     if (path.match(/^\/roles\/[^/]+\/?$/)) {
       if (!user.role_id?.permissions?.adminConfig) {
