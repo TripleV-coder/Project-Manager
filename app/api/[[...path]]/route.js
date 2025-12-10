@@ -1482,6 +1482,42 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/deliverable-types - Créer type de livrable
+    if (path === '/deliverable-types' || path === '/deliverable-types/') {
+      const user = await authenticate(request);
+      if (!user || !user.role?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { nom, description, couleur, workflow_étapes } = body;
+
+      if (!nom) {
+        return handleCORS(NextResponse.json({ error: 'Nom requis' }, { status: 400 }));
+      }
+
+      // Initialiser si nécessaire
+      if (!global.deliverableTypes) {
+        global.deliverableTypes = [];
+      }
+
+      const newType = {
+        _id: Date.now().toString(),
+        nom,
+        description: description || '',
+        couleur: couleur || '#6366f1',
+        workflow_étapes: workflow_étapes || ['Création', 'Validation']
+      };
+
+      global.deliverableTypes.push(newType);
+
+      await createAuditLog(user, 'création', 'deliverable-type', newType._id, `Création type livrable ${nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Type de livrable créé',
+        type: newType
+      }));
+    }
+
     // POST /api/expenses - Créer dépense
     if (path === '/expenses' || path === '/expenses/') {
       const user = await authenticate(request);
