@@ -720,7 +720,7 @@ export default function BacklogPage() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setCreateDialogOpen(false); } }}}>
+      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setCreateDialogOpen(false); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
