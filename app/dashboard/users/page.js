@@ -85,9 +85,9 @@ export default function UsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.nom_complet.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(u =>
+    (u.nom_complet || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -225,7 +225,7 @@ export default function UsersPage() {
                       <div className="flex items-center gap-3">
                         <Avatar>
                           <AvatarFallback className="bg-indigo-100 text-indigo-600">
-                            {user.nom_complet.charAt(0)}
+                            {(user.nom_complet || '?').charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -37,11 +37,7 @@ export default function AdminPage() {
     auth: true
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -81,7 +77,11 @@ export default function AdminPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const toggleMaintenance = async () => {
     if (!maintenanceMode) {

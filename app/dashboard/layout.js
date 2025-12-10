@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -43,15 +43,7 @@ export default function DashboardLayout({ children }) {
   const [adminOpen, setAdminOpen] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -90,7 +82,15 @@ export default function DashboardLayout({ children }) {
       console.error('Erreur:', error);
       router.push('/login');
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('pm_token');

@@ -95,8 +95,8 @@ export default function CommentsPage() {
       const mentions = [];
       let match;
       while ((match = mentionRegex.exec(newComment)) !== null) {
-        const mentionedUser = users.find(u => 
-          u.nom_complet.toLowerCase().includes(match[1].toLowerCase())
+        const mentionedUser = users.find(u =>
+          (u.nom_complet || '').toLowerCase().includes(match[1].toLowerCase())
         );
         if (mentionedUser) mentions.push(mentionedUser._id);
       }
@@ -152,7 +152,7 @@ export default function CommentsPage() {
   };
 
   const insertMention = (user) => {
-    const mention = `@${user.nom_complet.split(' ')[0]} `;
+    const mention = `@${(user.nom_complet || '').split(' ')[0]} `;
     setNewComment(prev => prev.replace(/@\w*$/, '') + mention);
     setShowMentions(false);
     textareaRef.current?.focus();

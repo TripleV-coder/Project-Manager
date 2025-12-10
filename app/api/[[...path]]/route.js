@@ -542,7 +542,7 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      let query = { archivé: false };
+      const query = { archivé: false };
       
       if (!user.role_id?.permissions?.voir_tous_projets) {
         query.$or = [
@@ -689,7 +689,7 @@ export async function GET(request) {
       const assignéÀ = url.searchParams.get('assigné_à');
       const statut = url.searchParams.get('statut');
 
-      let query = {};
+      const query = {};
       if (projetId) query.projet_id = projetId;
       if (sprintId) query.sprint_id = sprintId;
       if (assignéÀ) query.assigné_à = assignéÀ;
@@ -738,7 +738,7 @@ export async function GET(request) {
       const projectId = url.searchParams.get('projet_id');
       const taskId = url.searchParams.get('task_id');
       
-      let query = {};
+      const query = {};
       if (projectId) query.projet_id = projectId;
       if (taskId) query.task_id = taskId;
 
@@ -778,7 +778,7 @@ export async function GET(request) {
       const projetId = url.searchParams.get('projet_id');
       const folder = url.searchParams.get('folder');
       
-      let query = {};
+      const query = {};
       if (projetId) query.projet_id = projetId;
       if (folder) query.dossier = folder;
 
@@ -878,7 +878,7 @@ export async function GET(request) {
       }
 
       const projetId = url.searchParams.get('projet_id');
-      let query = {};
+      const query = {};
       if (projetId) query.projet_id = projetId;
 
       const sprints = await Sprint.find(query)
@@ -897,7 +897,7 @@ export async function GET(request) {
       const projetId = url.searchParams.get('projet_id');
       const userId = url.searchParams.get('user_id');
       
-      let query = {};
+      const query = {};
       if (projetId) query.projet_id = projetId;
       if (userId) query.utilisateur = userId;
       else if (!user.role_id?.permissions?.voirTempsPasses) {
@@ -1049,10 +1049,10 @@ export async function POST(request) {
         }, { status: 401 }));
       }
 
-      const token = await signToken({ 
+      const token = await signToken({
         userId: user._id.toString(),
         email: user.email,
-        role: user.role_id.nom
+        role: user.role_id?.nom || 'user'
       });
 
       user.dernière_connexion = new Date();

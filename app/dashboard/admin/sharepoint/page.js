@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Cloud, Check, X, RefreshCw, FileText, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Cloud, Check, RefreshCw, FileText, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -33,12 +33,7 @@ export default function SharePointConfigPage() {
     errors: 0
   });
 
-  useEffect(() => {
-    checkAuth();
-    loadConfig();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -50,7 +45,7 @@ export default function SharePointConfigPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
-      
+
       if (!data.role?.permissions?.adminConfig) {
         router.push('/dashboard');
         return;
@@ -58,15 +53,15 @@ export default function SharePointConfigPage() {
     } catch (error) {
       console.error('Erreur:', error);
     }
-  };
+  }, [router]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/sharepoint/config', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.config) {
@@ -77,13 +72,18 @@ export default function SharePointConfigPage() {
           setStatus(data.status);
         }
       }
-      
+
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+    loadConfig();
+  }, [checkAuth, loadConfig]);
 
   const handleTestConnection = async () => {
     if (!config.tenant_id || !config.client_id || !config.client_secret) {
@@ -271,7 +271,7 @@ export default function SharePointConfigPage() {
                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   />
                   <p className="text-xs text-gray-500">
-                    Trouvez votre Tenant ID dans Azure Portal → Azure Active Directory → Propriétés
+                    Trouvez votre Tenant ID dans Azure Portal &rarr; Azure Active Directory &rarr; Propriétés
                   </p>
                 </div>
 
@@ -283,7 +283,7 @@ export default function SharePointConfigPage() {
                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   />
                   <p className="text-xs text-gray-500">
-                    L'ID du site SharePoint où seront stockés les fichiers
+                    L&apos;ID du site SharePoint où seront stockés les fichiers
                   </p>
                 </div>
 
@@ -295,7 +295,7 @@ export default function SharePointConfigPage() {
                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   />
                   <p className="text-xs text-gray-500">
-                    L'ID de l'application enregistrée dans Azure AD
+                    L&apos;ID de l&apos;application enregistrée dans Azure AD
                   </p>
                 </div>
 
@@ -454,28 +454,28 @@ export default function SharePointConfigPage() {
                 <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
                 <div>
                   <p className="font-medium text-gray-900">Créer une application Azure AD</p>
-                  <p>Rendez-vous sur <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration</p>
+                  <p>Rendez-vous sur <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">portal.azure.com</a> &rarr; Azure Active Directory &rarr; App registrations &rarr; New registration</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
                 <div>
                   <p className="font-medium text-gray-900">Configurer les permissions API</p>
-                  <p>Dans votre application → API permissions → Add permission → Microsoft Graph → Application permissions → Ajoutez Files.ReadWrite.All et Sites.ReadWrite.All</p>
+                  <p>Dans votre application &rarr; API permissions &rarr; Add permission &rarr; Microsoft Graph &rarr; Application permissions &rarr; Ajoutez Files.ReadWrite.All et Sites.ReadWrite.All</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
                 <div>
                   <p className="font-medium text-gray-900">Créer un Client Secret</p>
-                  <p>Certificates & secrets → New client secret → Copiez la valeur générée (visible une seule fois)</p>
+                  <p>Certificates &amp; secrets &rarr; New client secret &rarr; Copiez la valeur générée (visible une seule fois)</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
                 <div>
                   <p className="font-medium text-gray-900">Obtenir le consentement admin</p>
-                  <p>API permissions → Grant admin consent for [votre organisation]</p>
+                  <p>API permissions &rarr; Grant admin consent for [votre organisation]</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">

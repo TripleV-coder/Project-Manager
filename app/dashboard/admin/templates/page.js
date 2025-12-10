@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layers, Plus, Edit2, Trash2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ export default function TemplatesPage() {
     catégorie: ''
   });
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -43,11 +43,11 @@ export default function TemplatesPage() {
       toast.error('Erreur lors du chargement');
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     loadTemplates();
-  }, []);
+  }, [loadTemplates]);
 
   const handleCreateTemplate = async () => {
     try {
@@ -72,7 +72,7 @@ export default function TemplatesPage() {
         toast.success('Template créé avec succès');
         setCreateDialogOpen(false);
         setNewTemplate({ nom: '', description: '', catégorie: '' });
-        loadTemplates();
+        await loadTemplates();
       } else {
         toast.error(data.error || 'Erreur lors de la création');
       }
@@ -96,7 +96,7 @@ export default function TemplatesPage() {
 
       if (response.ok) {
         toast.success('Template supprimé avec succès');
-        loadTemplates();
+        await loadTemplates();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erreur lors de la suppression');

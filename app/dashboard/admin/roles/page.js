@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Shield, Plus, Edit2, Trash2, Save, X, Check } from 'lucide-react';
@@ -129,7 +129,7 @@ export default function RolesPage() {
     { key: 'admin', label: 'Administration' }
   ];
 
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -149,11 +149,11 @@ export default function RolesPage() {
       toast.error('Erreur lors du chargement des rôles');
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     loadRoles();
-  }, []);
+  }, [loadRoles]);
 
   const handleCreateRole = async () => {
     try {
@@ -178,7 +178,7 @@ export default function RolesPage() {
         toast.success('Rôle créé avec succès');
         setCreateDialogOpen(false);
         setNewRole({ nom: '', description: '', permissions: {}, visibleMenus: {} });
-        loadRoles();
+        await loadRoles();
       } else {
         toast.error(data.error || 'Erreur lors de la création');
       }
@@ -205,7 +205,7 @@ export default function RolesPage() {
       if (response.ok) {
         toast.success('Rôle modifié avec succès');
         setEditingRole(null);
-        loadRoles();
+        await loadRoles();
       } else {
         toast.error(data.error || 'Erreur lors de la modification');
       }
@@ -231,7 +231,7 @@ export default function RolesPage() {
 
       if (response.ok) {
         toast.success('Rôle supprimé avec succès');
-        loadRoles();
+        await loadRoles();
       } else {
         toast.error(data.error || 'Erreur lors de la suppression');
       }

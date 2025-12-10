@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wrench, Play, Pause, AlertTriangle } from 'lucide-react';
+import { Wrench, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -18,12 +18,7 @@ export default function MaintenancePage() {
     'L\'application est actuellement en maintenance. Nous serons de retour bientôt.'
   );
 
-  useEffect(() => {
-    checkAuth();
-    loadMaintenanceStatus();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -43,9 +38,9 @@ export default function MaintenancePage() {
     } catch (error) {
       console.error('Erreur:', error);
     }
-  };
+  }, [router]);
 
-  const loadMaintenanceStatus = async () => {
+  const loadMaintenanceStatus = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/admin/maintenance', {
@@ -65,7 +60,12 @@ export default function MaintenancePage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+    loadMaintenanceStatus();
+  }, [checkAuth, loadMaintenanceStatus]);
 
   const handleToggleMaintenance = async () => {
     try {

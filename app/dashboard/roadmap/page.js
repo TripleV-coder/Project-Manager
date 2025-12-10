@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   TrendingUp, Calendar, ChevronLeft, ChevronRight, Filter,
@@ -26,11 +26,7 @@ export default function RoadmapPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoom, setZoom] = useState(1);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedProject]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -59,7 +55,11 @@ export default function RoadmapPage() {
       toast.error('Erreur lors du chargement');
       setLoading(false);
     }
-  };
+  }, [selectedProject, router]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Générer les dates pour la timeline
   const generateTimelineDates = () => {

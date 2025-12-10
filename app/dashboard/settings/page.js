@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Settings, Globe, Bell, Shield, Palette, Database, Mail,
@@ -52,11 +52,7 @@ export default function SettingsPage() {
     sidebarCompact: false
   });
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -79,7 +75,11 @@ export default function SettingsPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSave = async () => {
     setSaving(true);

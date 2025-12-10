@@ -17,7 +17,7 @@ export default function NotFound() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-gray-600">
-            La page que vous recherchez n'existe pas ou a été déplacée.
+            La page que vous recherchez n&apos;existe pas ou a été déplacée.
           </p>
           <div className="flex flex-col gap-2">
             <Link href="/dashboard">
@@ -27,7 +27,7 @@ export default function NotFound() {
             </Link>
             <Link href="/">
               <Button variant="outline" className="w-full">
-                Page d'accueil
+                Page d&apos;accueil
               </Button>
             </Link>
           </div>

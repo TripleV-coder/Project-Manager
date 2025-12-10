@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { FolderKanban, Plus, Search, Filter, Grid, List, Calendar, Users, TrendingUp } from 'lucide-react';
+import { FolderKanban, Plus, Search, Filter, Grid, List, Calendar, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

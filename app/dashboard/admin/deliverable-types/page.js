@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Layers, Plus, Edit2, Trash2, Settings, GripVertical,
@@ -29,11 +29,7 @@ export default function DeliverableTypesPage() {
   });
   const [newEtape, setNewEtape] = useState('');
 
-  useEffect(() => {
-    loadTypes();
-  }, []);
-
-  const loadTypes = async () => {
+  const loadTypes = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -54,7 +50,11 @@ export default function DeliverableTypesPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    loadTypes();
+  }, [loadTypes]);
 
   const handleCreate = async () => {
     if (!formData.nom.trim()) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Plus, Edit2, Trash2, Save, X, PieChart } from 'lucide-react';
+import { DollarSign, AlertTriangle, Plus, Edit2, Trash2, PieChart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
