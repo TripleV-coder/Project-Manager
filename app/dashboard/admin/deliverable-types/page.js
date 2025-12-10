@@ -2,27 +2,36 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Plus, Edit2, Trash2, Workflow } from 'lucide-react';
+import {
+  Layers, Plus, Edit2, Trash2, Settings, GripVertical,
+  Check, X, ChevronRight, Palette, FileText, AlertCircle
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 
 export default function DeliverableTypesPage() {
   const router = useRouter();
-  const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [types, setTypes] = useState([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newType, setNewType] = useState({
+  const [editingType, setEditingType] = useState(null);
+  const [formData, setFormData] = useState({
     nom: '',
     description: '',
-    couleur: '#6366f1'
+    couleur: '#6366f1',
+    workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation']
   });
+  const [newEtape, setNewEtape] = useState('');
+
+  useEffect(() => {
+    loadTypes();
+  }, []);
 
   const loadTypes = async () => {
     try {
@@ -32,53 +41,145 @@ export default function DeliverableTypesPage() {
         return;
       }
 
-      // Pour l'instant, utilisons des données statiques
-      setTypes([
-        {
-          _id: '1',
-          nom: 'Spécification Technique',
-          description: 'Document décrivant les spécifications techniques du projet',
-          couleur: '#3b82f6',
-          workflow_étapes: ['Rédaction', 'Revue', 'Validation', 'Approbation']
-        },
-        {
-          _id: '2',
-          nom: 'Maquette Design',
-          description: 'Maquettes visuelles et prototypes',
-          couleur: '#8b5cf6',
-          workflow_étapes: ['Création', 'Revue Client', 'Ajustements', 'Validation']
-        }
-      ]);
+      const response = await fetch('/api/deliverable-types', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTypes(data.types || []);
+      }
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadTypes();
-  }, []);
-
-  const handleCreateType = () => {
-    if (!newType.nom) {
+  const handleCreate = async () => {
+    if (!formData.nom.trim()) {
       toast.error('Le nom est requis');
       return;
     }
 
-    toast.success('Type de livrable créé avec succès');
-    setCreateDialogOpen(false);
-    setNewType({ nom: '', description: '', couleur: '#6366f1' });
-    loadTypes();
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch('/api/deliverable-types', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        toast.success('Type de livrable créé');
+        setCreateDialogOpen(false);
+        resetForm();
+        loadTypes();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Erreur lors de la création');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    }
   };
 
-  const handleDeleteType = (typeId, typeName) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer le type "${typeName}" ?`)) {
-      return;
+  const handleUpdate = async () => {
+    if (!editingType) return;
+
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/deliverable-types/${editingType._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        toast.success('Type de livrable modifié');
+        setEditingType(null);
+        setCreateDialogOpen(false);
+        resetForm();
+        loadTypes();
+      } else {
+        toast.error('Erreur lors de la modification');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
     }
-    toast.success('Type supprimé avec succès');
-    loadTypes();
+  };
+
+  const handleDelete = async (typeId) => {
+    if (!confirm('Supprimer ce type de livrable ?')) return;
+
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/deliverable-types/${typeId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        toast.success('Type de livrable supprimé');
+        loadTypes();
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      nom: '',
+      description: '',
+      couleur: '#6366f1',
+      workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation']
+    });
+    setNewEtape('');
+  };
+
+  const openEditDialog = (type) => {
+    setEditingType(type);
+    setFormData({
+      nom: type.nom,
+      description: type.description || '',
+      couleur: type.couleur || '#6366f1',
+      workflow_étapes: type.workflow_étapes || ['Création', 'Validation']
+    });
+    setCreateDialogOpen(true);
+  };
+
+  const addEtape = () => {
+    if (!newEtape.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      workflow_étapes: [...prev.workflow_étapes, newEtape.trim()]
+    }));
+    setNewEtape('');
+  };
+
+  const removeEtape = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      workflow_étapes: prev.workflow_étapes.filter((_, i) => i !== index)
+    }));
+  };
+
+  const moveEtape = (index, direction) => {
+    const newEtapes = [...formData.workflow_étapes];
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= newEtapes.length) return;
+    [newEtapes[index], newEtapes[newIndex]] = [newEtapes[newIndex], newEtapes[index]];
+    setFormData(prev => ({ ...prev, workflow_étapes: newEtapes }));
   };
 
   if (loading) {
@@ -90,125 +191,206 @@ export default function DeliverableTypesPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 lg:p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Types de Livrables</h1>
-          <p className="text-gray-600">Configurez les types de livrables et leurs workflows</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Types de Livrables</h1>
+          <p className="text-gray-600">Définissez les types et leurs workflows de validation</p>
         </div>
         <Button 
           className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => { resetForm(); setCreateDialogOpen(true); }}
         >
           <Plus className="w-4 h-4 mr-2" />
-          Créer un type
+          Nouveau type
         </Button>
       </div>
 
+      {/* Types List */}
       {types.length === 0 ? (
         <Card className="p-12">
           <div className="text-center">
-            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <Layers className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun type de livrable</h3>
-            <p className="text-gray-600 mb-4">Créez des types de livrables pour organiser vos productions</p>
-            <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+            <p className="text-gray-600 mb-4">Créez votre premier type de livrable avec son workflow</p>
+            <Button onClick={() => { resetForm(); setCreateDialogOpen(true); }}>
               <Plus className="w-4 h-4 mr-2" />
               Créer un type
             </Button>
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {types.map((type, idx) => (
-            <motion.div
-              key={type._id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-            >
-              <Card className="h-full hover:shadow-lg transition-shadow" style={{ borderLeft: `4px solid ${type.couleur}` }}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Package className="w-5 h-5" style={{ color: type.couleur }} />
-                        <CardTitle className="text-lg">{type.nom}</CardTitle>
-                      </div>
-                      <CardDescription>{type.description}</CardDescription>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {types.map((type) => (
+            <Card key={type._id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: type.couleur + '20' }}
+                    >
+                      <FileText className="w-5 h-5" style={{ color: type.couleur }} />
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm font-medium text-gray-600 mb-2">Workflow</p>
-                      <div className="flex flex-wrap gap-1">
-                        {type.workflow_étapes?.map((etape, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">{etape}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Workflow className="w-3 h-3 mr-1" />
-                        Configurer
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => handleDeleteType(type._id, type.nom)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                      <CardTitle className="text-lg">{type.nom}</CardTitle>
+                      {type.description && (
+                        <CardDescription className="line-clamp-1">{type.description}</CardDescription>
+                      )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(type)}>
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleDelete(type._id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm font-medium text-gray-700 mb-2">Workflow de validation :</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(type.workflow_étapes || []).map((etape, idx) => (
+                    <div key={idx} className="flex items-center">
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs"
+                        style={{ borderColor: type.couleur, color: type.couleur }}
+                      >
+                        {idx + 1}. {etape}
+                      </Badge>
+                      {idx < (type.workflow_étapes?.length || 0) - 1 && (
+                        <ChevronRight className="w-4 h-4 text-gray-400 mx-1" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
 
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent>
+      {/* Create/Edit Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setEditingType(null);
+          resetForm();
+        }
+        setCreateDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Créer un type de livrable</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5" />
+              {editingType ? 'Modifier le type' : 'Nouveau type de livrable'}
+            </DialogTitle>
             <DialogDescription>
-              Définissez un nouveau type avec son workflow de validation
+              Définissez le type et son workflow de validation
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Nom du type *</Label>
-              <Input
-                value={newType.nom}
-                onChange={(e) => setNewType({ ...newType, nom: e.target.value })}
-                placeholder="Cahier des charges"
-              />
+            <div className="grid grid-cols-4 gap-4">
+              <div className="col-span-3 space-y-2">
+                <Label>Nom du type *</Label>
+                <Input
+                  value={formData.nom}
+                  onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                  placeholder="Ex: Spécification technique"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Couleur</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={formData.couleur}
+                    onChange={(e) => setFormData({ ...formData, couleur: e.target.value })}
+                    className="w-10 h-10 rounded cursor-pointer border"
+                  />
+                </div>
+              </div>
             </div>
+
             <div className="space-y-2">
               <Label>Description</Label>
               <Textarea
-                value={newType.description}
-                onChange={(e) => setNewType({ ...newType, description: e.target.value })}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Description du type de livrable..."
-                rows={3}
+                rows={2}
               />
             </div>
+
             <div className="space-y-2">
-              <Label>Couleur</Label>
-              <Input
-                type="color"
-                value={newType.couleur}
-                onChange={(e) => setNewType({ ...newType, couleur: e.target.value })}
-              />
+              <Label>Workflow de validation</Label>
+              <div className="space-y-2">
+                {formData.workflow_étapes.map((etape, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                    <GripVertical className="w-4 h-4 text-gray-400" />
+                    <Badge variant="outline" className="mr-2">{idx + 1}</Badge>
+                    <span className="flex-1 text-sm">{etape}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => moveEtape(idx, -1)}
+                      disabled={idx === 0}
+                    >
+                      <ChevronRight className="w-4 h-4 rotate-[-90deg]" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => moveEtape(idx, 1)}
+                      disabled={idx === formData.workflow_étapes.length - 1}
+                    >
+                      <ChevronRight className="w-4 h-4 rotate-90" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-red-600 hover:text-red-700"
+                      onClick={() => removeEtape(idx)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={newEtape}
+                  onChange={(e) => setNewEtape(e.target.value)}
+                  placeholder="Nouvelle étape..."
+                  onKeyDown={(e) => e.key === 'Enter' && addEtape()}
+                />
+                <Button variant="outline" onClick={addEtape}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleCreateType} className="bg-indigo-600 hover:bg-indigo-700">
-              Créer
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button 
+              className="bg-indigo-600 hover:bg-indigo-700" 
+              onClick={editingType ? handleUpdate : handleCreate}
+            >
+              {editingType ? 'Mettre à jour' : 'Créer'}
             </Button>
           </DialogFooter>
         </DialogContent>
