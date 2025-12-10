@@ -24,10 +24,6 @@ export default function DeliverableTypesPage() {
     couleur: '#6366f1'
   });
 
-  useEffect(() => {
-    loadTypes();
-  }, []);
-
   const loadTypes = async () => {
     try {
       const token = localStorage.getItem('pm_token');
@@ -60,6 +56,10 @@ export default function DeliverableTypesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadTypes();
+  }, []);
 
   const handleCreateType = () => {
     if (!newType.nom) {
