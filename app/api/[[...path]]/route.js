@@ -596,6 +596,52 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ templates }));
     }
 
+    // GET /api/settings/maintenance - État du mode maintenance
+    if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
+      // Pas besoin d'auth pour vérifier la maintenance
+      return handleCORS(NextResponse.json({
+        enabled: global.maintenanceMode || false,
+        message: global.maintenanceMessage || ''
+      }));
+    }
+
+    // GET /api/settings - Paramètres système
+    if (path === '/settings' || path === '/settings/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      // Retourner les paramètres par défaut ou sauvegardés
+      return handleCORS(NextResponse.json({
+        settings: {
+          appName: 'PM - Gestion de Projets',
+          appDescription: 'Plateforme de gestion de projets Agile',
+          langue: 'fr',
+          timezone: 'Africa/Douala',
+          devise: 'FCFA',
+          formatDate: 'DD/MM/YYYY',
+          emailNotifications: true,
+          pushNotifications: true,
+          notifyTaskAssigned: true,
+          notifyTaskCompleted: true,
+          notifyCommentMention: true,
+          notifySprintStart: true,
+          notifyBudgetAlert: true,
+          sessionTimeout: 30,
+          passwordMinLength: 8,
+          passwordRequireNumbers: true,
+          passwordRequireSymbols: true,
+          maxLoginAttempts: 5,
+          lockoutDuration: 15,
+          twoFactorEnabled: false,
+          theme: 'light',
+          primaryColor: '#4f46e5',
+          sidebarCompact: false
+        }
+      }));
+    }
+
     // GET /api/tasks - Liste tâches avec filtres
     if (path === '/tasks' || path === '/tasks/') {
       const user = await authenticate(request);
