@@ -2088,6 +2088,69 @@ export async function DELETE(request) {
       }));
     }
 
+    // DELETE /api/sprints/:id - Supprimer sprint
+    if (path.match(/^\/sprints\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.gererSprints) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const sprintId = path.split('/')[2];
+      const sprint = await Sprint.findByIdAndDelete(sprintId);
+
+      if (!sprint) {
+        return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
+      }
+
+      await createAuditLog(user, 'suppression', 'sprint', sprintId, `Suppression sprint ${sprint.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Sprint supprimé avec succès'
+      }));
+    }
+
+    // DELETE /api/projects/:id - Supprimer projet
+    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.supprimerProjet) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Supprimer les tâches associées
+      await Task.deleteMany({ projet_id: projectId });
+      
+      // Supprimer les sprints associés
+      await Sprint.deleteMany({ projet_id: projectId });
+      
+      // Supprimer le projet
+      await Project.findByIdAndDelete(projectId);
+
+      await createAuditLog(user, 'suppression', 'projet', projectId, `Suppression projet ${project.nom}`);
+
+      return handleCORS(NextResponse.json({
+        message: 'Projet supprimé avec succès'
+      }));
+    }
+
+    // DELETE /api/comments/:id - Supprimer commentaire
+    if (path.match(/^\/comments\/[^/]+\/?$/)) {
+      const commentId = path.split('/')[2];
+      const comment = await Comment.findByIdAndDelete(commentId);
+
+      if (!comment) {
+        return handleCORS(NextResponse.json({ error: 'Commentaire non trouvé' }, { status: 404 }));
+      }
+
+      return handleCORS(NextResponse.json({
+        message: 'Commentaire supprimé avec succès'
+      }));
+    }
+
     return handleCORS(NextResponse.json({ 
       message: 'Endpoint DELETE non trouvé',
       path: path
