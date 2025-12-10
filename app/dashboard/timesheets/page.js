@@ -40,16 +40,19 @@ export default function TimesheetsPage() {
         return;
       }
 
-      const [projectsRes, tasksRes] = await Promise.all([
+      const [projectsRes, tasksRes, timesheetsRes] = await Promise.all([
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/timesheets', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
+      const timesheetsData = await timesheetsRes.json();
 
       setProjects(projectsData.projects || []);
       setTasks(tasksData.tasks || []);
+      setTimesheets(timesheetsData.timesheets || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
