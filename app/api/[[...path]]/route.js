@@ -1402,6 +1402,82 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/files/upload - Upload fichier
+    if (path === '/files/upload' || path === '/files/upload/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererFichiers) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      try {
+        const formData = await request.formData();
+        const file = formData.get('file');
+        const projetId = formData.get('projet_id');
+        const folder = formData.get('folder') || '/';
+
+        if (!file) {
+          return handleCORS(NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 }));
+        }
+
+        // Convertir le fichier en base64 pour stockage (simple pour MVP)
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        const base64 = buffer.toString('base64');
+
+        const fileDoc = await File.create({
+          nom: file.name,
+          type: file.type,
+          taille: file.size,
+          url: `data:${file.type};base64,${base64}`,
+          projet_id: projetId || null,
+          dossier: folder,
+          uploadé_par: user._id,
+          créé_le: new Date()
+        });
+
+        await createAuditLog(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${file.name}`);
+
+        return handleCORS(NextResponse.json({
+          message: 'Fichier téléversé avec succès',
+          file: fileDoc
+        }));
+      } catch (error) {
+        console.error('Erreur upload:', error);
+        return handleCORS(NextResponse.json({ error: 'Erreur lors du téléversement' }, { status: 500 }));
+      }
+    }
+
+    // POST /api/files/folder - Créer dossier
+    if (path === '/files/folder' || path === '/files/folder/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.gererFichiers) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { nom, parent, projet_id } = body;
+
+      if (!nom) {
+        return handleCORS(NextResponse.json({ error: 'Nom du dossier requis' }, { status: 400 }));
+      }
+
+      // Créer un "fichier" de type dossier pour la structure
+      const folder = await File.create({
+        nom: nom,
+        type: 'folder',
+        taille: 0,
+        dossier: parent || '/',
+        projet_id: projet_id || null,
+        uploadé_par: user._id,
+        est_dossier: true,
+        créé_le: new Date()
+      });
+
+      return handleCORS(NextResponse.json({
+        message: 'Dossier créé avec succès',
+        folder
+      }));
+    }
+
     // POST /api/comments - Créer commentaire
     if (path === '/comments' || path === '/comments/') {
       const user = await authenticate(request);
