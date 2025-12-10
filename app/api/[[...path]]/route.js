@@ -2506,6 +2506,31 @@ export async function DELETE(request) {
       }));
     }
 
+    // DELETE /api/deliverable-types/:id - Supprimer type de livrable
+    if (path.match(/^\/deliverable-types\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const typeId = path.split('/')[2];
+
+      if (!global.deliverableTypes) {
+        global.deliverableTypes = [];
+      }
+
+      const initialLength = global.deliverableTypes.length;
+      global.deliverableTypes = global.deliverableTypes.filter(t => t._id !== typeId);
+
+      if (global.deliverableTypes.length === initialLength) {
+        return handleCORS(NextResponse.json({ error: 'Type non trouvé' }, { status: 404 }));
+      }
+
+      return handleCORS(NextResponse.json({
+        message: 'Type de livrable supprimé'
+      }));
+    }
+
     // DELETE /api/comments/:id - Supprimer commentaire
     if (path.match(/^\/comments\/[^/]+\/?$/)) {
       const commentId = path.split('/')[2];
