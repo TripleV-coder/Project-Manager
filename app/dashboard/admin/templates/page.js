@@ -24,10 +24,6 @@ export default function TemplatesPage() {
     catégorie: ''
   });
 
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
   const loadTemplates = async () => {
     try {
       const token = localStorage.getItem('pm_token');
@@ -48,6 +44,10 @@ export default function TemplatesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadTemplates();
+  }, []);
 
   const handleCreateTemplate = async () => {
     try {
