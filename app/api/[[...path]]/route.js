@@ -1271,25 +1271,25 @@ export async function POST(request) {
     // POST /api/timesheets - Créer entrée timesheet
     if (path === '/timesheets' || path === '/timesheets/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.saisir_temps) {
+      if (!user || !user.role_id?.permissions?.saisirTemps) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { projet_id, task_id, date, heures, description, type_saisie } = body;
+      const { projet_id, tâche_id, date, heures, description, type_saisie } = body;
 
       if (!projet_id || !date || !heures) {
         return handleCORS(NextResponse.json({ 
-          error: 'Champs requis manquants' 
+          error: 'Champs requis: projet_id, date, heures' 
         }, { status: 400 }));
       }
 
       const timesheet = await TimesheetEntry.create({
         utilisateur: user._id,
         projet_id,
-        task_id,
-        date,
-        heures,
-        description,
+        task_id: tâche_id || null,
+        date: new Date(date),
+        heures: parseFloat(heures),
+        description: description || '',
         type_saisie: type_saisie || 'manuelle',
         statut: 'brouillon'
       });
