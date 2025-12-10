@@ -2188,6 +2188,50 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/settings/maintenance - Activer/désactiver maintenance
+    if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
+      const user = await authenticate(request);
+      if (!user || !user.role?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { enabled, message } = body;
+      
+      // Stocker dans une variable globale (en prod, utiliser une base de données ou Redis)
+      global.maintenanceMode = enabled;
+      global.maintenanceMessage = message || '';
+
+      await createAuditLog(user, 'modification', 'système', null, 
+        enabled ? 'Activation mode maintenance' : 'Désactivation mode maintenance'
+      );
+
+      return handleCORS(NextResponse.json({
+        message: enabled ? 'Mode maintenance activé' : 'Mode maintenance désactivé',
+        enabled,
+        maintenanceMessage: message
+      }));
+    }
+
+    // PUT /api/settings - Modifier paramètres système
+    if (path === '/settings' || path === '/settings/') {
+      const user = await authenticate(request);
+      if (!user || !user.role?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { settings } = body;
+      
+      // En prod, sauvegarder dans une collection Settings
+      global.appSettings = settings;
+
+      await createAuditLog(user, 'modification', 'système', null, 'Modification paramètres système');
+
+      return handleCORS(NextResponse.json({
+        message: 'Paramètres enregistrés avec succès',
+        settings
+      }));
+    }
+
     // PUT /api/roles/:id - Modifier rôle
     if (path.match(/^\/roles\/[^/]+\/?$/)) {
       if (!user.role_id?.permissions?.adminConfig) {
