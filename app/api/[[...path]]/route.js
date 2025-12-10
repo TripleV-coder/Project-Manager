@@ -687,6 +687,34 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ activities }));
     }
 
+    // GET /api/files - Liste des fichiers
+    if (path === '/files' || path === '/files/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projetId = url.searchParams.get('projet_id');
+      const folder = url.searchParams.get('folder');
+      
+      let query = {};
+      if (projetId) query.projet_id = projetId;
+      if (folder) query.dossier = folder;
+
+      const files = await File.find(query)
+        .populate('uploadé_par', 'nom_complet email')
+        .sort({ créé_le: -1 });
+
+      // Récupérer aussi les dossiers distincts
+      const folders = await File.aggregate([
+        { $match: query.projet_id ? { projet_id: query.projet_id } : {} },
+        { $group: { _id: '$dossier' } },
+        { $project: { nom: '$_id', chemin: '$_id' } }
+      ]);
+
+      return handleCORS(NextResponse.json({ files, folders }));
+    }
+
     // GET /api/admin/maintenance - Statut mode maintenance
     if (path === '/admin/maintenance' || path === '/admin/maintenance/') {
       const user = await authenticate(request);
