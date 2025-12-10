@@ -92,6 +92,58 @@ export default function SprintsPage() {
     }
   };
 
+  const handleStartSprint = async (sprintId) => {
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/sprints/${sprintId}/start`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('Sprint démarré avec succès');
+        loadData();
+      } else {
+        toast.error(data.error || 'Erreur lors du démarrage');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    }
+  };
+
+  const handleCompleteSprint = async (sprintId) => {
+    if (!confirm('Êtes-vous sûr de vouloir terminer ce sprint ?')) return;
+    
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/sprints/${sprintId}/complete`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('Sprint terminé avec succès');
+        loadData();
+      } else {
+        toast.error(data.error || 'Erreur lors de la terminaison');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
