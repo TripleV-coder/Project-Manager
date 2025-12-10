@@ -155,13 +155,13 @@ export default function SprintsPage() {
                     </div>
                     <div className="flex gap-2">
                       {sprint.statut === 'Planifié' && (
-                        <Button size="sm" className="flex-1">
+                        <Button size="sm" className="flex-1" onClick={() => handleStartSprint(sprint._id)}>
                           <Play className="w-4 h-4 mr-1" />
                           Démarrer
                         </Button>
                       )}
                       {sprint.statut === 'Actif' && (
-                        <Button size="sm" className="flex-1">
+                        <Button size="sm" className="flex-1" onClick={() => handleCompleteSprint(sprint._id)}>
                           <CheckCircle className="w-4 h-4 mr-1" />
                           Terminer
                         </Button>
