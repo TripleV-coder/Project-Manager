@@ -596,6 +596,41 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ templates }));
     }
 
+    // GET /api/deliverable-types - Liste des types de livrables
+    if (path === '/deliverable-types' || path === '/deliverable-types/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      // Utiliser des données en mémoire pour simplifier (en prod, utiliser une collection)
+      const types = global.deliverableTypes || [
+        {
+          _id: '1',
+          nom: 'Spécification Technique',
+          description: 'Document décrivant les spécifications techniques du projet',
+          couleur: '#3b82f6',
+          workflow_étapes: ['Rédaction', 'Revue technique', 'Validation', 'Approbation']
+        },
+        {
+          _id: '2',
+          nom: 'Maquette Design',
+          description: 'Maquettes visuelles et prototypes UI/UX',
+          couleur: '#8b5cf6',
+          workflow_étapes: ['Création', 'Revue Client', 'Ajustements', 'Validation finale']
+        },
+        {
+          _id: '3',
+          nom: 'Rapport de Tests',
+          description: 'Résultats des tests et validation qualité',
+          couleur: '#10b981',
+          workflow_étapes: ['Exécution tests', 'Analyse', 'Rapport', 'Validation QA']
+        }
+      ];
+
+      return handleCORS(NextResponse.json({ types }));
+    }
+
     // GET /api/settings/maintenance - État du mode maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
       // Pas besoin d'auth pour vérifier la maintenance
