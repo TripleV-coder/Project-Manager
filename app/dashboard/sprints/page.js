@@ -41,12 +41,16 @@ export default function SprintsPage() {
         return;
       }
 
-      const [projectsRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } })
+      const [projectsRes, sprintsRes] = await Promise.all([
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/sprints', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       const projectsData = await projectsRes.json();
+      const sprintsData = await sprintsRes.json();
+      
       setProjects(projectsData.projects || []);
+      setSprints(sprintsData.sprints || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
