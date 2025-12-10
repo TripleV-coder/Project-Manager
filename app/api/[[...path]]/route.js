@@ -2259,6 +2259,39 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/deliverable-types/:id - Modifier type de livrable
+    if (path.match(/^\/deliverable-types\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const typeId = path.split('/')[2];
+      const { nom, description, couleur, workflow_étapes } = body;
+
+      if (!global.deliverableTypes) {
+        global.deliverableTypes = [];
+      }
+
+      const typeIndex = global.deliverableTypes.findIndex(t => t._id === typeId);
+      if (typeIndex === -1) {
+        return handleCORS(NextResponse.json({ error: 'Type non trouvé' }, { status: 404 }));
+      }
+
+      global.deliverableTypes[typeIndex] = {
+        ...global.deliverableTypes[typeIndex],
+        nom: nom || global.deliverableTypes[typeIndex].nom,
+        description: description !== undefined ? description : global.deliverableTypes[typeIndex].description,
+        couleur: couleur || global.deliverableTypes[typeIndex].couleur,
+        workflow_étapes: workflow_étapes || global.deliverableTypes[typeIndex].workflow_étapes
+      };
+
+      return handleCORS(NextResponse.json({
+        message: 'Type de livrable modifié',
+        type: global.deliverableTypes[typeIndex]
+      }));
+    }
+
     // PUT /api/settings/maintenance - Activer/désactiver maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
       const user = await authenticate(request);
