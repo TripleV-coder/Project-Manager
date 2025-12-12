@@ -89,4 +89,11 @@ const projectTemplateSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
+// Add indexes for performance
+projectTemplateSchema.index({ créé_par: 1 });
+projectTemplateSchema.index({ catégorie: 1 });
+projectTemplateSchema.index({ utilisé_count: -1 });
+projectTemplateSchema.index({ favoris: 1 });
+projectTemplateSchema.index({ created_at: -1 });
+
 export default mongoose.models.ProjectTemplate || mongoose.model('ProjectTemplate', projectTemplateSchema);

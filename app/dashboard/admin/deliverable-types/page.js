@@ -14,9 +14,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function DeliverableTypesPage() {
+  const { confirm } = useConfirmation();
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [types, setTypes] = useState([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -29,6 +33,8 @@ export default function DeliverableTypesPage() {
   });
   const [newEtape, setNewEtape] = useState('');
 
+  const { hasPermission: canManageDeliverableTypes } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+
   const loadTypes = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
@@ -37,13 +43,23 @@ export default function DeliverableTypesPage() {
         return;
       }
 
-      const response = await fetch('/api/deliverable-types', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const [userRes, typesRes] = await Promise.all([
+        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/deliverable-types', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
 
-      if (response.ok) {
-        const data = await response.json();
-        setTypes(data.types || []);
+      const userData = await userRes.json();
+      const typesData = await typesRes.json();
+
+      // Client-side guard: redirect if not admin
+      if (!userData.role?.permissions?.adminConfig) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setUser(userData);
+      if (typesData) {
+        setTypes(typesData.types || []);
       }
       setLoading(false);
     } catch (error) {
@@ -118,7 +134,14 @@ export default function DeliverableTypesPage() {
   };
 
   const handleDelete = async (typeId) => {
-    if (!confirm('Supprimer ce type de livrable ?')) return;
+    const confirmed = await confirm({
+      title: 'Supprimer le type de livrable',
+      description: 'Êtes-vous sûr de vouloir supprimer ce type de livrable ?',
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('pm_token');
@@ -198,13 +221,15 @@ export default function DeliverableTypesPage() {
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Types de Livrables</h1>
           <p className="text-gray-600">Définissez les types et leurs workflows de validation</p>
         </div>
-        <Button 
-          className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => { resetForm(); setCreateDialogOpen(true); }}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Nouveau type
-        </Button>
+        {canManageDeliverableTypes('adminConfig') && (
+          <Button
+            className="bg-indigo-600 hover:bg-indigo-700"
+            onClick={() => { resetForm(); setCreateDialogOpen(true); }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nouveau type
+          </Button>
+        )}
       </div>
 
       {/* Types List */}
@@ -214,10 +239,12 @@ export default function DeliverableTypesPage() {
             <Layers className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun type de livrable</h3>
             <p className="text-gray-600 mb-4">Créez votre premier type de livrable avec son workflow</p>
-            <Button onClick={() => { resetForm(); setCreateDialogOpen(true); }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Créer un type
-            </Button>
+            {canManageDeliverableTypes('adminConfig') && (
+              <Button onClick={() => { resetForm(); setCreateDialogOpen(true); }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Créer un type
+              </Button>
+            )}
           </div>
         </Card>
       ) : (

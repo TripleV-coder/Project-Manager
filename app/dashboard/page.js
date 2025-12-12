@@ -35,6 +35,7 @@ export default function DashboardHome() {
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
@@ -45,6 +46,10 @@ export default function DashboardHome() {
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
+
+      if (!projectsRes.ok || !tasksRes.ok) {
+        throw new Error('Failed to load data');
+      }
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
@@ -174,10 +179,16 @@ export default function DashboardHome() {
             ) : (
               <div className="space-y-3">
                 {projects.slice(0, 5).map((project) => (
-                  <div 
-                    key={project._id} 
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  <button
+                    key={project._id}
+                    type="button"
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer w-full text-left focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                     onClick={() => router.push(`/dashboard/projects/${project._id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        router.push(`/dashboard/projects/${project._id}`);
+                      }
+                    }}
                   >
                     <div className="flex-1">
                       <h4 className="font-medium text-gray-900">{project.nom}</h4>
@@ -186,7 +197,7 @@ export default function DashboardHome() {
                     <Badge variant={project.statut === 'En cours' ? 'default' : 'secondary'}>
                       {project.statut}
                     </Badge>
-                  </div>
+                  </button>
                 ))}
                 {projects.length > 5 && (
                   <Button 

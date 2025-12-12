@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Zap, Plus, Play, CheckCircle, Calendar } from 'lucide-react';
@@ -13,13 +13,19 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function SprintsPage() {
   const router = useRouter();
+  const { confirm } = useConfirmation();
+  const [user, setUser] = useState(null);
   const [sprints, setSprints] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [startingSprintId, setStartingSprintId] = useState(null);
+  const [completingSprintId, setCompletingSprintId] = useState(null);
   const [newSprint, setNewSprint] = useState({
     projet_id: '',
     nom: '',
@@ -29,37 +35,85 @@ export default function SprintsPage() {
     capacité_équipe: ''
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { hasPermission: canManageSprints } = user ? useRBACPermissions(user) : { hasPermission: () => false };
 
-  const loadData = async () => {
+  // Memoize grouped sprints by project
+  const sprintsByProject = useMemo(() => {
+    const grouped = {};
+    sprints.forEach(sprint => {
+      if (!grouped[sprint.projet_id]) {
+        grouped[sprint.projet_id] = [];
+      }
+      grouped[sprint.projet_id].push(sprint);
+    });
+    return grouped;
+  }, [sprints]);
+
+  const loadData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
-      const [projectsRes, sprintsRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/sprints', { headers: { 'Authorization': `Bearer ${token}` } })
-      ]);
+      // Load user
+      const userRes = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (!userRes.ok) {
+        throw new Error('Failed to load user');
+      }
+
+      const userData = await userRes.json();
+      setUser(userData);
+
+      // Load projects first (faster)
+      const projectsRes = await fetch('/api/projects?limit=100', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (!projectsRes.ok) {
+        throw new Error('Failed to load projects');
+      }
 
       const projectsData = await projectsRes.json();
-      const sprintsData = await sprintsRes.json();
-      
       setProjects(projectsData.projects || []);
+
+      // Load sprints with a limit for faster initial load
+      const sprintsRes = await fetch('/api/sprints?limit=50', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (!sprintsRes.ok) {
+        throw new Error('Failed to load sprints');
+      }
+
+      const sprintsData = await sprintsRes.json();
       setSprints(sprintsData.sprints || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      if (error.name !== 'AbortError') {
+        toast.error('Erreur lors du chargement');
+      }
       setLoading(false);
     }
-  };
+  }, [router]);
 
-  const handleCreateSprint = async () => {
+  useEffect(() => {
+    const initLoad = async () => {
+      await loadData();
+    };
+    initLoad();
+  }, [loadData]);
+
+  const handleCreateSprint = useCallback(async () => {
     try {
       if (!newSprint.nom || !newSprint.projet_id || !newSprint.date_début || !newSprint.date_fin) {
         toast.error('Veuillez remplir tous les champs obligatoires');
@@ -73,7 +127,8 @@ export default function SprintsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newSprint)
+        body: JSON.stringify(newSprint),
+        signal: AbortSignal.timeout(8000)
       });
 
       const data = await response.json();
@@ -82,44 +137,69 @@ export default function SprintsPage() {
         toast.success('Sprint créé avec succès');
         setCreateDialogOpen(false);
         setNewSprint({ projet_id: '', nom: '', objectif: '', date_début: '', date_fin: '', capacité_équipe: '' });
-        loadData();
+        await loadData();
       } else {
         toast.error(data.error || 'Erreur lors de la création');
       }
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      if (error.name !== 'AbortError') {
+        console.error('Erreur:', error);
+        toast.error('Erreur de connexion');
+      }
     }
-  };
+  }, [newSprint, loadData]);
 
-  const handleStartSprint = async (sprintId) => {
+  const handleStartSprint = useCallback(async (sprintId) => {
+    setStartingSprintId(sprintId);
     try {
       const token = localStorage.getItem('pm_token');
+      if (!token) {
+        toast.error('Authentification requise');
+        setStartingSprintId(null);
+        return;
+      }
+
       const response = await fetch(`/api/sprints/${sprintId}/start`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        signal: AbortSignal.timeout(8000)
       });
 
       const data = await response.json();
 
+      console.log('Sprint start response:', { status: response.status, data });
+
       if (response.ok) {
         toast.success('Sprint démarré avec succès');
-        loadData();
+        setSprints(prev => prev.map(s => s._id === sprintId ? { ...s, statut: 'Actif' } : s));
       } else {
-        toast.error(data.error || 'Erreur lors du démarrage');
+        const errorMessage = data.error || data.message || 'Erreur lors du démarrage du sprint';
+        console.error('Sprint start error:', errorMessage);
+        toast.error(errorMessage);
       }
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      if (error.name !== 'AbortError') {
+        console.error('Sprint start exception:', error);
+        toast.error(`Erreur: ${error.message || 'Erreur de connexion'}`);
+      }
+    } finally {
+      setStartingSprintId(null);
     }
-  };
+  }, []);
 
-  const handleCompleteSprint = async (sprintId) => {
-    if (!confirm('Êtes-vous sûr de vouloir terminer ce sprint ?')) return;
-    
+  const handleCompleteSprint = useCallback(async (sprintId) => {
+    const confirmed = await confirm({
+      title: 'Terminer le sprint',
+      description: 'Êtes-vous sûr de vouloir terminer ce sprint ?',
+      actionLabel: 'Terminer',
+      cancelLabel: 'Annuler'
+    });
+    if (!confirmed) return;
+
+    setCompletingSprintId(sprintId);
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch(`/api/sprints/${sprintId}/complete`, {
@@ -127,27 +207,44 @@ export default function SprintsPage() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        signal: AbortSignal.timeout(8000)
       });
 
       const data = await response.json();
 
       if (response.ok) {
         toast.success('Sprint terminé avec succès');
-        loadData();
+        setSprints(prev => prev.map(s => s._id === sprintId ? { ...s, statut: 'Terminé' } : s));
       } else {
-        toast.error(data.error || 'Erreur lors de la terminaison');
+        const errorMessage = data.error || data.message || 'Erreur lors de la terminaison';
+        toast.error(errorMessage);
       }
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      if (error.name !== 'AbortError') {
+        console.error('Erreur:', error);
+        toast.error('Erreur de connexion');
+      }
+    } finally {
+      setCompletingSprintId(null);
     }
-  };
+  }, [confirm]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div className="space-y-2">
+            <div className="h-9 w-64 bg-gray-200 rounded animate-pulse" />
+            <div className="h-5 w-80 bg-gray-100 rounded animate-pulse" />
+          </div>
+          <div className="h-10 w-32 bg-indigo-100 rounded animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-64 bg-gray-100 rounded-lg animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -159,13 +256,15 @@ export default function SprintsPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Sprints</h1>
           <p className="text-gray-600">Planifiez et suivez vos sprints Agile</p>
         </div>
-        <Button 
-          className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Nouveau sprint
-        </Button>
+        {canManageSprints('gererSprints') && (
+          <Button
+            className="bg-indigo-600 hover:bg-indigo-700"
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nouveau sprint
+          </Button>
+        )}
       </div>
 
       {sprints.length === 0 ? (
@@ -174,10 +273,12 @@ export default function SprintsPage() {
             <Zap className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun sprint</h3>
             <p className="text-gray-600 mb-4">Créez votre premier sprint pour commencer</p>
-            <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Créer un sprint
-            </Button>
+            {canManageSprints('gererSprints') && (
+              <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Créer un sprint
+              </Button>
+            )}
           </div>
         </Card>
       ) : (
@@ -207,15 +308,43 @@ export default function SprintsPage() {
                     </div>
                     <div className="flex gap-2">
                       {sprint.statut === 'Planifié' && (
-                        <Button size="sm" className="flex-1" onClick={() => handleStartSprint(sprint._id)}>
-                          <Play className="w-4 h-4 mr-1" />
-                          Démarrer
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                          onClick={() => handleStartSprint(sprint._id)}
+                          disabled={startingSprintId === sprint._id}
+                        >
+                          {startingSprintId === sprint._id ? (
+                            <>
+                              <div className="w-4 h-4 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Démarrage...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-4 h-4 mr-1" />
+                              Démarrer
+                            </>
+                          )}
                         </Button>
                       )}
                       {sprint.statut === 'Actif' && (
-                        <Button size="sm" className="flex-1" onClick={() => handleCompleteSprint(sprint._id)}>
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Terminer
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          onClick={() => handleCompleteSprint(sprint._id)}
+                          disabled={completingSprintId === sprint._id}
+                        >
+                          {completingSprintId === sprint._id ? (
+                            <>
+                              <div className="w-4 h-4 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Finalisation...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Terminer
+                            </>
+                          )}
                         </Button>
                       )}
                     </div>

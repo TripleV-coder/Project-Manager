@@ -21,6 +21,7 @@ export default function RoadmapPage() {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [sprints, setSprints] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
   const [selectedProject, setSelectedProject] = useState('all');
   const [viewMode, setViewMode] = useState('month'); // month, quarter, year
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -28,6 +29,7 @@ export default function RoadmapPage() {
 
   const loadData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
@@ -36,19 +38,22 @@ export default function RoadmapPage() {
 
       const projectFilter = selectedProject !== 'all' ? `?projet_id=${selectedProject}` : '';
 
-      const [projectsRes, tasksRes, sprintsRes] = await Promise.all([
+      const [projectsRes, tasksRes, sprintsRes, deliverablesRes] = await Promise.all([
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`/api/tasks${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/sprints${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`/api/sprints${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`/api/deliverables${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
       const sprintsData = await sprintsRes.json();
+      const deliverablesData = await deliverablesRes.json();
 
       setProjects(projectsData.projects || []);
       setTasks(tasksData.tasks || []);
       setSprints(sprintsData.sprints || []);
+      setDeliverables(deliverablesData.deliverables || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -172,10 +177,11 @@ export default function RoadmapPage() {
 
   // Filtrer les tâches avec des dates
   const scheduledTasks = tasks.filter(t => t.date_début || t.date_échéance);
+  const unscheduledTasks = tasks.filter(t => !t.date_début && !t.date_échéance);
 
   // Stats
-  const totalTasks = scheduledTasks.length;
-  const completedTasks = scheduledTasks.filter(t => t.statut === 'Terminé').length;
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(t => t.statut === 'Terminé').length;
   const overdueTasks = scheduledTasks.filter(t => {
     if (!t.date_échéance) return false;
     return new Date(t.date_échéance) < new Date() && t.statut !== 'Terminé';
@@ -393,6 +399,70 @@ export default function RoadmapPage() {
               </>
             )}
 
+            {/* Deliverables Section */}
+            {deliverables.length > 0 && (
+              <>
+                <div className="flex border-b border-gray-200 bg-orange-50">
+                  <div className="w-64 flex-shrink-0 p-3 font-semibold text-orange-700 border-r border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <Milestone className="w-4 h-4" />
+                      Livrables ({deliverables.length})
+                    </div>
+                  </div>
+                  <div className="flex-1" />
+                </div>
+                {deliverables.map((deliverable) => {
+                  const position = deliverable.date_échéance ? getBarPosition(deliverable.date_échéance, deliverable.date_échéance) : null;
+                  const statusColor = {
+                    'À produire': 'bg-gray-400',
+                    'En validation': 'bg-yellow-500',
+                    'Validé': 'bg-green-500',
+                    'Refusé': 'bg-red-500',
+                    'Archivé': 'bg-gray-300'
+                  }[deliverable.statut_global] || 'bg-gray-400';
+
+                  return (
+                    <div key={deliverable._id} className="flex border-b border-gray-100 hover:bg-gray-50">
+                      <div className="w-64 flex-shrink-0 p-3 border-r border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <Milestone className="w-4 h-4 text-orange-600" />
+                          <span className="font-medium truncate" title={deliverable.nom}>
+                            {deliverable.nom}
+                          </span>
+                        </div>
+                        <Badge variant="outline" className="mt-1 text-xs">
+                          {deliverable.statut_global}
+                        </Badge>
+                      </div>
+                      <div className="flex-1 relative py-2">
+                        {position && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div
+                                  className={`absolute top-1/2 -translate-y-1/2 h-6 rounded cursor-pointer hover:opacity-80 transition-opacity ${statusColor}`}
+                                  style={position}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="font-semibold">{deliverable.nom}</p>
+                                <p className="text-xs">Statut: {deliverable.statut_global}</p>
+                                {deliverable.date_échéance && (
+                                  <p className="text-xs">
+                                    Échéance: {new Date(deliverable.date_échéance).toLocaleDateString('fr-FR')}
+                                  </p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
             {/* Tasks Section */}
             <div className="flex border-b border-gray-200 bg-blue-50">
               <div className="w-64 flex-shrink-0 p-3 font-semibold text-blue-700 border-r border-gray-200">
@@ -465,6 +535,48 @@ export default function RoadmapPage() {
                 );
               })
             )}
+
+            {/* Unscheduled Tasks Section */}
+            {unscheduledTasks.length > 0 && (
+              <>
+                <div className="flex border-b border-gray-200 bg-red-50">
+                  <div className="w-64 flex-shrink-0 p-3 font-semibold text-red-700 border-r border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Tâches non planifiées ({unscheduledTasks.length})
+                    </div>
+                  </div>
+                  <div className="flex-1" />
+                </div>
+                {unscheduledTasks.map((task) => {
+                  const project = projects.find(p => p._id === task.projet_id);
+                  return (
+                    <div
+                      key={task._id}
+                      className={`flex border-b border-gray-100 hover:bg-gray-50 border-l-4 ${getPriorityColor(task.priorité)}`}
+                    >
+                      <div className="w-64 flex-shrink-0 p-3 border-r border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${getStatusColor(task.statut)}`} />
+                          <span className="font-medium truncate text-sm" title={task.titre}>
+                            {task.titre}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 truncate mt-1">
+                          {project?.nom || 'Sans projet'}
+                        </p>
+                        <p className="text-xs text-red-600 font-medium mt-1">
+                          ⚠️ Pas de date d'échéance
+                        </p>
+                      </div>
+                      <div className="flex-1 relative py-2 flex items-center px-4">
+                        <span className="text-xs text-gray-500">Statut: {task.statut}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -493,6 +605,10 @@ export default function RoadmapPage() {
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-purple-500" />
               <span className="text-sm text-gray-600">Sprint</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-orange-500" />
+              <span className="text-sm text-gray-600">Livrable</span>
             </div>
           </div>
         </CardContent>

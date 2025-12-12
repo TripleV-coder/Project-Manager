@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 
 export default function AdminPage() {
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
@@ -39,11 +40,32 @@ export default function AdminPage() {
 
   const loadData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
+
+      // Load user first for authorization check
+      const userRes = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!userRes.ok) {
+        router.push('/login');
+        return;
+      }
+
+      const userData = await userRes.json();
+
+      // Client-side guard: redirect if not admin
+      if (!userData.role?.permissions?.adminConfig) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setUser(userData);
 
       // Charger les stats
       const [usersRes, projectsRes, tasksRes, rolesRes, maintenanceRes] = await Promise.all([

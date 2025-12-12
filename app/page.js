@@ -1,53 +1,56 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const router = useRouter();
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
     async function checkAuth() {
       try {
-        // Vérifier si premier admin existe
-        const checkResponse = await fetch('/api/check');
-        const checkData = await checkResponse.json();
+        const token = localStorage.getItem('pm_token');
 
-        if (!checkData.hasAdmin) {
-          // Aucun admin, rediriger vers création premier admin
+        // Single API call to get both admin status and user data
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await fetch('/api/init', { headers });
+
+        if (!response.ok) {
+          console.error('Erreur init:', response.status);
+          router.push('/login');
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!data.hasAdmin) {
           router.push('/first-admin');
           return;
         }
 
-        // Vérifier si utilisateur est connecté
-        const token = localStorage.getItem('pm_token');
         if (!token) {
           router.push('/login');
           return;
         }
 
-        // Vérifier le token
-        const meResponse = await fetch('/api/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!meResponse.ok) {
+        if (!data.user) {
           localStorage.removeItem('pm_token');
           router.push('/login');
           return;
         }
 
-        const userData = await meResponse.json();
-
-        // Vérifier si premier login
-        if (userData.first_login || userData.must_change_password) {
+        if (data.user.first_login || data.user.must_change_password) {
           router.push('/first-login');
           return;
         }
 
-        // Tout est OK, rediriger vers dashboard
         router.push('/dashboard');
 
       } catch (error) {
@@ -57,7 +60,7 @@ export default function Home() {
     }
 
     checkAuth();
-  }, [router]);
+  }, [router, isHydrated]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">

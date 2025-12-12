@@ -1,7 +1,41 @@
-// Script pour créer le premier admin
+// Script to create the first admin user
+// WARNING: This is a setup script - never commit actual credentials
+// USAGE: node scripts/init-admin.js <email> <password>
+
 const fetch = require('node-fetch');
 
 async function createFirstAdmin() {
+  // Get credentials from command line arguments
+  const args = process.argv.slice(2);
+
+  if (args.length < 2) {
+    console.error('❌ Usage: node scripts/init-admin.js <email> <password>');
+    console.error('');
+    console.error('Example: node scripts/init-admin.js admin@example.com "MySecurePassword123!"');
+    console.error('');
+    console.error('Password requirements:');
+    console.error('  - 8-12 characters');
+    console.error('  - At least 1 uppercase letter');
+    console.error('  - At least 1 lowercase letter');
+    console.error('  - At least 1 digit');
+    console.error('  - At least 1 special character: !@#$%^&*(),.?":{}|<>');
+    process.exit(1);
+  }
+
+  const email = args[0];
+  const password = args[1];
+
+  // Basic validation
+  if (!email.includes('@')) {
+    console.error('❌ Invalid email address');
+    process.exit(1);
+  }
+
+  if (password.length < 8) {
+    console.error('❌ Password must be at least 8 characters');
+    process.exit(1);
+  }
+
   try {
     const response = await fetch('http://localhost:3000/api/auth/first-admin', {
       method: 'POST',
@@ -9,25 +43,25 @@ async function createFirstAdmin() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        nom_complet: 'Administrateur',
-        email: 'admin@pm.com',
-        password: 'Admin123!',
-        password_confirm: 'Admin123!'
+        nom_complet: 'Administrator',
+        email: email,
+        password: password,
+        password_confirm: password
       })
     });
 
     const data = await response.json();
-    console.log('Réponse:', data);
 
     if (response.ok) {
-      console.log('✅ Premier admin créé avec succès!');
-      console.log('Email: admin@pm.com');
-      console.log('Password: Admin123!');
+      console.log('✅ First admin user created successfully!');
+      console.log(`   Email: ${email}`);
+      console.log('   ⚠️  Keep this password safe - do not commit it to version control');
     } else {
-      console.log('❌ Erreur:', data.error);
+      console.log('❌ Error:', data.error);
     }
   } catch (error) {
-    console.error('Erreur:', error);
+    console.error('❌ Error:', error.message);
+    process.exit(1);
   }
 }
 

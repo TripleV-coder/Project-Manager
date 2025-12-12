@@ -52,14 +52,18 @@ if [ ! -f ".env" ]; then
 # MongoDB Connection (Local)
 MONGO_URL=mongodb://localhost:27017/project-manager
 
-# JWT Secret (Change in production!)
-JWT_SECRET=your-super-secret-key-min-32-chars-long-change-in-prod
+# JWT Secret (REQUIRED - Change in production!)
+# Generate with: openssl rand -base64 32
+JWT_SECRET=your-strong-secret-key-here
 
-# Builder API
-NEXT_PUBLIC_BUILDER_API_KEY=995e44ebc86544ad9c736e6e81532e68
+# Builder API (Optional)
+NEXT_PUBLIC_BUILDER_API_KEY=
 
 # Node Environment
 NODE_ENV=development
+
+# Next.js Application URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 EOF
     echo -e "${GREEN}✓ Created .env${NC}"
     echo -e "${YELLOW}⚠️  Remember to update JWT_SECRET in production!${NC}"

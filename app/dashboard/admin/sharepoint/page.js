@@ -44,6 +44,12 @@ export default function SharePointConfigPage() {
       const response = await fetch('/api/auth/me', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (!response.ok) {
+        router.push('/login');
+        return;
+      }
+
       const data = await response.json();
 
       if (!data.role?.permissions?.adminConfig) {

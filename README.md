@@ -391,7 +391,40 @@ yarn dev          # Développement avec hot reload
 yarn build        # Build de production
 yarn start        # Lancer en production
 yarn lint         # Vérifier le code
+yarn clear:db     # Vider complètement la base de données MongoDB
 ```
+
+---
+
+## 📝 Modifications Récentes
+
+### Version 1.0.1 (Décembre 2024)
+
+**🔐 Sécurité**
+- ✅ Corrigé 10 vulnérabilités critiques Next.js (mise à jour 14.2.31 → 14.2.33)
+- ✅ Résolu les failles de sécurité :
+  - Cache Poisoning
+  - Denial of Service (image optimization)
+  - Server Actions DoS
+  - Authorization Bypass
+  - SSRF dans Middleware
+
+**📊 Rapports - Design Professionnel**
+- ✅ **PDF** : En-têtes/pieds de page professionnels avec logo, date/heure, numérotation des pages
+- ✅ **Excel** : Styles d'en-tête (couleurs, polices), bordures, largeurs colonnes optimisées
+- ✅ **CSV** : En-têtes informatifs, métadonnées de rapport, structure claire
+- ✅ Complété la génération de rapports PDF, Excel et CSV
+- ✅ Ajouté support complet du rapport **Performance** en tous formats
+- ✅ Tous les rapports sont **prêts pour l'entreprise** et professionnels
+- ✅ Noms de fichiers clairs avec dates (format DD-MM-YYYY)
+
+**🗄️ Base de Données**
+- ✅ Nouveau script `yarn clear:db` pour vider complètement la base de données
+- ✅ Utile pour réinitialiser l'environnement de développement
+
+**🔧 Maintenance**
+- Suppression des délais inutiles dans le traitement des rapports
+- Messages d'erreur plus détaillés pour le débogage
 
 ---
 

@@ -19,8 +19,10 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
 
 export default function FilesPage() {
+  const { confirm } = useConfirmation();
   const router = useRouter();
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -43,8 +45,16 @@ export default function FilesPage() {
     loadData();
   }, [selectedProject]);
 
+  // Auto-select first project on initial load
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject === 'all') {
+      setSelectedProject(projects[0]._id);
+    }
+  }, [projects]);
+
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
@@ -120,7 +130,7 @@ export default function FilesPage() {
       toast.success(`${totalFiles} fichier(s) téléversé(s) avec succès`);
       setUploadDialogOpen(false);
       setSelectedFiles([]);
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Erreur:', error);
       toast.error(error.message || 'Erreur lors du téléversement');
@@ -157,7 +167,14 @@ export default function FilesPage() {
   };
 
   const handleDelete = async (fileId) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce fichier ?')) return;
+    const confirmed = await confirm({
+      title: 'Supprimer le fichier',
+      description: 'Êtes-vous sûr de vouloir supprimer ce fichier ?',
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('pm_token');
@@ -168,7 +185,7 @@ export default function FilesPage() {
 
       if (response.ok) {
         toast.success('Fichier supprimé');
-        loadData();
+        await loadData();
       } else {
         toast.error('Erreur lors de la suppression');
       }
@@ -203,7 +220,7 @@ export default function FilesPage() {
         toast.success('Dossier créé');
         setNewFolderDialogOpen(false);
         setNewFolderName('');
-        loadData();
+        await loadData();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erreur lors de la création');
@@ -416,12 +433,18 @@ export default function FilesPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {/* Folders */}
           {folders.map((folder) => (
-            <Card 
-              key={folder._id} 
-              className="cursor-pointer hover:shadow-lg transition-shadow group"
+            <button
+              key={folder._id}
+              type="button"
+              className="cursor-pointer hover:shadow-lg transition-shadow group rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               onClick={() => setCurrentFolder(folder.chemin)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setCurrentFolder(folder.chemin);
+                }
+              }}
             >
-              <CardContent className="p-4">
+              <div className="p-4">
                 <div className="flex flex-col items-center">
                   <div className="w-16 h-16 bg-yellow-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-yellow-200 transition-colors">
                     <Folder className="w-8 h-8 text-yellow-600" />
@@ -429,8 +452,8 @@ export default function FilesPage() {
                   <p className="font-medium text-sm text-center truncate w-full">{folder.nom}</p>
                   <p className="text-xs text-gray-500">{folder.fichiers_count || 0} fichiers</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </button>
           ))}
           {/* Files */}
           {filteredFiles.map((file) => {
@@ -522,7 +545,7 @@ export default function FilesPage() {
                     <TableCell className="hidden md:table-cell">{formatFileSize(file.taille)}</TableCell>
                     <TableCell className="hidden lg:table-cell">{project?.nom || '-'}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {file.créé_le ? new Date(file.créé_le).toLocaleDateString('fr-FR') : '-'}
+                      {file.created_at ? new Date(file.created_at).toLocaleDateString('fr-FR') : '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

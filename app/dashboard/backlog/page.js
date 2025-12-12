@@ -7,6 +7,7 @@ import {
   Layers, BookOpen, CheckSquare, GripVertical, Edit2, Trash2,
   Calendar, User, Clock, MoreVertical, ArrowUp, ArrowDown, Minus
 } from 'lucide-react';
+import { safeFetch } from '@/lib/fetch-with-timeout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,9 +19,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function BacklogPage() {
+  const { confirm } = useConfirmation();
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -44,12 +49,22 @@ export default function BacklogPage() {
     date_échéance: ''
   });
 
+  const { hasPermission: canManageTasks } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+
   useEffect(() => {
     loadData();
   }, [selectedProject]);
 
+  // Auto-select first project on initial load
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject === 'all') {
+      setSelectedProject(projects[0]._id);
+    }
+  }, [projects]);
+
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
@@ -58,33 +73,36 @@ export default function BacklogPage() {
 
       const projectFilter = selectedProject !== 'all' ? `?projet_id=${selectedProject}` : '';
 
-      const [projectsRes, tasksRes, sprintsRes, usersRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/tasks${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/sprints${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
+      const [userData, projectsData, tasksData, sprintsData, usersData] = await Promise.all([
+        safeFetch('/api/auth/me', token),
+        safeFetch('/api/projects?limit=50&page=1', token),
+        safeFetch(`/api/tasks${projectFilter}&limit=100&page=1`, token),
+        safeFetch(`/api/sprints${projectFilter}`, token),
+        safeFetch('/api/users?limit=100&page=1', token)
       ]);
 
-      const projectsData = await projectsRes.json();
-      const tasksData = await tasksRes.json();
-      const sprintsData = await sprintsRes.json();
-      const usersData = await usersRes.json();
-
+      setUser(userData);
       setProjects(projectsData.projects || []);
       setTasks(tasksData.tasks || []);
       setSprints(sprintsData.sprints || []);
       setUsers(usersData.users || []);
-      
+
       // Expand all epics by default
       const epics = (tasksData.tasks || []).filter(t => t.type === 'epic');
       const expanded = {};
       epics.forEach(e => expanded[e._id] = true);
       setExpandedEpics(expanded);
-      
+
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('Chargement dépassé - Veuillez recharger');
+      } else {
+        console.error('Erreur:', error);
+        toast.error('Erreur lors du chargement du backlog');
+      }
       setLoading(false);
     }
   };
@@ -102,33 +120,35 @@ export default function BacklogPage() {
 
     try {
       const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/tasks', {
+      await safeFetch('/api/tasks', token, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
-          ...formData,
+          titre: formData.titre,
+          description: formData.description,
+          priorité: formData.priorité,
+          estimation_points: formData.estimation_points ? parseInt(formData.estimation_points) : null,
+          assigné_à: formData.assigné_à || null,
+          sprint_id: formData.sprint_id || null,
+          date_échéance: formData.date_échéance || null,
           projet_id: selectedProject,
           type: createType,
-          parent_id: parentItem?._id || null,
-          estimation_points: formData.estimation_points ? parseInt(formData.estimation_points) : null
+          parent_id: parentItem?._id || null
         })
       });
 
-      if (response.ok) {
-        toast.success(`${createType === 'epic' ? 'Épic' : createType === 'story' ? 'Story' : 'Tâche'} créé(e) avec succès`);
-        setCreateDialogOpen(false);
-        resetForm();
-        loadData();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la création');
-      }
+      toast.success(`${createType === 'epic' ? 'Épic' : createType === 'story' ? 'Story' : 'Tâche'} créé(e) avec succès`);
+      setCreateDialogOpen(false);
+      resetForm();
+      await loadData();
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('La requête a dépassé le délai');
+      } else {
+        console.error('Erreur:', error);
+        toast.error('Erreur lors de la création');
+      }
     }
   };
 
@@ -159,7 +179,7 @@ export default function BacklogPage() {
         setEditingItem(null);
         setCreateDialogOpen(false);
         resetForm();
-        loadData();
+        await loadData();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erreur lors de la mise à jour');
@@ -171,7 +191,14 @@ export default function BacklogPage() {
   };
 
   const handleDelete = async (item) => {
-    if (!confirm(`Supprimer "${item.titre}" ?`)) return;
+    const confirmed = await confirm({
+      title: 'Supprimer l\'élément',
+      description: `Êtes-vous sûr de vouloir supprimer "${item.titre}" ?`,
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('pm_token');
@@ -182,7 +209,7 @@ export default function BacklogPage() {
 
       if (response.ok) {
         toast.success('Supprimé avec succès');
-        loadData();
+        await loadData();
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -204,7 +231,7 @@ export default function BacklogPage() {
 
       if (response.ok) {
         toast.success('Assigné au sprint');
-        loadData();
+        await loadData();
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -322,28 +349,30 @@ export default function BacklogPage() {
               ))}
             </SelectContent>
           </Select>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="bg-indigo-600 hover:bg-indigo-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Créer
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => openCreateDialog('epic')}>
-                <Layers className="w-4 h-4 mr-2 text-purple-600" />
-                Nouvel Epic
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openCreateDialog('story')}>
-                <BookOpen className="w-4 h-4 mr-2 text-blue-600" />
-                Nouvelle Story
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openCreateDialog('task')}>
-                <CheckSquare className="w-4 h-4 mr-2 text-green-600" />
-                Nouvelle Tâche
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canManageTasks('gererTaches') && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="bg-indigo-600 hover:bg-indigo-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Créer
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => openCreateDialog('epic')}>
+                  <Layers className="w-4 h-4 mr-2 text-purple-600" />
+                  Nouvel Epic
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openCreateDialog('story')}>
+                  <BookOpen className="w-4 h-4 mr-2 text-blue-600" />
+                  Nouvelle Story
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openCreateDialog('task')}>
+                  <CheckSquare className="w-4 h-4 mr-2 text-green-600" />
+                  Nouvelle Tâche
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -418,10 +447,12 @@ export default function BacklogPage() {
               <ListTodo className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Backlog vide</h3>
               <p className="text-gray-600 mb-4">Commencez par créer votre premier Epic</p>
-              <Button onClick={() => openCreateDialog('epic')} className="bg-indigo-600 hover:bg-indigo-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Créer un Epic
-              </Button>
+              {canManageTasks('gererTaches') && (
+                <Button onClick={() => openCreateDialog('epic')} className="bg-indigo-600 hover:bg-indigo-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Créer un Epic
+                </Button>
+              )}
             </div>
           </Card>
         ) : (
@@ -783,15 +814,15 @@ export default function BacklogPage() {
               <>
                 <div className="space-y-2">
                   <Label>Assigné à</Label>
-                  <Select 
-                    value={formData.assigné_à} 
-                    onValueChange={(v) => setFormData({ ...formData, assigné_à: v })}
+                  <Select
+                    value={formData.assigné_à || 'none'}
+                    onValueChange={(v) => setFormData({ ...formData, assigné_à: v === 'none' ? '' : v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionner un utilisateur" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Non assigné</SelectItem>
+                      <SelectItem value="none">Non assigné</SelectItem>
                       {users.map(u => (
                         <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                       ))}
@@ -801,15 +832,15 @@ export default function BacklogPage() {
                 {sprints.length > 0 && (
                   <div className="space-y-2">
                     <Label>Sprint</Label>
-                    <Select 
-                      value={formData.sprint_id} 
-                      onValueChange={(v) => setFormData({ ...formData, sprint_id: v })}
+                    <Select
+                      value={formData.sprint_id || 'backlog'}
+                      onValueChange={(v) => setFormData({ ...formData, sprint_id: v === 'backlog' ? '' : v })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Sélectionner un sprint" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Backlog</SelectItem>
+                        <SelectItem value="backlog">Backlog</SelectItem>
                         {sprints.map(s => (
                           <SelectItem key={s._id} value={s._id}>{s.nom}</SelectItem>
                         ))}

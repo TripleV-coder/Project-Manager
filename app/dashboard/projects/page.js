@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FolderKanban, Plus, Search, Filter, Grid, List, Calendar, Users } from 'lucide-react';
+import { safeFetch } from '@/lib/fetch-with-timeout';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,9 +14,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,69 +33,98 @@ export default function ProjectsPage() {
     date_fin_prévue: ''
   });
 
+  const rbacPermissions = useRBACPermissions(user);
+
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
-      const [projectsRes, templatesRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/project-templates', { headers: { 'Authorization': `Bearer ${token}` } })
+      const [userData, projectsData, templatesData] = await Promise.all([
+        safeFetch('/api/auth/me', token),
+        safeFetch('/api/projects?limit=50&page=1', token),
+        safeFetch('/api/project-templates', token)
       ]);
 
-      const projectsData = await projectsRes.json();
-      const templatesData = await templatesRes.json();
-
+      setUser(userData);
       setProjects(projectsData.projects || []);
-      
-      // Si pas de templates, créer template par défaut
+
+      // Si pas de templates, essayer créer template par défaut (admin only)
       if (!templatesData.templates || templatesData.templates.length === 0) {
-        const initRes = await fetch('/api/init-default-template', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+        try {
+          const initData = await safeFetch('/api/init-default-template', token, {
+            method: 'POST'
+          });
+          setTemplates([initData.template]);
+        } catch (initError) {
+          // Si l'utilisateur n'a pas les permissions d'admin (403), on continue sans template par défaut
+          if (initError.message !== 'UNAUTHORIZED') {
+            console.warn('Impossible de créer le template par défaut:', initError);
           }
-        });
-        const initData = await initRes.json();
-        setTemplates([initData.template]);
+          setTemplates([]);
+        }
       } else {
         setTemplates(templatesData.templates || []);
       }
-      
+
       setLoading(false);
     } catch (error) {
-      console.error('Erreur chargement:', error);
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('Chargement dépassé - Veuillez recharger');
+      } else {
+        console.error('Erreur chargement:', error);
+        toast.error('Erreur lors du chargement des projets');
+      }
       setLoading(false);
     }
   };
 
   const handleCreateProject = async () => {
     try {
+      if (!newProject.nom.trim()) {
+        toast.error('Le nom du projet est requis');
+        return;
+      }
+
+      if (!newProject.template_id) {
+        toast.error('Veuillez sélectionner un template');
+        return;
+      }
+
       const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/projects', {
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
+      await safeFetch('/api/projects', token, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify(newProject)
       });
 
-      if (response.ok) {
-        setCreateDialogOpen(false);
-        setNewProject({ nom: '', description: '', template_id: '', date_début: '', date_fin_prévue: '' });
-        loadData();
-      }
+      setCreateDialogOpen(false);
+      setNewProject({ nom: '', description: '', template_id: '', date_début: '', date_fin_prévue: '' });
+      toast.success('Projet créé avec succès');
+      await loadData();
     } catch (error) {
-      console.error('Erreur création projet:', error);
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('La requête a dépassé le délai d\'attente');
+      } else {
+        console.error('Erreur création projet:', error);
+        toast.error('Erreur lors de la création du projet');
+      }
     }
   };
 
@@ -116,76 +149,82 @@ export default function ProjectsPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Projets</h1>
           <p className="text-gray-600">Gérez tous vos projets en un seul endroit</p>
         </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Nouveau projet
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Créer un nouveau projet</DialogTitle>
-              <DialogDescription>Remplissez les informations pour créer votre projet</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Nom du projet</Label>
-                <Input
-                  value={newProject.nom}
-                  onChange={(e) => setNewProject({ ...newProject, nom: e.target.value })}
-                  placeholder="Ex: Refonte site web"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                  placeholder="Description du projet..."
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Template</Label>
-                <Select value={newProject.template_id} onValueChange={(val) => setNewProject({ ...newProject, template_id: val })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez un template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t._id} value={t._id}>{t.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Date de début</Label>
-                  <Input
-                    type="date"
-                    value={newProject.date_début}
-                    onChange={(e) => setNewProject({ ...newProject, date_début: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date de fin prévue</Label>
-                  <Input
-                    type="date"
-                    value={newProject.date_fin_prévue}
-                    onChange={(e) => setNewProject({ ...newProject, date_fin_prévue: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-              <Button onClick={handleCreateProject} className="bg-indigo-600 hover:bg-indigo-700">
-                Créer le projet
+        {user && rbacPermissions.canCreateProject && (
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Nouveau projet
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Créer un nouveau projet</DialogTitle>
+                <DialogDescription>Remplissez les informations pour créer votre projet</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nom du projet</Label>
+                  <Input
+                    value={newProject.nom}
+                    onChange={(e) => setNewProject({ ...newProject, nom: e.target.value })}
+                    placeholder="Ex: Refonte site web"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    value={newProject.description}
+                    onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                    placeholder="Description du projet..."
+                    rows={3}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Template</Label>
+                  <Select value={newProject.template_id} onValueChange={(val) => setNewProject({ ...newProject, template_id: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez un template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map(t => (
+                        <SelectItem key={t._id} value={t._id}>{t.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Date de début</Label>
+                    <Input
+                      type="date"
+                      value={newProject.date_début}
+                      onChange={(e) => setNewProject({ ...newProject, date_début: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date de fin prévue</Label>
+                    <Input
+                      type="date"
+                      value={newProject.date_fin_prévue}
+                      onChange={(e) => setNewProject({ ...newProject, date_fin_prévue: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
+                <Button
+                  onClick={handleCreateProject}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                  disabled={!newProject.nom.trim() || !newProject.template_id || templates.length === 0}
+                >
+                  Créer le projet
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Filters */}
@@ -227,10 +266,12 @@ export default function ProjectsPage() {
             <FolderKanban className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun projet</h3>
             <p className="text-gray-600 mb-4">Commencez par créer votre premier projet</p>
-            <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Créer un projet
-            </Button>
+            {user && rbacPermissions.canCreateProject && (
+              <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Créer un projet
+              </Button>
+            )}
           </div>
         </Card>
       ) : (

@@ -1,8 +1,24 @@
 import { NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import { hashPassword, verifyPassword, signToken, verifyToken, validatePassword } from '@/lib/auth';
+import { initializeProjectRoles, getProjectRoles, getProjectRoleById } from '@/lib/projectRoleInit';
+import { getMergedPermissions, getAccessibleData } from '@/lib/permissions';
+import { emitToProject, emitToUser, emitToAll } from '@/lib/socket-emitter';
+import { SOCKET_EVENTS } from '@/lib/socket-events';
+import { logActivity } from '@/lib/auditService';
+import { handleGetAuditLogs, handleGetUserActivity, handleGetAuditStatistics, handleExportAuditLogs } from '@/lib/auditApiHandler';
+import { checkRateLimit, getClientIP, getRateLimitHeaders, RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
+import { createAuthCookieHeader } from '@/lib/authCookie';
+import { APIResponse, handleError } from '@/lib/apiResponse';
+import { withValidation } from '@/lib/inputValidator';
+import appSettingsService from '@/lib/appSettingsService';
+import projectService from '@/lib/services/projectService';
+import userService from '@/lib/services/userService';
+import taskService from '@/lib/services/taskService';
 import User from '@/models/User';
 import Role from '@/models/Role';
+import ProjectRole from '@/models/ProjectRole';
 import ProjectTemplate from '@/models/ProjectTemplate';
 import Project from '@/models/Project';
 import Task from '@/models/Task';
@@ -37,23 +53,49 @@ async function authenticate(request) {
   return user;
 }
 
-// Helper pour créer un log d'audit
-async function createAuditLog(utilisateur, action, entity_type, entity_id, description, metadata = {}) {
-  try {
-    await AuditLog.create({
-      utilisateur: utilisateur._id,
-      utilisateur_email: utilisateur.email,
-      utilisateur_nom: utilisateur.nom_complet,
-      action,
-      entity_type,
-      entity_id,
-      description,
-      metadata,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    console.error('Erreur création audit log:', error);
+// Helper pour générer un mot de passe temporaire sécurisé
+function generateSecureTemporaryPassword() {
+  // Generate a 12-character random password with uppercase, lowercase, numbers, and special chars
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const numbers = '0123456789';
+  const special = '!@#$%^&*';
+  const allChars = uppercase + lowercase + numbers + special;
+
+  let password = '';
+  // Ensure at least one char from each category
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += special[Math.floor(Math.random() * special.length)];
+
+  // Fill the rest with random characters
+  for (let i = password.length; i < 12; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)];
   }
+
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+// Helper pour créer une réponse d'erreur sécurisée (ne divulgue pas les détails en production)
+function createSecureErrorResponse(error, statusCode = 500) {
+  // Log full error server-side
+  if (process.env.NODE_ENV === 'production') {
+    console.error('API Error:', error);
+  } else {
+    console.error('API Error:', error);
+  }
+
+  // Return generic error to client in production, detailed in development
+  const errorMessage = process.env.NODE_ENV === 'development'
+    ? error.message
+    : 'Une erreur s\'est produite. Veuillez réessayer plus tard.';
+
+  return {
+    statusCode,
+    message: errorMessage
+  };
 }
 
 // Helper pour créer une notification
@@ -82,11 +124,64 @@ async function createNotification(destinataire, type, titre, message, entity_typ
   }
 }
 
+// Helper pour créer plusieurs notifications en batch (optimisé pour éviter N+1)
+async function createNotificationsBatch(destinataires, type, titre, message, entity_type, entity_id, entity_nom, expéditeur = null) {
+  try {
+    if (!destinataires || destinataires.length === 0) return;
+
+    // Charger tous les utilisateurs en une seule requête
+    const users = await User.find({ _id: { $in: destinataires } });
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+    // Créer tous les documents de notification en une seule requête
+    const notificationsToCreate = destinataires
+      .map(destinataireId => {
+        const user = userMap.get(destinataireId.toString());
+        if (!user) return null;
+
+        return {
+          destinataire: destinataireId,
+          type,
+          titre,
+          message,
+          entity_type,
+          entity_id,
+          entity_nom,
+          expéditeur,
+          canaux: {
+            in_app: user.notifications_préférées?.in_app !== false,
+            email: user.notifications_préférées?.email === true,
+            push: user.notifications_préférées?.push === true
+          }
+        };
+      })
+      .filter(notif => notif !== null);
+
+    if (notificationsToCreate.length > 0) {
+      await Notification.insertMany(notificationsToCreate);
+    }
+  } catch (error) {
+    console.error('Erreur création notifications batch:', error);
+  }
+}
+
 // CORS Helper
-function handleCORS(response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
+function handleCORS(response, allowedOrigins = null) {
+  // Parse allowed origins from environment or use safe default
+  const corsOrigins = allowedOrigins || (process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+    : ['http://localhost:3000']);
+
+  // For credentials mode (cookies), we cannot use wildcard
+  // Instead, we validate against allowed list
+  // In production, frontend and backend should be same origin or configured explicitly
+  const origin = corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins.join(',');
+
+  response.headers.set('Access-Control-Allow-Origin', origin);
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.headers.set('Access-Control-Allow-Credentials', 'true');
+  response.headers.set('Access-Control-Max-Age', '3600');
   return response;
 }
 
@@ -100,7 +195,7 @@ async function initializeRoles() {
   const roles = [
     {
       nom: 'Administrateur',
-      description: 'Accès complet et configuration système',
+      description: 'Gestion utilisateurs et projets système (sans config système)',
       is_predefined: true,
       permissions: {
         voirTousProjets: true,
@@ -124,6 +219,53 @@ async function initializeRoles() {
         recevoirNotifications: true,
         genererRapports: true,
         voirAudit: true,
+        gererUtilisateurs: true,
+        adminConfig: false
+      },
+      visibleMenus: {
+        portfolio: true,
+        projects: true,
+        kanban: true,
+        backlog: true,
+        sprints: true,
+        roadmap: true,
+        tasks: true,
+        files: true,
+        comments: true,
+        timesheets: true,
+        budget: true,
+        reports: true,
+        notifications: true,
+        admin: false
+      }
+    },
+    {
+      nom: 'Super Administrateur',
+      description: 'Accès complet système - Configuration, rôles et admin',
+      is_predefined: true,
+      permissions: {
+        voirTousProjets: true,
+        voirSesProjets: true,
+        creerProjet: true,
+        supprimerProjet: true,
+        modifierCharteProjet: true,
+        gererMembresProjet: true,
+        changerRoleMembre: true,
+        gererTaches: true,
+        deplacerTaches: true,
+        prioriserBacklog: true,
+        gererSprints: true,
+        modifierBudget: true,
+        voirBudget: true,
+        voirTempsPasses: true,
+        saisirTemps: true,
+        validerLivrable: true,
+        gererFichiers: true,
+        commenter: true,
+        recevoirNotifications: true,
+        genererRapports: true,
+        voirAudit: true,
+        gererUtilisateurs: true,
         adminConfig: true
       },
       visibleMenus: {
@@ -190,7 +332,7 @@ async function initializeRoles() {
     },
     {
       nom: 'Responsable Équipe',
-      description: 'Gestion équipe et reporting',
+      description: 'Gestion équipe, tâches et reporting - Vue ses projets',
       is_predefined: true,
       permissions: {
         voirTousProjets: false,
@@ -203,7 +345,7 @@ async function initializeRoles() {
         gererTaches: true,
         deplacerTaches: true,
         prioriserBacklog: true,
-        gererSprints: false,
+        gererSprints: true,
         modifierBudget: false,
         voirBudget: true,
         voirTempsPasses: true,
@@ -217,7 +359,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: true,
         backlog: true,
@@ -262,7 +404,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: true,
         backlog: true,
@@ -307,7 +449,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: true,
         backlog: false,
@@ -352,7 +494,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: true,
         backlog: false,
@@ -397,7 +539,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: false,
         backlog: false,
@@ -442,7 +584,7 @@ async function initializeRoles() {
         adminConfig: false
       },
       visibleMenus: {
-        portfolio: false,
+        portfolio: true,
         projects: true,
         kanban: false,
         backlog: false,
@@ -481,10 +623,47 @@ export async function GET(request) {
     // GET /api ou /api/check - Vérifier si premier admin existe
     if (path === '' || path === '/' || path === '/check' || path === '/check/') {
       const userCount = await User.countDocuments();
-      return handleCORS(NextResponse.json({ 
+      return handleCORS(NextResponse.json({
         message: 'PM - Gestion de Projets API',
         hasAdmin: userCount > 0,
         needsFirstAdmin: userCount === 0
+      }));
+    }
+
+    // GET /api/init - Combined init endpoint to reduce API calls
+    if (path === '/init' || path === '/init/') {
+      const userCount = await User.countDocuments();
+      const hasAdmin = userCount > 0;
+
+      let user = null;
+      const token = request.headers.get('authorization')?.split(' ')[1];
+
+      if (token && hasAdmin) {
+        user = await authenticate(request);
+      }
+
+      return handleCORS(NextResponse.json({
+        hasAdmin,
+        needsFirstAdmin: !hasAdmin,
+        user: user ? {
+          id: user._id,
+          nom_complet: user.nom_complet,
+          email: user.email,
+          role: {
+            id: user.role_id._id,
+            nom: user.role_id.nom,
+            description: user.role_id.description,
+            permissions: user.role_id.permissions,
+            visibleMenus: user.role_id.visibleMenus
+          },
+          avatar: user.avatar,
+          poste_titre: user.poste_titre,
+          département_équipe: user.département_équipe,
+          compétences: user.compétences,
+          status: user.status,
+          first_login: user.first_login,
+          projets_assignés: user.projets_assignés
+        } : null
       }));
     }
 
@@ -499,29 +678,46 @@ export async function GET(request) {
         id: user._id,
         nom_complet: user.nom_complet,
         email: user.email,
-        role: user.role_id,
+        role: {
+          id: user.role_id._id,
+          nom: user.role_id.nom,
+          description: user.role_id.description,
+          permissions: user.role_id.permissions,
+          visibleMenus: user.role_id.visibleMenus
+        },
         avatar: user.avatar,
         poste_titre: user.poste_titre,
         département_équipe: user.département_équipe,
         compétences: user.compétences,
         status: user.status,
-        first_login: user.first_login
+        first_login: user.first_login,
+        projets_assignés: user.projets_assignés
       }));
     }
 
-    // GET /api/users - Liste utilisateurs (admin uniquement)
+    // GET /api/users - Liste utilisateurs (admin uniquement, OPTIMIZED)
     if (path === '/users' || path === '/users/') {
-      const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.adminConfig) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      try {
+        const user = await authenticate(request);
+        if (!user || (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)) {
+          return handleCORS(APIResponse.forbidden());
+        }
+
+        const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
+        const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+        const skip = (page - 1) * limit;
+
+        const { users, total } = await userService.getUsers(limit, skip);
+
+        return handleCORS(APIResponse.success(users, null, 200, {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /users'));
       }
-
-      const users = await User.find({ status: 'Actif' })
-        .populate('role_id')
-        .select('-password -password_history')
-        .sort({ created_at: -1 });
-
-      return handleCORS(NextResponse.json({ users }));
     }
 
     // GET /api/roles - Liste rôles
@@ -535,51 +731,186 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ roles }));
     }
 
-    // GET /api/projects - Liste projets
+    // GET /api/projects - Liste projets (OPTIMIZED)
     if (path === '/projects' || path === '/projects/') {
-      const user = await authenticate(request);
-      if (!user) {
-        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
+        const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+        const skip = (page - 1) * limit;
+
+        const { projects, total } = await projectService.getAccessibleProjects(
+          user._id,
+          user.role_id,
+          limit,
+          skip
+        );
+
+        return handleCORS(APIResponse.success(projects, null, 200, {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /projects'));
       }
-
-      const query = { archivé: false };
-      
-      if (!user.role_id?.permissions?.voir_tous_projets) {
-        query.$or = [
-          { chef_projet: user._id },
-          { product_owner: user._id },
-          { 'membres.user_id': user._id }
-        ];
-      }
-
-      const projects = await Project.find(query)
-        .populate('chef_projet', 'nom_complet email avatar')
-        .populate('product_owner', 'nom_complet email avatar')
-        .populate('template_id', 'nom')
-        .sort({ created_at: -1 });
-
-      return handleCORS(NextResponse.json({ projects }));
     }
 
-    // GET /api/projects/:id - Détails projet
+    // GET /api/projects/:id - Détails projet (OPTIMIZED)
     if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const projectId = path.split('/')[2];
+        const project = await projectService.getProjectById(projectId);
+
+        if (!project) {
+          return handleCORS(APIResponse.notFound('Projet non trouvé'));
+        }
+
+        // Vérifier l'accès
+        const canView = user.role_id?.permissions?.voirTousProjets ||
+          projectService.canUserAccessProject(user._id, projectId);
+
+        if (!canView) {
+          return handleCORS(APIResponse.forbidden());
+        }
+
+        return handleCORS(APIResponse.success(project));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /projects/:id'));
+      }
+    }
+
+    // GET /api/projects/:id/roles - Rôles du projet
+    if (path.match(/^\/projects\/[^/]+\/roles\/?$/)) {
       const user = await authenticate(request);
       if (!user) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const projectId = path.split('/')[2];
-      const project = await Project.findById(projectId)
-        .populate('chef_projet', 'nom_complet email avatar')
-        .populate('product_owner', 'nom_complet email avatar')
-        .populate('membres.user_id', 'nom_complet email avatar')
-        .populate('template_id');
+      const project = await Project.findById(projectId);
 
       if (!project) {
         return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
       }
 
-      return handleCORS(NextResponse.json({ project }));
+      // Vérifier l'accès au projet
+      const canView = user.role_id?.permissions?.voirTousProjets ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+      if (!canView) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Charger tous les rôles du projet (prédéfinis + custom)
+      const roles = await ProjectRole.find({ project_id: projectId }).sort({ nom: 1 });
+
+      return handleCORS(NextResponse.json({ roles }));
+    }
+
+    // GET /api/projects/:id/permissions - Permissions synchronisées (système + projet)
+    if (path.match(/^\/projects\/[^/]+\/permissions\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier l'accès au projet
+      const isMember = project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+      const canView = user.role_id?.permissions?.voirTousProjets || isMember;
+
+      if (!canView) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Trouver le rôle de projet de l'utilisateur
+      let projectRole = null;
+      if (isMember) {
+        const member = project.membres.find(m => m.user_id.toString() === user._id.toString());
+        if (member && member.project_role_id) {
+          projectRole = await ProjectRole.findById(member.project_role_id);
+        }
+      }
+
+      // Récupérer les permissions de base du système
+      const systemPermissions = user.role_id?.permissions || {};
+      const systemMenus = user.role_id?.visibleMenus || {};
+
+      // Fusionner avec les permissions du projet (plus restrictif)
+      const merged = {
+        permissions: {},
+        visibleMenus: {}
+      };
+
+      const ALL_PERMISSIONS = [
+        'voirTousProjets', 'voirSesProjets', 'creerProjet', 'supprimerProjet', 'modifierCharteProjet',
+        'gererMembresProjet', 'changerRoleMembre', 'gererTaches', 'deplacerTaches', 'prioriserBacklog',
+        'gererSprints', 'modifierBudget', 'voirBudget', 'voirTempsPasses', 'saisirTemps',
+        'validerLivrable', 'gererFichiers', 'commenter', 'recevoirNotifications', 'genererRapports',
+        'voirAudit', 'gererUtilisateurs', 'adminConfig'
+      ];
+
+      ALL_PERMISSIONS.forEach(permission => {
+        const sysAllows = systemPermissions[permission] === true;
+        // Use explicit true checks: if projectRole exists, BOTH must be true
+        let projAllows = true;
+        if (projectRole) {
+          projAllows = projectRole.permissions?.[permission] === true;
+        }
+        merged.permissions[permission] = sysAllows && projAllows;
+      });
+
+      const ALL_MENUS = [
+        'portfolio', 'projects', 'kanban', 'backlog', 'sprints', 'roadmap', 'tasks', 'files',
+        'comments', 'timesheets', 'budget', 'reports', 'notifications', 'admin'
+      ];
+
+      ALL_MENUS.forEach(menu => {
+        const sysAllows = systemMenus[menu] === true;
+        // Use explicit true checks: if projectRole exists, BOTH must be true
+        let projAllows = true;
+        if (projectRole) {
+          projAllows = projectRole.visibleMenus?.[menu] === true;
+        }
+        merged.visibleMenus[menu] = sysAllows && projAllows;
+      });
+
+      return handleCORS(NextResponse.json({
+        permissions: merged.permissions,
+        visibleMenus: merged.visibleMenus,
+        projectRole: projectRole ? {
+          id: projectRole._id,
+          nom: projectRole.nom,
+          description: projectRole.description
+        } : null,
+        systemRole: {
+          id: user.role_id._id,
+          nom: user.role_id.nom,
+          description: user.role_id.description
+        }
+      }));
     }
 
     // GET /api/project-templates - Liste templates projets
@@ -603,53 +934,36 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      // Utiliser des données en mémoire pour simplifier (en prod, utiliser une collection)
-      const types = global.deliverableTypes || [
-        {
-          _id: '1',
-          nom: 'Spécification Technique',
-          description: 'Document décrivant les spécifications techniques du projet',
-          couleur: '#3b82f6',
-          workflow_étapes: ['Rédaction', 'Revue technique', 'Validation', 'Approbation']
-        },
-        {
-          _id: '2',
-          nom: 'Maquette Design',
-          description: 'Maquettes visuelles et prototypes UI/UX',
-          couleur: '#8b5cf6',
-          workflow_étapes: ['Création', 'Revue Client', 'Ajustements', 'Validation finale']
-        },
-        {
-          _id: '3',
-          nom: 'Rapport de Tests',
-          description: 'Résultats des tests et validation qualité',
-          couleur: '#10b981',
-          workflow_étapes: ['Exécution tests', 'Analyse', 'Rapport', 'Validation QA']
-        }
-      ];
+      const types = await DeliverableType.find({}).sort({ created_at: -1 });
 
       return handleCORS(NextResponse.json({ types }));
     }
 
     // GET /api/settings/maintenance - État du mode maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
-      // Pas besoin d'auth pour vérifier la maintenance
-      return handleCORS(NextResponse.json({
-        enabled: global.maintenanceMode || false,
-        message: global.maintenanceMessage || ''
-      }));
+      try {
+        const enabled = await appSettingsService.getMaintenanceMode();
+        return handleCORS(APIResponse.success({
+          enabled,
+          message: ''
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /settings/maintenance'));
+      }
     }
 
     // GET /api/settings - Paramètres système
     if (path === '/settings' || path === '/settings/') {
-      const user = await authenticate(request);
-      if (!user) {
-        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
-      }
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
 
-      // Retourner les paramètres par défaut ou sauvegardés
-      return handleCORS(NextResponse.json({
-        settings: {
+        // Récupérer les paramètres sauvegardés ou les defaults
+        const appSettings = await appSettingsService.getAppSettings();
+
+        const defaultSettings = {
           appName: 'PM - Gestion de Projets',
           appDescription: 'Plateforme de gestion de projets Agile',
           langue: 'fr',
@@ -673,35 +987,108 @@ export async function GET(request) {
           theme: 'light',
           primaryColor: '#4f46e5',
           sidebarCompact: false
-        }
-      }));
+        };
+
+        return handleCORS(APIResponse.success({
+          settings: { ...defaultSettings, ...appSettings }
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /settings'));
+      }
     }
 
-    // GET /api/tasks - Liste tâches avec filtres
+    // GET /api/tasks - Liste tâches avec filtres (OPTIMIZED)
     if (path === '/tasks' || path === '/tasks/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const projetId = url.searchParams.get('projet_id');
+        const sprintId = url.searchParams.get('sprint_id');
+        const assignéÀ = url.searchParams.get('assigné_à');
+        const statut = url.searchParams.get('statut');
+        const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
+        const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+        const skip = (page - 1) * limit;
+
+        const query = {};
+
+        // Handle filtering based on permissions
+        if (projetId) {
+          query.projet_id = projetId;
+
+          // Check if user has access to this project
+          if (!user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
+            const hasAccess = await projectService.canUserAccessProject(user._id, projetId);
+            if (!hasAccess) {
+              return handleCORS(APIResponse.forbidden('Accès refusé au projet'));
+            }
+          }
+        } else if (!user.role_id?.permissions?.gererTaches && !user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
+          query.assigné_à = user._id;
+        }
+
+        // Apply other filters if provided
+        if (sprintId) query.sprint_id = sprintId;
+        if (assignéÀ) query.assigné_à = assignéÀ;
+        if (statut) query.statut = statut;
+
+        const { tasks, total } = await taskService.getTasksByFilter(query, limit, skip);
+
+        return handleCORS(APIResponse.success(tasks, null, 200, {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /tasks'));
+      }
+    }
+
+    // GET /api/expenses - Liste dépenses avec filtres
+    if (path === '/expenses' || path === '/expenses/') {
       const user = await authenticate(request);
       if (!user) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      const projetId = url.searchParams.get('projet_id');
-      const sprintId = url.searchParams.get('sprint_id');
-      const assignéÀ = url.searchParams.get('assigné_à');
-      const statut = url.searchParams.get('statut');
-
+      const projectId = url.searchParams.get('projet_id');
       const query = {};
-      if (projetId) query.projet_id = projetId;
-      if (sprintId) query.sprint_id = sprintId;
-      if (assignéÀ) query.assigné_à = assignéÀ;
-      if (statut) query.statut = statut;
 
-      const tasks = await Task.find(query)
-        .populate('assigné_à', 'nom_complet email avatar')
-        .populate('créé_par', 'nom_complet email')
-        .populate('epic_id', 'titre')
-        .sort({ ordre_priorité: 1, created_at: -1 });
+      if (projectId) {
+        query.projet_id = projectId;
+        const project = await Project.findById(projectId);
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+        }
 
-      return handleCORS(NextResponse.json({ tasks }));
+        const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+          user.role_id?.permissions?.adminConfig;
+
+        const isMember = project.chef_projet.toString() === user._id.toString() ||
+          project.product_owner?.toString() === user._id.toString() ||
+          project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+        if (!hasSystemAccess && !isMember && !user.role_id?.permissions?.voirBudget) {
+          return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+        }
+      } else {
+        if (!user.role_id?.permissions?.voirBudget && !user.role_id?.permissions?.adminConfig) {
+          return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+        }
+      }
+
+      const expenses = await Expense.find(query)
+        .populate('saisi_par', 'nom_complet email')
+        .populate('validé_par', 'nom_complet email')
+        .populate('projet_id', 'nom')
+        .sort({ date_dépense: -1 })
+        .limit(200);
+
+      return handleCORS(NextResponse.json({ expenses }));
     }
 
     // GET /api/notifications - Liste notifications utilisateur
@@ -711,7 +1098,7 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      const notifications = await Notification.find({ 
+      const notifications = await Notification.find({
         destinataire: user._id,
         archivé: false
       })
@@ -735,17 +1122,19 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      const projectId = url.searchParams.get('projet_id');
-      const taskId = url.searchParams.get('task_id');
-      
+      const entityType = url.searchParams.get('entity_type');
+      const entityId = url.searchParams.get('entity_id');
+
       const query = {};
-      if (projectId) query.projet_id = projectId;
-      if (taskId) query.task_id = taskId;
+      if (entityType) query.entity_type = entityType;
+      if (entityId) query.entity_id = entityId;
 
       const comments = await Comment.find(query)
-        .populate('auteur', 'nom_complet email')
-        .sort({ créé_le: -1 })
-        .limit(100);
+        .populate('auteur', 'nom_complet email avatar')
+        .populate('mentions', 'nom_complet')
+        .populate('parent_id')
+        .sort({ created_at: -1 })
+        .limit(200);
 
       return handleCORS(NextResponse.json({ comments }));
     }
@@ -757,8 +1146,13 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
+      // SECURITY FIX: Require voirAudit permission to view activity
+      if (!user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas la permission de consulter l\'historique d\'activité' }, { status: 403 }));
+      }
+
       const limit = parseInt(url.searchParams.get('limit')) || 50;
-      
+
       // Récupérer les logs d'audit comme activité
       const activities = await AuditLog.find()
         .populate('utilisateur', 'nom_complet')
@@ -775,16 +1169,22 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
+      // User must have gererFichiers permission to access files
+      if (!user.role_id?.permissions?.gererFichiers) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé - permission gererFichiers requise' }, { status: 403 }));
+      }
+
       const projetId = url.searchParams.get('projet_id');
       const folder = url.searchParams.get('folder');
-      
+
       const query = {};
       if (projetId) query.projet_id = projetId;
       if (folder) query.dossier = folder;
 
       const files = await File.find(query)
         .populate('uploadé_par', 'nom_complet email')
-        .sort({ créé_le: -1 });
+        .sort({ created_at: -1 })
+        .limit(200); // Add pagination limit for performance
 
       // Récupérer aussi les dossiers distincts
       const folders = await File.aggregate([
@@ -803,11 +1203,32 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
+      // User must have gererFichiers permission to download files
+      if (!user.role_id?.permissions?.gererFichiers) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé - permission gererFichiers requise' }, { status: 403 }));
+      }
+
       const fileId = path.split('/')[2];
       const file = await File.findById(fileId);
 
       if (!file) {
         return handleCORS(NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 }));
+      }
+
+      // Verify user is member of the project that owns this file
+      if (file.projet_id) {
+        const project = await Project.findById(file.projet_id);
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+        }
+
+        const isMember = project.chef_projet.toString() === user._id.toString() ||
+          project.product_owner?.toString() === user._id.toString() ||
+          project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+        if (!isMember && !user.role_id?.permissions?.adminConfig) {
+          return handleCORS(NextResponse.json({ error: 'Vous n\'êtes pas membre de ce projet' }, { status: 403 }));
+        }
       }
 
       // Extraire les données base64
@@ -817,7 +1238,7 @@ export async function GET(request) {
 
         return new NextResponse(buffer, {
           headers: {
-            'Content-Type': file.type,
+            'Content-Type': file.type_mime || file.type || 'application/octet-stream',
             'Content-Disposition': `attachment; filename="${file.nom}"`,
             'Content-Length': buffer.length.toString()
           }
@@ -896,7 +1317,10 @@ export async function GET(request) {
 
       const projetId = url.searchParams.get('projet_id');
       const userId = url.searchParams.get('user_id');
-      
+      const limit = Math.min(parseInt(url.searchParams.get('limit')) || 100, 500);
+      const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+      const skip = (page - 1) * limit;
+
       const query = {};
       if (projetId) query.projet_id = projetId;
       if (userId) query.utilisateur = userId;
@@ -907,9 +1331,21 @@ export async function GET(request) {
       const timesheets = await TimesheetEntry.find(query)
         .populate('utilisateur', 'nom_complet email')
         .populate('task_id', 'titre')
-        .sort({ date: -1 });
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit);
 
-      return handleCORS(NextResponse.json({ timesheets }));
+      const total = await TimesheetEntry.countDocuments(query);
+
+      return handleCORS(NextResponse.json({
+        timesheets,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      }));
     }
 
     // GET /api/audit - Journal d'audit
@@ -918,13 +1354,113 @@ export async function GET(request) {
       if (!user || !user.role_id?.permissions?.voirAudit) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
+      return handleCORS(await handleGetAuditLogs(request.url, user));
+    }
 
-      const limit = parseInt(url.searchParams.get('limit')) || 100;
-      const logs = await AuditLog.find()
-        .sort({ timestamp: -1 })
-        .limit(limit);
+    // GET /api/audit/user/:userId - Activity for specific user
+    if (path.match(/^\/audit\/user\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+      const userId = path.split('/')[3];
+      return handleCORS(await handleGetUserActivity(userId, request.url, user));
+    }
 
-      return handleCORS(NextResponse.json({ logs }));
+    // GET /api/audit/stats - Statistics
+    if (path === '/audit/stats' || path === '/audit/stats/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+      return handleCORS(await handleGetAuditStatistics(request.url, user));
+    }
+
+    // GET /api/audit/export - Export audit logs
+    if (path === '/audit/export' || path === '/audit/export/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+      return handleCORS(await handleExportAuditLogs(request.url, user));
+    }
+
+    // GET /api/audit/summary - Quick audit summary
+    if (path === '/audit/summary' || path === '/audit/summary/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+      const searchParams = new URL(request.url).searchParams;
+      const hoursWindow = parseInt(searchParams.get('hours')) || 24;
+
+      try {
+        const now = new Date();
+        const startDate = new Date(now.getTime() - hoursWindow * 60 * 60 * 1000);
+
+        const [totalLogs, activitiesByAction, activitiesByUser] = await Promise.all([
+          AuditLog.countDocuments({ timestamp: { $gte: startDate } }),
+          AuditLog.aggregate([
+            { $match: { timestamp: { $gte: startDate } } },
+            { $group: { _id: '$action', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+          ]),
+          AuditLog.aggregate([
+            { $match: { timestamp: { $gte: startDate } } },
+            { $group: { _id: '$utilisateur_nom', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+          ])
+        ]);
+
+        return handleCORS(NextResponse.json({
+          summary: {
+            hoursWindow,
+            totalActivities: totalLogs,
+            activitiesByAction,
+            topUsers: activitiesByUser,
+            periodStart: startDate.toISOString(),
+            periodEnd: now.toISOString()
+          }
+        }));
+      } catch (error) {
+        const safeError = createSecureErrorResponse(error, 500);
+        return handleCORS(NextResponse.json({ error: safeError.message }, { status: safeError.statusCode }));
+      }
+    }
+
+    // GET /api/audit/entity/:entityType/:entityId - Activities for specific entity
+    if (path.match(/^\/audit\/entity\/[^/]+\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const parts = path.split('/');
+      const entityType = parts[3];
+      const entityId = parts[4];
+      const searchParams = new URL(request.url).searchParams;
+      const limit = parseInt(searchParams.get('limit')) || 100;
+
+      try {
+        const logs = await AuditLog.find({
+          entity_type: entityType,
+          entity_id: entityId
+        })
+          .populate('utilisateur', 'nom_complet email')
+          .sort({ timestamp: -1 })
+          .limit(limit);
+
+        return handleCORS(NextResponse.json({
+          entityType,
+          entityId,
+          activities: logs,
+          total: logs.length
+        }));
+      } catch (error) {
+        const safeError = createSecureErrorResponse(error, 500);
+        return handleCORS(NextResponse.json({ error: safeError.message }, { status: safeError.statusCode }));
+      }
     }
 
     return handleCORS(NextResponse.json({ 
@@ -933,8 +1469,8 @@ export async function GET(request) {
     }));
 
   } catch (error) {
-    console.error('Erreur API GET:', error);
-    return handleCORS(NextResponse.json({ error: error.message }, { status: 500 }));
+    const safeError = createSecureErrorResponse(error, 500);
+    return handleCORS(NextResponse.json({ error: safeError.message }, { status: safeError.statusCode }));
   }
 }
 
@@ -991,10 +1527,10 @@ export async function POST(request) {
 
       await initializeRoles();
 
-      const adminRole = await Role.findOne({ nom: 'Administrateur' });
+      const adminRole = await Role.findOne({ nom: 'Super Administrateur' });
       if (!adminRole) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Erreur d\'initialisation des rôles' 
+        return handleCORS(NextResponse.json({
+          error: 'Erreur d\'initialisation des rôles'
         }, { status: 500 }));
       }
 
@@ -1010,7 +1546,7 @@ export async function POST(request) {
         password_history: [{ hash: hashedPassword, date: new Date() }]
       });
 
-      await createAuditLog(user, 'création', 'utilisateur', user._id, 'Création du premier administrateur');
+      await logActivity(user, 'création', 'utilisateur', user._id, 'Création du premier administrateur', { request, httpMethod: 'POST', endpoint: '/auth/first-admin', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Premier administrateur créé avec succès',
@@ -1020,33 +1556,65 @@ export async function POST(request) {
 
     // POST /api/auth/login - Connexion
     if (path === '/auth/login' || path === '/auth/login/') {
+      // Rate limiting: 5 attempts per 15 minutes per IP
+      const clientIP = getClientIP(request);
+      const loginLimit = checkRateLimit(clientIP, RATE_LIMIT_CONFIG.login);
+
+      if (!loginLimit.allowed) {
+        const response = NextResponse.json({
+          error: 'Trop de tentatives de connexion. Veuillez réessayer plus tard.',
+          retryAfter: loginLimit.resetTime
+        }, { status: 429 });
+        response.headers.set('Retry-After', loginLimit.resetTime.toString());
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
+      }
+
       const { email, password } = body;
 
       if (!email || !password) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Email et mot de passe requis' 
-        }, { status: 400 }));
+        const response = NextResponse.json({
+          error: 'Email et mot de passe requis'
+        }, { status: 400 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
       }
 
       const user = await User.findOne({ email: email.toLowerCase() }).populate('role_id');
-      
+
       if (!user) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Email ou mot de passe incorrect' 
-        }, { status: 401 }));
+        const response = NextResponse.json({
+          error: 'Email ou mot de passe incorrect'
+        }, { status: 401 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
       }
 
       if (user.status !== 'Actif') {
-        return handleCORS(NextResponse.json({ 
-          error: 'Compte désactivé' 
-        }, { status: 403 }));
+        const response = NextResponse.json({
+          error: 'Compte désactivé'
+        }, { status: 403 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
       }
 
       const isValidPassword = await verifyPassword(password, user.password);
       if (!isValidPassword) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Email ou mot de passe incorrect' 
-        }, { status: 401 }));
+        const response = NextResponse.json({
+          error: 'Email ou mot de passe incorrect'
+        }, { status: 401 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
       }
 
       const token = await signToken({
@@ -1058,20 +1626,31 @@ export async function POST(request) {
       user.dernière_connexion = new Date();
       await user.save();
 
-      await createAuditLog(user, 'connexion', 'utilisateur', user._id, 'Connexion réussie');
+      await logActivity(user, 'connexion', 'utilisateur', user._id, 'Connexion réussie', { request, httpMethod: 'POST', endpoint: '/auth/login', httpStatus: 200 });
 
-      return handleCORS(NextResponse.json({
+      const response = NextResponse.json({
         token,
         user: {
           id: user._id,
           nom_complet: user.nom_complet,
           email: user.email,
-          role: user.role_id,
+          role: {
+            id: user.role_id._id,
+            nom: user.role_id.nom,
+            description: user.role_id.description,
+            permissions: user.role_id.permissions,
+            visibleMenus: user.role_id.visibleMenus
+          },
           avatar: user.avatar,
           first_login: user.first_login,
           must_change_password: user.must_change_password
         }
-      }));
+      });
+
+      // Set HttpOnly cookie for secure token storage
+      response.headers.set('Set-Cookie', createAuthCookieHeader(token));
+
+      return handleCORS(response);
     }
 
     // POST /api/auth/first-login-reset - Reset obligatoire premier login
@@ -1130,7 +1709,7 @@ export async function POST(request) {
       ];
       await user.save();
 
-      await createAuditLog(user, 'modification', 'utilisateur', user._id, 'Reset mot de passe premier login');
+      await logActivity(user, 'modification', 'utilisateur', user._id, 'Reset mot de passe premier login', { request, httpMethod: 'POST', endpoint: '/auth/reset-password', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Mot de passe modifié avec succès',
@@ -1138,10 +1717,10 @@ export async function POST(request) {
       }));
     }
 
-    // POST /api/users - Créer utilisateur (admin uniquement)
+    // POST /api/users - Créer utilisateur (admin ou super-admin)
     if (path === '/users' || path === '/users/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.adminConfig) {
+      if (!user || !user.role_id?.permissions?.gererUtilisateurs) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1174,7 +1753,10 @@ export async function POST(request) {
         password_history: [{ hash: hashedPassword, date: new Date() }]
       });
 
-      await createAuditLog(user, 'création', 'utilisateur', newUser._id, `Création utilisateur ${nom_complet}`);
+      // Populate role for response
+      await newUser.populate('role_id');
+
+      await logActivity(user, 'création', 'utilisateur', newUser._id, `Création utilisateur ${nom_complet}`, { request, httpMethod: 'POST', endpoint: '/users', httpStatus: 201 });
 
       await createNotification(
         newUser._id,
@@ -1193,7 +1775,13 @@ export async function POST(request) {
           id: newUser._id,
           nom_complet: newUser.nom_complet,
           email: newUser.email,
-          role_id: newUser.role_id,
+          role: newUser.role_id ? {
+            id: newUser.role_id._id,
+            nom: newUser.role_id.nom,
+            description: newUser.role_id.description,
+            permissions: newUser.role_id.permissions,
+            visibleMenus: newUser.role_id.visibleMenus
+          } : null,
           status: newUser.status
         }
       }));
@@ -1230,7 +1818,7 @@ export async function POST(request) {
         champs_dynamiques,
         chef_projet: user._id,
         product_owner,
-        membres: membres.map(m => ({ user_id: m, rôle_projet: 'Membre', date_ajout: new Date() })),
+        membres: [],
         date_début,
         date_fin_prévue,
         créé_par: user._id,
@@ -1243,15 +1831,29 @@ export async function POST(request) {
         ]
       });
 
+      // Initialize 8 predefined project roles for the new project
+      const projectRoleIds = await initializeProjectRoles(project._id);
+      const memberRole = projectRoleIds[3]; // "Membre Équipe" is the 4th role (index 3)
+
+      // Add initial members with proper project roles
+      if (membres.length > 0) {
+        project.membres = membres.map(m => ({
+          user_id: m,
+          project_role_id: memberRole,
+          date_ajout: new Date()
+        }));
+        await project.save();
+      }
+
       await ProjectTemplate.findByIdAndUpdate(template_id, {
         $inc: { utilisé_count: 1 }
       });
 
-      await createAuditLog(user, 'création', 'projet', project._id, `Création projet ${nom}`);
+      await logActivity(user, 'création', 'projet', project._id, `Création projet ${nom}`, { request, httpMethod: 'POST', endpoint: '/projects', httpStatus: 201 });
 
-      for (const membre of membres) {
-        await createNotification(
-          membre,
+      if (membres.length > 0) {
+        await createNotificationsBatch(
+          membres,
           'ajout_projet',
           'Ajouté à un nouveau projet',
           `Vous avez été ajouté au projet ${nom}`,
@@ -1268,14 +1870,175 @@ export async function POST(request) {
       }));
     }
 
-    // POST /api/tasks - Créer tâche
-    if (path === '/tasks' || path === '/tasks/') {
+    // POST /api/projects/:id/members - Ajouter membre au projet
+    if (path.match(/^\/projects\/[^/]+\/members\/?$/)) {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gererTaches) {
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier les permissions
+      const canManage = user.role_id?.permissions?.adminConfig ||
+        user.role_id?.permissions?.gererMembresProjet ||
+        project.chef_projet.toString() === user._id.toString();
+
+      if (!canManage) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { 
+      const { user_id, project_role_id } = body;
+
+      if (!user_id || !project_role_id) {
+        return handleCORS(NextResponse.json({
+          error: 'user_id et project_role_id requis'
+        }, { status: 400 }));
+      }
+
+      // Vérifier si c'est un rôle système ou un rôle de projet
+      let projectRole = await ProjectRole.findById(project_role_id);
+
+      if (!projectRole || projectRole.project_id.toString() !== projectId) {
+        // Essayer de le résoudre comme rôle système
+        const systemRole = await Role.findById(project_role_id);
+
+        if (!systemRole) {
+          return handleCORS(NextResponse.json({
+            error: 'Rôle invalide'
+          }, { status: 400 }));
+        }
+
+        // Chercher un ProjectRole avec le même nom dans ce projet
+        projectRole = await ProjectRole.findOne({
+          project_id: projectId,
+          nom: systemRole.nom
+        });
+
+        // Si pas de ProjectRole correspondant, en créer un basé sur le rôle système
+        if (!projectRole) {
+          projectRole = await ProjectRole.create({
+            project_id: projectId,
+            nom: systemRole.nom,
+            description: systemRole.description,
+            is_predefined: systemRole.is_predefined,
+            permissions: systemRole.permissions,
+            visibleMenus: systemRole.visibleMenus
+          });
+        }
+      }
+
+      // Vérifier que l'utilisateur existe
+      const targetUser = await User.findById(user_id);
+      if (!targetUser) {
+        return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier que l'utilisateur n'est pas déjà dans le projet
+      const exists = project.membres.some(m => m.user_id.toString() === user_id);
+      if (exists) {
+        return handleCORS(NextResponse.json({ error: 'Cet utilisateur est déjà membre du projet' }, { status: 400 }));
+      }
+
+      // Ajouter le membre avec le rôle de projet
+      project.membres.push({
+        user_id,
+        project_role_id,
+        date_ajout: new Date()
+      });
+
+      await project.save();
+
+      // Créer notification
+      await createNotification(
+        user_id,
+        'ajout_projet',
+        'Ajouté à un projet',
+        `Vous avez été ajouté au projet ${project.nom} avec le rôle ${projectRole.nom}`,
+        'projet',
+        project._id,
+        project.nom,
+        user._id
+      );
+
+      await logActivity(user, 'modification', 'projet', project._id, `Ajout membre ${targetUser.nom_complet} au projet ${project.nom} (rôle: ${projectRole.nom})`, { request, httpMethod: 'POST', endpoint: '/projects/:id/members', httpStatus: 201 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Membre ajouté avec succès',
+        member: project.membres[project.membres.length - 1]
+      }));
+    }
+
+    // POST /api/projects/:id/roles - Créer rôle personnalisé pour le projet
+    if (path.match(/^\/projects\/[^/]+\/roles\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId);
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier les permissions : seul le chef de projet ou admin peut créer des rôles
+      const canManageRoles = user.role_id?.permissions?.adminConfig ||
+        user.role_id?.permissions?.gererMembresProjet ||
+        project.chef_projet.toString() === user._id.toString();
+
+      if (!canManageRoles) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const { nom, description, permissions, visibleMenus } = body;
+
+      if (!nom || !permissions || !visibleMenus) {
+        return handleCORS(NextResponse.json({
+          error: 'Nom, permissions et visibleMenus sont requis'
+        }, { status: 400 }));
+      }
+
+      // Créer le rôle personnalisé
+      const customRole = await ProjectRole.create({
+        nom,
+        description,
+        project_id: projectId,
+        is_custom: true,
+        is_predefined: false,
+        permissions,
+        visibleMenus
+      });
+
+      // Ajouter le rôle à la liste des rôles personnalisés du projet
+      if (!project.custom_project_roles) {
+        project.custom_project_roles = [];
+      }
+      project.custom_project_roles.push(customRole._id);
+      await project.save();
+
+      await logActivity(user, 'création', 'rôle_projet', customRole._id, `Création rôle personnalisé ${nom} pour projet ${project.nom}`, { request, httpMethod: 'POST', endpoint: '/projects/:id/roles', httpStatus: 201 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle personnalisé créé avec succès',
+        role: customRole
+      }));
+    }
+
+    // POST /api/tasks - Créer tâche
+    if (path === '/tasks' || path === '/tasks/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const {
         projet_id,
         titre,
         description,
@@ -1288,22 +2051,82 @@ export async function POST(request) {
         story_points,
         estimation_heures,
         sprint_id,
+        deliverable_id,
         labels = [],
         tags = [],
-        date_échéance
+        date_échéance,
+        date_début
       } = body;
 
       if (!projet_id || !titre) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Projet et titre requis' 
+        return handleCORS(NextResponse.json({
+          error: 'Projet et titre requis'
         }, { status: 400 }));
       }
+
+      // Charger le projet avec ses members et leurs rôles projet
+      const project = await Project.findById(projet_id)
+        .populate({
+          path: 'membres.project_role_id'
+        });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Trouver les données du member
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Vérifier accès au projet
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined;
+
+      const canAccessProject = hasSystemAccess || isMember;
+
+      if (!canAccessProject) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Fusionner les permissions (système + projet)
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Vérifier permission fusionnée
+      if (!merged.permissions.gererTaches) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de créer des tâches dans ce projet'
+        }, { status: 403 }));
+      }
+
+      // Validate and normalize task type
+      const validTaskTypes = ['Épic', 'Story', 'Tâche', 'Bug'];
+      const normalizedType = type || 'Tâche';
+
+      // Map common variations to valid types
+      const typeMap = {
+        'epic': 'Épic',
+        'épic': 'Épic',
+        'story': 'Story',
+        'tâche': 'Tâche',
+        'task': 'Tâche',
+        'bug': 'Bug'
+      };
+
+      const finalType = typeMap[normalizedType.toLowerCase()] || validTaskTypes.find(t => t.toLowerCase() === normalizedType.toLowerCase()) || 'Tâche';
+
+      // Normalize deliverable_id: convert empty string to null
+      const finalDeliverableId = deliverable_id && deliverable_id.toString().trim() !== '' ? deliverable_id : null;
 
       const task = await Task.create({
         projet_id,
         titre,
         description,
-        type,
+        type: finalType,
         parent_id,
         epic_id,
         statut,
@@ -1313,8 +2136,10 @@ export async function POST(request) {
         story_points,
         estimation_heures,
         sprint_id,
+        deliverable_id: finalDeliverableId,
         labels,
         tags,
+        date_début,
         date_échéance,
         créé_par: user._id
       });
@@ -1323,7 +2148,7 @@ export async function POST(request) {
         $inc: { 'stats.total_tâches': 1 }
       });
 
-      await createAuditLog(user, 'création', 'tâche', task._id, `Création tâche ${titre}`);
+      await logActivity(user, 'création', 'tâche', task._id, `Création tâche ${titre}`, { request, httpMethod: 'POST', endpoint: '/tasks', httpStatus: 201, relatedProjectId: projet_id });
 
       if (assigné_à && assigné_à.toString() !== user._id.toString()) {
         await createNotification(
@@ -1337,6 +2162,26 @@ export async function POST(request) {
           user._id
         );
       }
+
+      // Emit real-time event
+      await emitToProject(projet_id.toString(), SOCKET_EVENTS.TASK_CREATED, {
+        task: {
+          _id: task._id,
+          titre: task.titre,
+          description: task.description,
+          statut: task.statut,
+          priorité: task.priorité,
+          assigné_à: task.assigné_à,
+          projet_id: task.projet_id,
+          créé_par: user._id,
+          created_at: task.created_at
+        },
+        createdBy: {
+          _id: user._id,
+          nom_complet: user.nom_complet,
+          email: user.email
+        }
+      });
 
       return handleCORS(NextResponse.json({
         message: 'Tâche créée avec succès',
@@ -1367,7 +2212,7 @@ export async function POST(request) {
         créé_par: user._id
       });
 
-      await createAuditLog(user, 'création', 'template', template._id, `Création template ${nom}`);
+      await logActivity(user, 'création', 'template', template._id, `Création template ${nom}`, { request, httpMethod: 'POST', endpoint: '/project-templates', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Template créé avec succès',
@@ -1407,7 +2252,7 @@ export async function POST(request) {
         visibleMenus: visibleMenus || {}
       });
 
-      await createAuditLog(user, 'création', 'rôle', role._id, `Création rôle personnalisé ${nom}`);
+      await logActivity(user, 'création', 'rôle', role._id, `Création rôle personnalisé ${nom}`, { request, httpMethod: 'POST', endpoint: '/roles', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle créé avec succès',
@@ -1418,16 +2263,55 @@ export async function POST(request) {
     // POST /api/sprints - Créer sprint
     if (path === '/sprints' || path === '/sprints/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gererSprints) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const { projet_id, nom, objectif, date_début, date_fin, capacité_équipe } = body;
 
       if (!projet_id || !nom || !date_début || !date_fin) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Champs requis manquants' 
+        return handleCORS(NextResponse.json({
+          error: 'Champs requis manquants'
         }, { status: 400 }));
+      }
+
+      // Charger le projet avec ses members et leurs rôles projet
+      const project = await Project.findById(projet_id)
+        .populate({
+          path: 'membres.project_role_id'
+        });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Trouver les données du member
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Vérifier accès au projet
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined;
+
+      const canAccessProject = hasSystemAccess || isMember;
+
+      if (!canAccessProject) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Fusionner les permissions (système + projet)
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Vérifier permission fusionnée
+      if (!merged.permissions.gererSprints) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de créer des sprints dans ce projet'
+        }, { status: 403 }));
       }
 
       const sprint = await Sprint.create({
@@ -1440,7 +2324,7 @@ export async function POST(request) {
         statut: 'Planifié'
       });
 
-      await createAuditLog(user, 'création', 'sprint', sprint._id, `Création sprint ${nom}`);
+      await logActivity(user, 'création', 'sprint', sprint._id, `Création sprint ${nom}`, { request, httpMethod: 'POST', endpoint: '/sprints', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint créé avec succès',
@@ -1451,16 +2335,55 @@ export async function POST(request) {
     // POST /api/timesheets - Créer entrée timesheet
     if (path === '/timesheets' || path === '/timesheets/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.saisirTemps) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const { projet_id, tâche_id, date, heures, description, type_saisie } = body;
 
       if (!projet_id || !date || !heures) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Champs requis: projet_id, date, heures' 
+        return handleCORS(NextResponse.json({
+          error: 'Champs requis: projet_id, date, heures'
         }, { status: 400 }));
+      }
+
+      // Charger le projet avec ses members et leurs rôles projet
+      const project = await Project.findById(projet_id)
+        .populate({
+          path: 'membres.project_role_id'
+        });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Trouver les données du member
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Vérifier accès au projet
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined;
+
+      const canAccessProject = hasSystemAccess || isMember;
+
+      if (!canAccessProject) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Fusionner les permissions (système + projet)
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Vérifier permission fusionnée
+      if (!merged.permissions.saisirTemps) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de saisir du temps dans ce projet'
+        }, { status: 403 }));
       }
 
       const timesheet = await TimesheetEntry.create({
@@ -1474,7 +2397,7 @@ export async function POST(request) {
         statut: 'brouillon'
       });
 
-      await createAuditLog(user, 'création', 'timesheet', timesheet._id, `Saisie temps ${heures}h`);
+      await logActivity(user, 'création', 'timesheet', timesheet._id, `Saisie temps ${heures}h`, { request, httpMethod: 'POST', endpoint: '/timesheets', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Temps enregistré avec succès',
@@ -1485,7 +2408,7 @@ export async function POST(request) {
     // POST /api/deliverable-types - Créer type de livrable
     if (path === '/deliverable-types' || path === '/deliverable-types/') {
       const user = await authenticate(request);
-      if (!user || !user.role?.permissions?.adminConfig) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -1495,22 +2418,15 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Nom requis' }, { status: 400 }));
       }
 
-      // Initialiser si nécessaire
-      if (!global.deliverableTypes) {
-        global.deliverableTypes = [];
-      }
-
-      const newType = {
-        _id: Date.now().toString(),
+      const newType = await DeliverableType.create({
         nom,
         description: description || '',
         couleur: couleur || '#6366f1',
-        workflow_étapes: workflow_étapes || ['Création', 'Validation']
-      };
+        workflow_étapes: workflow_étapes || ['Création', 'Validation'],
+        créé_par: user._id
+      });
 
-      global.deliverableTypes.push(newType);
-
-      await createAuditLog(user, 'création', 'deliverable-type', newType._id, `Création type livrable ${nom}`);
+      await logActivity(user, 'création', 'deliverable-type', newType._id, `Création type livrable ${nom}`, { request, httpMethod: 'POST', endpoint: '/deliverable-types', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Type de livrable créé',
@@ -1521,13 +2437,45 @@ export async function POST(request) {
     // POST /api/expenses - Créer dépense
     if (path === '/expenses' || path === '/expenses/') {
       const user = await authenticate(request);
-      
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      if (!user.role_id?.permissions?.modifierBudget) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
       const { projet_id, catégorie, description, montant, date_dépense, type, fournisseur } = body;
 
       if (!projet_id || !catégorie || !description || !montant || !date_dépense) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Champs requis manquants' 
+        return handleCORS(NextResponse.json({
+          error: 'Champs requis manquants'
         }, { status: 400 }));
+      }
+
+      const project = await Project.findById(projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets || user.role_id?.permissions?.adminConfig;
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      if (!merged.permissions.modifierBudget) {
+        return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas la permission de modifier le budget' }, { status: 403 }));
       }
 
       const expense = await Expense.create({
@@ -1542,7 +2490,7 @@ export async function POST(request) {
         saisi_par: user._id
       });
 
-      await createAuditLog(user, 'création', 'expense', expense._id, `Création dépense ${montant}€`);
+      await logActivity(user, 'création', 'expense', expense._id, `Création dépense ${montant}€`, { request, httpMethod: 'POST', endpoint: '/expenses', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Dépense créée avec succès',
@@ -1557,14 +2505,83 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
+      // Rate limiting: 50 uploads per hour per user
+      const uploadLimit = checkRateLimit(`user:${user._id}`, RATE_LIMIT_CONFIG.upload);
+      if (!uploadLimit.allowed) {
+        const response = NextResponse.json({
+          error: 'Limite d\'uploads dépassée. Veuillez réessayer plus tard.',
+          retryAfter: uploadLimit.resetTime
+        }, { status: 429 });
+        response.headers.set('Retry-After', uploadLimit.resetTime.toString());
+        return handleCORS(response);
+      }
+
       try {
         const formData = await request.formData();
         const file = formData.get('file');
         const projetId = formData.get('projet_id');
         const folder = formData.get('folder') || '/';
 
+        // SECURITY FIX: If projet_id is specified, verify user has access to project
+        if (projetId) {
+          const project = await Project.findById(projetId).populate({
+            path: 'membres.project_role_id'
+          });
+
+          if (!project) {
+            return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+          }
+
+          // Check if user is member or has voirTousProjets permission
+          const hasSystemAccess = user.role_id?.permissions?.voirTousProjets || user.role_id?.permissions?.adminConfig;
+          const isMember = project.chef_projet.toString() === user._id.toString() ||
+            project.product_owner?.toString() === user._id.toString() ||
+            project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+          if (!hasSystemAccess && !isMember) {
+            return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas accès à ce projet' }, { status: 403 }));
+          }
+        }
+
         if (!file) {
           return handleCORS(NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 }));
+        }
+
+        // File size validation: max 50MB
+        const MAX_FILE_SIZE = 50 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+          return handleCORS(NextResponse.json({
+            error: `La taille du fichier dépasse la limite de ${MAX_FILE_SIZE / 1024 / 1024}MB`
+          }, { status: 400 }));
+        }
+
+        // MIME type whitelist - allow common file types
+        const ALLOWED_MIME_TYPES = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain',
+          'text/csv',
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'application/zip',
+          'application/x-zip-compressed'
+        ];
+
+        if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+          return handleCORS(NextResponse.json({
+            error: 'Type de fichier non autorisé. Types acceptés: PDF, Word, Excel, Images, ZIP'
+          }, { status: 400 }));
+        }
+
+        // Filename validation - prevent path traversal
+        const sanitizedFilename = file.name.replace(/\.\.\//g, '').replace(/\0/g, '');
+        if (!sanitizedFilename) {
+          return handleCORS(NextResponse.json({ error: 'Nom de fichier invalide' }, { status: 400 }));
         }
 
         // Convertir le fichier en base64 pour stockage (simple pour MVP)
@@ -1573,17 +2590,20 @@ export async function POST(request) {
         const base64 = buffer.toString('base64');
 
         const fileDoc = await File.create({
-          nom: file.name,
+          nom: sanitizedFilename,
+          nom_original: sanitizedFilename,
           type: file.type,
+          type_mime: file.type,
           taille: file.size,
           url: `data:${file.type};base64,${base64}`,
           projet_id: projetId || null,
-          dossier: folder,
-          uploadé_par: user._id,
-          créé_le: new Date()
+          dossier: folder || '/',
+          entity_type: 'projet',
+          entity_id: projetId || null,
+          uploadé_par: user._id
         });
 
-        await createAuditLog(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${file.name}`);
+        await logActivity(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${sanitizedFilename}`, { request, httpMethod: 'POST', endpoint: '/files/upload', httpStatus: 201 });
 
         return handleCORS(NextResponse.json({
           message: 'Fichier téléversé avec succès',
@@ -1591,7 +2611,7 @@ export async function POST(request) {
         }));
       } catch (error) {
         console.error('Erreur upload:', error);
-        return handleCORS(NextResponse.json({ error: 'Erreur lors du téléversement' }, { status: 500 }));
+        return handleCORS(NextResponse.json({ error: 'Erreur lors du téléversement. Veuillez réessayer.' }, { status: 500 }));
       }
     }
 
@@ -1608,16 +2628,39 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Nom du dossier requis' }, { status: 400 }));
       }
 
+      // SECURITY FIX: If projet_id is specified, verify user has access to project
+      if (projet_id) {
+        const project = await Project.findById(projet_id).populate({
+          path: 'membres.project_role_id'
+        });
+
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+        }
+
+        // Check if user is member or has voirTousProjets permission
+        const hasSystemAccess = user.role_id?.permissions?.voirTousProjets || user.role_id?.permissions?.adminConfig;
+        const isMember = project.chef_projet.toString() === user._id.toString() ||
+          project.product_owner?.toString() === user._id.toString() ||
+          project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+        if (!hasSystemAccess && !isMember) {
+          return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas accès à ce projet' }, { status: 403 }));
+        }
+      }
+
       // Créer un "fichier" de type dossier pour la structure
       const folder = await File.create({
         nom: nom,
+        nom_original: nom,
         type: 'folder',
+        type_mime: 'application/x-folder',
         taille: 0,
         dossier: parent || '/',
         projet_id: projet_id || null,
-        uploadé_par: user._id,
-        est_dossier: true,
-        créé_le: new Date()
+        entity_type: 'projet',
+        entity_id: projet_id || null,
+        uploadé_par: user._id
       });
 
       return handleCORS(NextResponse.json({
@@ -1629,20 +2672,94 @@ export async function POST(request) {
     // POST /api/comments - Créer commentaire
     if (path === '/comments' || path === '/comments/') {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.commenter) {
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      // Check system-level comment permission
+      if (!user.role_id?.permissions?.commenter) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
       const { entity_type, entity_id, contenu, parent_id, mentions } = body;
 
       if (!entity_type || !entity_id || !contenu) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Champs requis manquants' 
+        return handleCORS(NextResponse.json({
+          error: 'Champs requis manquants'
         }, { status: 400 }));
       }
 
+      // Validate and normalize entity_type
+      const validEntityTypes = ['projet', 'tâche', 'task', 'livrable', 'sprint'];
+      const entityTypeMap = {
+        'project': 'projet',
+        'projet': 'projet',
+        'task': 'tâche',
+        'tâche': 'tâche',
+        'deliverable': 'livrable',
+        'livrable': 'livrable',
+        'sprint': 'sprint'
+      };
+      const normalizedEntityType = entityTypeMap[entity_type.toLowerCase()] || validEntityTypes.find(t => t.toLowerCase() === entity_type.toLowerCase());
+
+      if (!normalizedEntityType) {
+        return handleCORS(NextResponse.json({
+          error: `Type d'entité invalide. Doit être: ${validEntityTypes.join(', ')}`
+        }, { status: 400 }));
+      }
+
+      // If commenting on project entity, verify project access and merged permissions
+      let projet_id = null;
+      if (normalizedEntityType === 'projet') {
+        projet_id = entity_id;
+      } else if (normalizedEntityType === 'tâche') {
+        const task = await Task.findById(entity_id);
+        if (task) projet_id = task.projet_id;
+      } else if (normalizedEntityType === 'livrable') {
+        const deliverable = await Deliverable.findById(entity_id);
+        if (deliverable) projet_id = deliverable.projet_id;
+      } else if (normalizedEntityType === 'sprint') {
+        const sprint = await Sprint.findById(entity_id);
+        if (sprint) projet_id = sprint.projet_id;
+      }
+
+      // Verify project access if applicable
+      if (projet_id) {
+        const project = await Project.findById(projet_id).populate({
+          path: 'membres.project_role_id'
+        });
+
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Entité non trouvée' }, { status: 404 }));
+        }
+
+        const memberData = project.membres.find(m =>
+          m.user_id.toString() === user._id.toString()
+        );
+
+        const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+          user.role_id?.permissions?.adminConfig;
+
+        const isMember = memberData !== undefined;
+        const canAccessProject = hasSystemAccess || isMember;
+
+        if (!canAccessProject) {
+          return handleCORS(NextResponse.json({
+            error: 'Vous n\'avez pas accès à ce projet'
+          }, { status: 403 }));
+        }
+
+        // Verify merged permission for commenting
+        const merged = getMergedPermissions(user, memberData?.project_role_id);
+        if (!merged.permissions.commenter) {
+          return handleCORS(NextResponse.json({
+            error: 'Vous n\'avez pas la permission de commenter dans ce projet'
+          }, { status: 403 }));
+        }
+      }
+
       const comment = await Comment.create({
-        entity_type,
+        entity_type: normalizedEntityType,
         entity_id,
         contenu,
         parent_id,
@@ -1651,23 +2768,21 @@ export async function POST(request) {
         niveau: parent_id ? 1 : 0
       });
 
-      // Créer notifications pour les mentions
+      // Créer notifications pour les mentions (batch pour performance)
       if (mentions && mentions.length > 0) {
-        for (const mentionedUserId of mentions) {
-          await createNotification(
-            mentionedUserId,
-            'mention',
-            'Vous avez été mentionné',
-            `${user.nom_complet} vous a mentionné dans un commentaire`,
-            entity_type,
-            entity_id,
-            '',
-            user._id
-          );
-        }
+        await createNotificationsBatch(
+          mentions,
+          'mention',
+          'Vous avez été mentionné',
+          `${user.nom_complet} vous a mentionné dans un commentaire`,
+          normalizedEntityType,
+          entity_id,
+          '',
+          user._id
+        );
       }
 
-      await createAuditLog(user, 'création', 'comment', comment._id, 'Nouveau commentaire');
+      await logActivity(user, 'création', 'comment', comment._id, 'Nouveau commentaire', { request, httpMethod: 'POST', endpoint: '/comments', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Commentaire créé avec succès',
@@ -1678,13 +2793,61 @@ export async function POST(request) {
     // POST /api/deliverables - Créer livrable
     if (path === '/deliverables' || path === '/deliverables/') {
       const user = await authenticate(request);
-      
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      // Check system-level permissions (validerLivrable OR gererTaches)
+      const hasSystemPermission = user.role_id?.permissions?.validerLivrable ||
+        user.role_id?.permissions?.gererTaches;
+
+      if (!hasSystemPermission) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
       const { projet_id, type_id, nom, description, assigné_à, date_échéance } = body;
 
       if (!projet_id || !type_id || !nom) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Champs requis manquants' 
+        return handleCORS(NextResponse.json({
+          error: 'Champs requis manquants'
         }, { status: 400 }));
+      }
+
+      const project = await Project.findById(projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Find member data for merged permission check
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        memberData !== undefined;
+
+      const canAccessProject = hasSystemAccess || isMember;
+      if (!canAccessProject) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Check merged permissions (validerLivrable OR gererTaches at project level)
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      const canCreateDeliverable = merged.permissions.validerLivrable ||
+        merged.permissions.gererTaches;
+
+      if (!canCreateDeliverable) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de créer des livrables dans ce projet'
+        }, { status: 403 }));
       }
 
       const deliverable = await Deliverable.create({
@@ -1698,7 +2861,7 @@ export async function POST(request) {
         créé_par: user._id
       });
 
-      await createAuditLog(user, 'création', 'deliverable', deliverable._id, `Création livrable ${nom}`);
+      await logActivity(user, 'création', 'deliverable', deliverable._id, `Création livrable ${nom}`, { request, httpMethod: 'POST', endpoint: '/deliverables', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Livrable créé avec succès',
@@ -1740,7 +2903,7 @@ export async function POST(request) {
         }, { status: 400 }));
       }
 
-      await createAuditLog(user, 'test', 'sharepoint', null, 'Test de connexion SharePoint');
+      await logActivity(user, 'test', 'sharepoint', null, 'Test de connexion SharePoint', { request, httpMethod: 'POST', endpoint: '/sharepoint/test', httpStatus: 200 });
 
       // En production, ici on ferait l'appel OAuth2 vers Microsoft
       return handleCORS(NextResponse.json({
@@ -1757,7 +2920,7 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      await createAuditLog(user, 'sync', 'sharepoint', null, 'Synchronisation manuelle SharePoint lancée');
+      await logActivity(user, 'sync', 'sharepoint', null, 'Synchronisation manuelle SharePoint lancée', { request, httpMethod: 'POST', endpoint: '/sharepoint/sync', httpStatus: 200 });
 
       // Simuler une synchronisation
       return handleCORS(NextResponse.json({
@@ -1814,7 +2977,7 @@ export async function POST(request) {
         créé_par: user._id
       });
 
-      await createAuditLog(user, 'création', 'template', template._id, 'Création template par défaut');
+      await logActivity(user, 'création', 'template', template._id, 'Création template par défaut', { request, httpMethod: 'POST', endpoint: '/init-default-template', httpStatus: 201 });
 
       return handleCORS(NextResponse.json({
         message: 'Template par défaut créé avec succès',
@@ -1822,14 +2985,68 @@ export async function POST(request) {
       }));
     }
 
-    return handleCORS(NextResponse.json({ 
+    // POST /api/migrate-admin-role - Upgrade first admin from Administrateur to Super Administrateur
+    if (path === '/migrate-admin-role' || path === '/migrate-admin-role/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      try {
+        // Find the current user's role
+        if (user.role_id?.nom !== 'Administrateur') {
+          return handleCORS(NextResponse.json({
+            message: 'Vous avez déjà le rôle Super Administrateur ou un autre rôle',
+            current_role: user.role_id?.nom
+          }, { status: 200 }));
+        }
+
+        // Find Super Administrateur role
+        let superAdminRole = await Role.findOne({ nom: 'Super Administrateur' });
+        if (!superAdminRole) {
+          // Create it if it doesn't exist
+          await initializeRoles();
+          superAdminRole = await Role.findOne({ nom: 'Super Administrateur' });
+        }
+
+        // Update user's role
+        user.role_id = superAdminRole._id;
+        await user.save();
+
+        // Populate the new role for response
+        const updatedUser = await User.findById(user._id).populate('role_id');
+
+        await logActivity(user, 'modification', 'utilisateur', user._id, 'Migration du rôle Administrateur vers Super Administrateur', { request, httpMethod: 'POST', endpoint: '/migrate-admin-role', httpStatus: 200 });
+
+        return handleCORS(NextResponse.json({
+          message: 'Rôle mis à jour avec succès vers Super Administrateur',
+          user: {
+            id: updatedUser._id,
+            nom_complet: updatedUser.nom_complet,
+            email: updatedUser.email,
+            role: {
+              nom: updatedUser.role_id.nom,
+              permissions: updatedUser.role_id.permissions,
+              visibleMenus: updatedUser.role_id.visibleMenus
+            }
+          }
+        }));
+      } catch (error) {
+        console.error('Migration error:', error);
+        return handleCORS(NextResponse.json({
+          error: 'Erreur lors de la migration du rôle'
+        }, { status: 500 }));
+      }
+    }
+
+    return handleCORS(NextResponse.json({
       message: 'Endpoint POST non trouvé',
       path: path
     }, { status: 404 }));
 
   } catch (error) {
-    console.error('Erreur API POST:', error);
-    return handleCORS(NextResponse.json({ error: error.message }, { status: 500 }));
+    const safeError = createSecureErrorResponse(error, 500);
+    return handleCORS(NextResponse.json({ error: safeError.message }, { status: safeError.statusCode }));
   }
 }
 
@@ -1850,22 +3067,58 @@ export async function PUT(request) {
 
     // PUT /api/tasks/:id/move - Déplacer tâche (Kanban)
     if (path.match(/^\/tasks\/[^/]+\/move\/?$/)) {
-      if (!user.role_id?.permissions?.deplacerTaches) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const taskId = path.split('/')[2];
       const { nouvelle_colonne, nouveau_statut, nouvel_ordre } = body;
 
-      const task = await Task.findById(taskId);
+      const task = await Task.findById(taskId).populate({
+        path: 'projet_id',
+        populate: {
+          path: 'membres.project_role_id'
+        }
+      });
+
       if (!task) {
         return handleCORS(NextResponse.json({ error: 'Tâche non trouvée' }, { status: 404 }));
+      }
+
+      const project = task.projet_id;
+
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Merge permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.deplacerTaches) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de déplacer les tâches'
+        }, { status: 403 }));
       }
 
       task.colonne_kanban = nouvelle_colonne;
       if (nouveau_statut) task.statut = nouveau_statut;
       if (nouvel_ordre !== undefined) task.ordre_priorité = nouvel_ordre;
-      
+
       if (nouveau_statut === 'Terminé' && !task.date_complétion) {
         task.date_complétion = new Date();
         await Project.findByIdAndUpdate(task.projet_id, {
@@ -1875,7 +3128,7 @@ export async function PUT(request) {
 
       await task.save();
 
-      await createAuditLog(user, 'modification', 'tâche', task._id, `Déplacement tâche vers ${nouveau_statut || nouvelle_colonne}`);
+      await logActivity(user, 'modification', 'tâche', task._id, `Déplacement tâche vers ${nouveau_statut || nouvelle_colonne}`, { request, httpMethod: 'PUT', endpoint: '/tasks/:id/move', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Tâche déplacée avec succès',
@@ -1897,6 +3150,8 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Notification non trouvée' }, { status: 404 }));
       }
 
+      await logActivity(user, 'modification', 'notification', notificationId, 'Notification marquée comme lue', { request, httpMethod: 'PUT', endpoint: '/notifications/:id/read', httpStatus: 200 });
+
       return handleCORS(NextResponse.json({
         message: 'Notification marquée comme lue',
         notification
@@ -1905,10 +3160,14 @@ export async function PUT(request) {
 
     // PUT /api/notifications/read-all - Marquer toutes notifications comme lues
     if (path === '/notifications/read-all' || path === '/notifications/read-all/') {
-      await Notification.updateMany(
+      const result = await Notification.updateMany(
         { destinataire: user._id, lu: false },
         { lu: true, date_lecture: new Date() }
       );
+
+      if (result.modifiedCount > 0) {
+        await logActivity(user, 'modification', 'notification', null, `${result.modifiedCount} notification(s) marquée(s) comme lue(s)`, { request, httpMethod: 'PUT', endpoint: '/notifications/read-all', httpStatus: 200 });
+      }
 
       return handleCORS(NextResponse.json({
         message: 'Toutes les notifications ont été marquées comme lues'
@@ -1922,7 +3181,7 @@ export async function PUT(request) {
       }
 
       const roleId = path.split('/')[2];
-      const { nom, description, permissions, visible_menus } = body;
+      const { nom, description, permissions, visibleMenus } = body;
 
       const role = await Role.findById(roleId);
       if (!role) {
@@ -1930,19 +3189,19 @@ export async function PUT(request) {
       }
 
       if (role.is_predefined) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Les rôles prédéfinis ne peuvent pas être modifiés' 
+        return handleCORS(NextResponse.json({
+          error: 'Les rôles prédéfinis ne peuvent pas être modifiés'
         }, { status: 400 }));
       }
 
       if (nom) role.nom = nom;
       if (description !== undefined) role.description = description;
       if (permissions) role.permissions = permissions;
-      if (visible_menus) role.visible_menus = visible_menus;
+      if (visibleMenus) role.visibleMenus = visibleMenus;
 
       await role.save();
 
-      await createAuditLog(user, 'modification', 'role', role._id, `Modification rôle ${role.nom}`);
+      await logActivity(user, 'modification', 'role', role._id, `Modification rôle ${role.nom}`, { request, httpMethod: 'PUT', endpoint: '/roles/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle modifié avec succès',
@@ -1950,24 +3209,154 @@ export async function PUT(request) {
       }));
     }
 
-    // PUT /api/projects/:id - Modifier projet
-    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+    // PUT /api/projects/:id/roles/:roleId - Modifier rôle personnalisé du projet
+    if (path.match(/^\/projects\/[^/]+\/roles\/[^/]+\/?$/)) {
       const projectId = path.split('/')[2];
+      const roleId = path.split('/')[4];
+
       const project = await Project.findById(projectId);
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier les permissions : seul le chef de projet ou admin
+      const canManageRoles = user.role_id?.permissions?.adminConfig ||
+        user.role_id?.permissions?.gererMembresProjet ||
+        project.chef_projet.toString() === user._id.toString();
+
+      if (!canManageRoles) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const projectRole = await ProjectRole.findById(roleId);
+      if (!projectRole || projectRole.project_id.toString() !== projectId) {
+        return handleCORS(NextResponse.json({ error: 'Rôle non trouvé' }, { status: 404 }));
+      }
+
+      // Les rôles prédéfinis ne peuvent pas être modifiés
+      if (projectRole.is_predefined) {
+        return handleCORS(NextResponse.json({
+          error: 'Les rôles prédéfinis ne peuvent pas être modifiés'
+        }, { status: 400 }));
+      }
+
+      const { nom, description, permissions, visibleMenus } = body;
+
+      if (nom) projectRole.nom = nom;
+      if (description !== undefined) projectRole.description = description;
+      if (permissions) projectRole.permissions = permissions;
+      if (visibleMenus) projectRole.visibleMenus = visibleMenus;
+
+      await projectRole.save();
+      await logActivity(user, 'modification', 'rôle_projet', roleId, `Modification rôle ${projectRole.nom} du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id/roles/:roleId', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle modifié avec succès',
+        role: projectRole
+      }));
+    }
+
+    // PUT /api/projects/:id/members/:memberId/role - Changer le rôle d'un membre
+    if (path.match(/^\/projects\/[^/]+\/members\/[^/]+\/role\/?$/)) {
+      const projectId = path.split('/')[2];
+      const memberId = path.split('/')[4];
+      const { project_role_id } = body;
+
+      if (!project_role_id) {
+        return handleCORS(NextResponse.json({
+          error: 'project_role_id requis'
+        }, { status: 400 }));
+      }
+
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier les permissions
+      const canChangeRoles = user.role_id?.permissions?.adminConfig ||
+        user.role_id?.permissions?.changerRoleMembre ||
+        project.chef_projet.toString() === user._id.toString();
+
+      if (!canChangeRoles) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Vérifier que le rôle existe et appartient au projet
+      const projectRole = await ProjectRole.findById(project_role_id);
+      if (!projectRole || projectRole.project_id.toString() !== projectId) {
+        return handleCORS(NextResponse.json({
+          error: 'Rôle de projet invalide'
+        }, { status: 400 }));
+      }
+
+      // Trouver et mettre à jour le membre
+      const member = project.membres.find(m => m._id.toString() === memberId);
+      if (!member) {
+        return handleCORS(NextResponse.json({ error: 'Membre non trouvé' }, { status: 404 }));
+      }
+
+      const oldRoleId = member.project_role_id;
+      member.project_role_id = project_role_id;
+      await project.save();
+
+      // Récupérer le nom de l'ancien rôle pour le log
+      const oldRole = await ProjectRole.findById(oldRoleId);
+      const memberUser = await User.findById(member.user_id);
+
+      await logActivity(
+        user,
+        'modification',
+        'membre_projet',
+        member._id,
+        `Changement rôle ${memberUser?.nom_complet}: ${oldRole?.nom} → ${projectRole.nom}`,
+        { request, httpMethod: 'PUT', endpoint: '/projects/:id/members/:userId/role', httpStatus: 200, relatedProjectId: projectId }
+      );
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle du membre modifié avec succès',
+        member
+      }));
+    }
+
+    // PUT /api/projects/:id - Modifier projet
+    if (path.match(/^\/projects\/[^/]+\/?$/) && !path.includes('/members')) {
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId).populate({
+        path: 'membres.project_role_id'
+      });
 
       if (!project) {
         return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
       }
 
-      // Mise à jour des champs
+      // Check system-level permission first
+      if (!user.role_id?.permissions?.modifierCharteProjet) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé - permission système requise' }, { status: 403 }));
+      }
+
+      // Check admin override
+      if (!user.role_id?.permissions?.adminConfig) {
+        // Non-admin: must be project owner
+        const isProjectOwner = project.chef_projet.toString() === user._id.toString();
+        if (!isProjectOwner) {
+          return handleCORS(NextResponse.json({ error: 'Seul le chef de projet peut modifier le projet' }, { status: 403 }));
+        }
+      }
+
+      const allowedFields = ['nom', 'description', 'date_début', 'date_fin_prévue', 'statut', 'budget', 'product_owner', 'archivé', 'colonnes_kanban', 'champs_dynamiques'];
+      const restrictedFields = ['_id', 'chef_projet', 'créé_par', 'membres', 'template_id', 'created_at', 'updated_at'];
+
       Object.keys(body).forEach(key => {
-        if (body[key] !== undefined && key !== '_id') {
+        if (allowedFields.includes(key) && body[key] !== undefined) {
           project[key] = body[key];
+        } else if (restrictedFields.includes(key)) {
+          return;
         }
       });
 
       await project.save();
-      await createAuditLog(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`);
+      await logActivity(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Projet modifié avec succès',
@@ -1978,20 +3367,96 @@ export async function PUT(request) {
     // PUT /api/tasks/:id - Modifier tâche
     if (path.match(/^\/tasks\/[^/]+\/?$/) && !path.includes('/move')) {
       const taskId = path.split('/')[2];
-      const task = await Task.findById(taskId);
+      const task = await Task.findById(taskId).populate({
+        path: 'projet_id',
+        populate: {
+          path: 'membres.project_role_id'
+        }
+      });
 
       if (!task) {
         return handleCORS(NextResponse.json({ error: 'Tâche non trouvée' }, { status: 404 }));
       }
 
-      Object.keys(body).forEach(key => {
-        if (body[key] !== undefined && key !== '_id') {
-          task[key] = body[key];
+      const project = task.projet_id;
+
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Merge permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.gererTaches) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de modifier les tâches'
+        }, { status: 403 }));
+      }
+
+      const allowedFields = ['titre', 'description', 'statut', 'assigné_à', 'date_début', 'date_échéance', 'priorité', 'labels', 'ordre_priorité', 'deliverable_id', 'story_points', 'estimation_heures'];
+      const restrictedFields = ['_id', 'créé_par', 'projet_id', 'sprint_id', 'date_création'];
+
+      const validStatuts = ['Backlog', 'À faire', 'En cours', 'Review', 'Terminé'];
+      const validPriorités = ['Basse', 'Moyenne', 'Haute', 'Critique'];
+
+      try {
+        Object.keys(body).forEach(key => {
+          if (allowedFields.includes(key) && body[key] !== undefined) {
+            if (key === 'statut') {
+              if (!validStatuts.includes(body[key])) {
+                throw new Error(`Statut invalide. Doit être: ${validStatuts.join(', ')}`);
+              }
+            } else if (key === 'priorité') {
+              if (!validPriorités.includes(body[key])) {
+                throw new Error(`Priorité invalide. Doit être: ${validPriorités.join(', ')}`);
+              }
+            }
+            task[key] = body[key];
+          } else if (restrictedFields.includes(key)) {
+            return;
+          }
+        });
+
+        await task.save();
+        await logActivity(user, 'modification', 'tâche', task._id, `Modification tâche ${task.titre}`, { request, httpMethod: 'PUT', endpoint: '/tasks/:id', httpStatus: 200 });
+      } catch (error) {
+        const safeError = createSecureErrorResponse(error, 400);
+        return handleCORS(NextResponse.json({
+          error: safeError.message
+        }, { status: safeError.statusCode }));
+      }
+
+      // Emit real-time event
+      await emitToProject(task.projet_id.toString(), SOCKET_EVENTS.TASK_UPDATED, {
+        task: {
+          _id: task._id,
+          titre: task.titre,
+          description: task.description,
+          statut: task.statut,
+          priorité: task.priorité,
+          assigné_à: task.assigné_à,
+          projet_id: task.projet_id,
+          updated_at: task.updated_at
+        },
+        updatedBy: {
+          _id: user._id,
+          nom_complet: user.nom_complet
         }
       });
-
-      await task.save();
-      await createAuditLog(user, 'modification', 'tâche', task._id, `Modification tâche ${task.titre}`);
 
       return handleCORS(NextResponse.json({
         message: 'Tâche modifiée avec succès',
@@ -2002,20 +3467,59 @@ export async function PUT(request) {
     // PUT /api/sprints/:id - Modifier sprint
     if (path.match(/^\/sprints\/[^/]+\/?$/) && !path.includes('/start') && !path.includes('/complete')) {
       const sprintId = path.split('/')[2];
-      const sprint = await Sprint.findById(sprintId);
+      const sprint = await Sprint.findById(sprintId).populate({
+        path: 'projet_id',
+        populate: {
+          path: 'membres.project_role_id'
+        }
+      });
 
       if (!sprint) {
         return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
       }
 
+      const project = sprint.projet_id;
+
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Merge permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.gererSprints) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de modifier les sprints'
+        }, { status: 403 }));
+      }
+
+      const allowedFields = ['nom', 'description', 'date_début', 'date_fin', 'objectifs', 'capacité'];
+      const restrictedFields = ['_id', 'projet_id', 'statut', 'créé_par', 'date_création'];
+
       Object.keys(body).forEach(key => {
-        if (body[key] !== undefined && key !== '_id') {
+        if (allowedFields.includes(key) && body[key] !== undefined) {
           sprint[key] = body[key];
+        } else if (restrictedFields.includes(key)) {
+          return;
         }
       });
 
       await sprint.save();
-      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Modification sprint ${sprint.nom}`);
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Modification sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint modifié avec succès',
@@ -2023,22 +3527,91 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/project-templates/:id - Modifier template
+    if (path.match(/^\/project-templates\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const templateId = path.split('/')[2];
+      const template = await ProjectTemplate.findById(templateId);
+
+      if (!template) {
+        return handleCORS(NextResponse.json({ error: 'Template non trouvé' }, { status: 404 }));
+      }
+
+      const { nom, description, catégorie, champs } = body;
+
+      if (nom !== undefined) template.nom = nom;
+      if (description !== undefined) template.description = description;
+      if (catégorie !== undefined) template.catégorie = catégorie;
+      if (champs !== undefined) template.champs = champs;
+
+      await template.save();
+
+      await logActivity(user, 'modification', 'template', template._id, `Modification template ${template.nom}`, { request, httpMethod: 'PUT', endpoint: '/project-templates/:id', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Template modifié avec succès',
+        template
+      }));
+    }
+
     // PUT /api/timesheets/:id - Modifier timesheet
     if (path.match(/^\/timesheets\/[^/]+\/?$/) && !path.includes('/submit') && !path.includes('/validate')) {
       const timesheetId = path.split('/')[2];
-      const timesheet = await TimesheetEntry.findById(timesheetId);
+      const timesheet = await TimesheetEntry.findById(timesheetId).populate('projet_id');
 
       if (!timesheet) {
         return handleCORS(NextResponse.json({ error: 'Timesheet non trouvé' }, { status: 404 }));
       }
 
+      // Load project with member roles for merged permissions
+      const project = await Project.findById(timesheet.projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check system-level permission
+      const canEdit = user.role_id?.permissions?.saisirTemps || user.role_id?.permissions?.voirTempsPasses;
+      if (!canEdit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Check merged permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      const canEditMerged = merged.permissions.saisirTemps || merged.permissions.voirTempsPasses;
+      if (!canEditMerged) {
+        return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas la permission de modifier les timesheets dans ce projet' }, { status: 403 }));
+      }
+
+      // User isolation: can only edit own timesheets unless they have voirTempsPasses permission (merged)
+      if (!merged.permissions.voirTempsPasses && timesheet.utilisateur.toString() !== user._id.toString()) {
+        return handleCORS(NextResponse.json({ error: 'Vous ne pouvez modifier que vos propres timesheets' }, { status: 403 }));
+      }
+
+      const allowedFields = ['heures', 'description', 'task_id', 'activité_type', 'date'];
+      const restrictedFields = ['_id', 'utilisateur', 'projet_id', 'statut', 'créé_par', 'created_at'];
+
       Object.keys(body).forEach(key => {
-        if (body[key] !== undefined && key !== '_id') {
+        if (allowedFields.includes(key) && body[key] !== undefined) {
           timesheet[key] = body[key];
+        } else if (restrictedFields.includes(key)) {
+          return;
         }
       });
 
       await timesheet.save();
+
+      await logActivity(user, 'modification', 'timesheet', timesheet._id, `Modification timesheet`, { request, httpMethod: 'PUT', endpoint: '/timesheets/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Timesheet modifié avec succès',
@@ -2046,22 +3619,134 @@ export async function PUT(request) {
       }));
     }
 
-    // PUT /api/notifications/:id/read - Marquer comme lu
-    if (path.match(/^\/notifications\/[^/]+\/read\/?$/)) {
-      const notificationId = path.split('/')[2];
-      await Notification.findByIdAndUpdate(notificationId, { lu: true });
-      return handleCORS(NextResponse.json({ message: 'Notification marquée comme lue' }));
+    // PUT /api/timesheets/:id/status - Changer statut timesheet
+    if (path.match(/^\/timesheets\/[^/]+\/status\/?$/)) {
+      const timesheetId = path.split('/')[2];
+      const { statut } = body;
+
+      if (!statut || !['brouillon', 'soumis', 'validé', 'refusé'].includes(statut)) {
+        return handleCORS(NextResponse.json({
+          error: 'Statut invalide. Doit être: brouillon, soumis, validé, ou refusé'
+        }, { status: 400 }));
+      }
+
+      const timesheet = await TimesheetEntry.findById(timesheetId);
+      if (!timesheet) {
+        return handleCORS(NextResponse.json({ error: 'Timesheet non trouvé' }, { status: 404 }));
+      }
+
+      const isOwner = timesheet.utilisateur.toString() === user._id.toString();
+      const canValidate = user.role_id?.permissions?.voirTempsPasses || user.role_id?.permissions?.adminConfig;
+
+      if (!isOwner && !canValidate) {
+        return handleCORS(NextResponse.json({ error: 'Vous ne pouvez pas modifier ce timesheet' }, { status: 403 }));
+      }
+
+      // SECURITY: Prevent owner from validating own timesheet
+      // Owner can only: brouillon -> soumis (submit)
+      // Validator can only: soumis -> validé/refusé (validate)
+      if (isOwner && !canValidate) {
+        // Owner without validator permission can only submit
+        if (statut !== 'soumis' || timesheet.statut !== 'brouillon') {
+          return handleCORS(NextResponse.json({
+            error: 'Vous pouvez uniquement soumettre votre timesheet'
+          }, { status: 403 }));
+        }
+      } else if (!isOwner && canValidate) {
+        // Validator without being owner can only validate
+        if (timesheet.statut !== 'soumis' || !['validé', 'refusé'].includes(statut)) {
+          return handleCORS(NextResponse.json({
+            error: 'Vous ne pouvez que valider ou refuser les timesheets soumis'
+          }, { status: 403 }));
+        }
+      }
+
+      const validTransitions = {
+        'brouillon': ['soumis'],
+        'soumis': ['brouillon', 'validé', 'refusé'],
+        'validé': [],
+        'refusé': ['brouillon']
+      };
+
+      if (!validTransitions[timesheet.statut]?.includes(statut)) {
+        return handleCORS(NextResponse.json({
+          error: `Transition de statut non autorisée: ${timesheet.statut} → ${statut}`
+        }, { status: 400 }));
+      }
+
+      timesheet.statut = statut;
+      if (statut === 'validé') {
+        timesheet.validé_par = user._id;
+        timesheet.date_validation = new Date();
+      }
+
+      await timesheet.save();
+      await logActivity(user, 'modification', 'timesheet', timesheet._id, `Changement statut timesheet: ${statut}`, { request, httpMethod: 'PUT', endpoint: '/timesheets/:id/status', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: `Statut changé à ${statut}`,
+        timesheet
+      }));
     }
 
-    // PUT /api/notifications/read-all - Tout marquer comme lu
-    if (path === '/notifications/read-all' || path === '/notifications/read-all/') {
-      const user = await authenticate(request);
-      await Notification.updateMany(
-        { destinataire: user._id, lu: false },
-        { lu: true }
-      );
-      return handleCORS(NextResponse.json({ message: 'Toutes les notifications marquées comme lues' }));
+    // PUT /api/expenses/:id/status - Changer statut dépense
+    if (path.match(/^\/expenses\/[^/]+\/status\/?$/)) {
+      const expenseId = path.split('/')[2];
+      const { statut } = body;
+
+      if (!statut || !['en_attente', 'validé', 'refusé', 'payé'].includes(statut)) {
+        return handleCORS(NextResponse.json({
+          error: 'Statut invalide. Doit être: en_attente, validé, refusé, ou payé'
+        }, { status: 400 }));
+      }
+
+      const expense = await Expense.findById(expenseId);
+      if (!expense) {
+        return handleCORS(NextResponse.json({ error: 'Dépense non trouvée' }, { status: 404 }));
+      }
+
+      const isCreator = expense.saisi_par.toString() === user._id.toString();
+      const canValidate = user.role_id?.permissions?.modifierBudget || user.role_id?.permissions?.adminConfig;
+
+      if (!isCreator && !canValidate) {
+        return handleCORS(NextResponse.json({ error: 'Vous ne pouvez pas modifier cette dépense' }, { status: 403 }));
+      }
+
+      const validTransitions = {
+        'en_attente': ['validé', 'refusé'],
+        'validé': ['payé', 'refusé'],
+        'refusé': ['en_attente'],
+        'payé': []
+      };
+
+      if (!validTransitions[expense.statut]?.includes(statut)) {
+        return handleCORS(NextResponse.json({
+          error: `Transition de statut non autorisée: ${expense.statut} → ${statut}`
+        }, { status: 400 }));
+      }
+
+      expense.statut = statut;
+      if (statut === 'validé') {
+        expense.validé_par = user._id;
+        expense.date_validation = new Date();
+      }
+
+      try {
+        await expense.save();
+        await logActivity(user, 'modification', 'dépense', expense._id, `Changement statut dépense: ${statut}`, { request, httpMethod: 'PUT', endpoint: '/expenses/:id/status', httpStatus: 200 });
+
+        return handleCORS(NextResponse.json({
+          message: `Statut changé à ${statut}`,
+          expense
+        }));
+      } catch (error) {
+        const safeError = createSecureErrorResponse(error, 400);
+        return handleCORS(NextResponse.json({
+          error: safeError.message
+        }, { status: safeError.statusCode }));
+      }
     }
+
 
     // PUT /api/sharepoint/config - Enregistrer configuration SharePoint
     if (path === '/sharepoint/config' || path === '/sharepoint/config/') {
@@ -2074,8 +3759,9 @@ export async function PUT(request) {
       // Dans une vraie implémentation, on sauvegarderait dans une collection Settings
       // ou dans des variables d'environnement chiffrées
       
-      await createAuditLog(user, 'modification', 'sharepoint', null, 
-        `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`);
+      await logActivity(user, 'modification', 'sharepoint', null,
+        `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`,
+        { request, httpMethod: 'PUT', endpoint: '/sharepoint/config', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         success: true,
@@ -2104,15 +3790,54 @@ export async function PUT(request) {
     // PUT /api/budget/projects/:id - Modifier budget projet
     if (path.match(/^\/budget\/projects\/[^/]+\/?$/)) {
       const projectId = path.split('/')[3];
-      const project = await Project.findById(projectId);
+      const project = await Project.findById(projectId)
+        .populate({
+          path: 'membres.project_role_id'
+        });
 
       if (!project) {
         return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
       }
 
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Merge permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.modifierBudget) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de modifier le budget'
+        }, { status: 403 }));
+      }
+
+      const allowedBudgetFields = ['prévisionnel', 'réel', 'devise', 'catégories'];
       if (body.budget) {
-        project.budget = { ...project.budget, ...body.budget };
+        const cleanedBudget = {};
+        Object.keys(body.budget).forEach(key => {
+          if (allowedBudgetFields.includes(key)) {
+            cleanedBudget[key] = body.budget[key];
+          }
+        });
+        project.budget = { ...project.budget, ...cleanedBudget };
         await project.save();
+
+        await logActivity(user, 'modification', 'budget', project._id, `Modification budget du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/budget/projects/:id', httpStatus: 200 });
       }
 
       return handleCORS(NextResponse.json({
@@ -2137,15 +3862,135 @@ export async function PUT(request) {
 
       await User.findByIdAndUpdate(user._id, updateData);
 
+      await logActivity(user, 'modification', 'profil', user._id, 'Mise à jour du profil utilisateur', { request, httpMethod: 'PUT', endpoint: '/users/profile', httpStatus: 200 });
+
       return handleCORS(NextResponse.json({
         message: 'Profil mis à jour avec succès'
       }));
     }
 
-    // PUT /api/users/:id - Modifier utilisateur (admin)
-    if (path.match(/^\/users\/[^/]+\/?$/) && !path.includes('/profile')) {
+    // PUT /api/users/:id - Modifier utilisateur (admin ou super-admin)
+    if (path.match(/^\/users\/[^/]+\/?$/) && !path.includes('/profile') && !path.includes('/reset-password')) {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gererUtilisateurs) {
+      if (!user || (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const userId = path.split('/')[2];
+      const targetUser = await User.findById(userId).populate('role_id');
+
+      if (!targetUser) {
+        return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
+      }
+
+      const allowedFields = ['nom_complet', 'email', 'status', 'poste_titre', 'département_équipe', 'avatar', 'compétences'];
+      const restrictedFields = ['_id', 'password', 'password_history', 'role_id', 'created_at', 'updated_at', 'first_login', 'must_change_password'];
+
+      Object.keys(body).forEach(key => {
+        if (allowedFields.includes(key) && body[key] !== undefined) {
+          targetUser[key] = body[key];
+        } else if (restrictedFields.includes(key)) {
+          return;
+        }
+      });
+
+      await targetUser.save();
+      await logActivity(user, 'modification', 'utilisateur', targetUser._id, `Modification utilisateur ${targetUser.nom_complet}`, { request, httpMethod: 'PUT', endpoint: '/users/:id', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Utilisateur modifié avec succès',
+        user: {
+          id: targetUser._id,
+          nom_complet: targetUser.nom_complet,
+          email: targetUser.email,
+          role: targetUser.role_id ? {
+            id: targetUser.role_id._id,
+            nom: targetUser.role_id.nom,
+            description: targetUser.role_id.description,
+            permissions: targetUser.role_id.permissions,
+            visibleMenus: targetUser.role_id.visibleMenus
+          } : null,
+          avatar: targetUser.avatar,
+          poste_titre: targetUser.poste_titre,
+          département_équipe: targetUser.département_équipe,
+          status: targetUser.status
+        }
+      }));
+    }
+
+    // PUT /api/users/:id/role - Changer le rôle d'un utilisateur
+    if (path.match(/^\/users\/[^/]+\/role\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const userId = path.split('/')[2];
+      const targetUser = await User.findById(userId).populate('role_id');
+
+      if (!targetUser) {
+        return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
+      }
+
+      const { role_id } = body;
+      if (!role_id) {
+        return handleCORS(NextResponse.json({ error: 'role_id requis' }, { status: 400 }));
+      }
+
+      const newRole = await Role.findById(role_id);
+      if (!newRole) {
+        return handleCORS(NextResponse.json({ error: 'Rôle non trouvé' }, { status: 404 }));
+      }
+
+      const oldRoleName = targetUser.role_id?.nom;
+      targetUser.role_id = role_id;
+      await targetUser.save();
+
+      await logActivity(
+        user,
+        'modification',
+        'utilisateur_role',
+        targetUser._id,
+        `Changement rôle ${targetUser.nom_complet}: ${oldRoleName} → ${newRole.nom}`,
+        { request, httpMethod: 'PUT', endpoint: '/users/:id/role', httpStatus: 200, relatedUserIds: [targetUser._id] }
+      );
+
+      await createNotification(
+        targetUser._id,
+        'autre',
+        'Votre rôle a été modifié',
+        `Votre rôle a été changé à: ${newRole.nom}`,
+        'utilisateur',
+        targetUser._id,
+        targetUser.nom_complet,
+        user._id
+      );
+
+      return handleCORS(NextResponse.json({
+        message: 'Rôle utilisateur modifié avec succès',
+        user: {
+          id: targetUser._id,
+          nom_complet: targetUser.nom_complet,
+          email: targetUser.email,
+          role: {
+            id: newRole._id,
+            nom: newRole.nom,
+            description: newRole.description,
+            permissions: newRole.permissions,
+            visibleMenus: newRole.visibleMenus
+          },
+          avatar: targetUser.avatar,
+          poste_titre: targetUser.poste_titre,
+          département_équipe: targetUser.département_équipe,
+          status: targetUser.status
+        }
+      }));
+    }
+
+    // PUT /api/users/:id/reset-password - Réinitialiser le mot de passe utilisateur
+    if (path.match(/^\/users\/[^/]+\/reset-password\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
@@ -2156,44 +4001,96 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
       }
 
-      const { nom_complet, email, role_id, status } = body;
+      // Generate secure temporary password (not stored in DB, only displayed once)
+      const tempPassword = generateSecureTemporaryPassword();
+      const hashedPassword = await hashPassword(tempPassword);
 
-      if (nom_complet) targetUser.nom_complet = nom_complet;
-      if (email) targetUser.email = email;
-      if (role_id) targetUser.role_id = role_id;
-      if (status) targetUser.status = status;
+      targetUser.password = hashedPassword;
+      targetUser.must_change_password = true;
+      targetUser.password_history = [
+        { hash: hashedPassword, date: new Date() },
+        ...(targetUser.password_history || []).slice(0, 4)
+      ];
 
       await targetUser.save();
-      await createAuditLog(user, 'modification', 'utilisateur', targetUser._id, `Modification utilisateur ${targetUser.nom_complet}`);
+
+      await logActivity(user, 'modification', 'utilisateur', targetUser._id, `Réinitialisation mot de passe utilisateur ${targetUser.nom_complet}`, { request, httpMethod: 'PUT', endpoint: '/users/:id/reset-password', httpStatus: 200 });
+
+      await createNotification(
+        targetUser._id,
+        'autre',
+        'Mot de passe réinitialisé',
+        `Votre mot de passe a été réinitialisé par un administrateur. Veuillez vous connecter avec le mot de passe temporaire fourni et le modifier immédiatement.`,
+        'utilisateur',
+        targetUser._id,
+        targetUser.nom_complet,
+        user._id
+      );
 
       return handleCORS(NextResponse.json({
-        message: 'Utilisateur modifié avec succès',
-        user: targetUser
+        message: 'Mot de passe réinitialisé avec succès',
+        tempPassword: tempPassword,
+        success: true
       }));
     }
 
     // PUT /api/sprints/:id/start - Démarrer sprint
     if (path.match(/^\/sprints\/[^/]+\/start\/?$/)) {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gererSprints) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const sprintId = path.split('/')[2];
-      const sprint = await Sprint.findById(sprintId);
+      const sprint = await Sprint.findById(sprintId).populate('projet_id');
 
       if (!sprint) {
         return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
       }
 
+      // Load project with member roles
+      const project = await Project.findById(sprint.projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Check merged permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      if (!merged.permissions.gererSprints) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de démarrer des sprints'
+        }, { status: 403 }));
+      }
+
       if (sprint.statut !== 'Planifié') {
-        return handleCORS(NextResponse.json({ error: 'Le sprint doit être en statut "Planifié" pour être démarré' }, { status: 400 }));
+        return handleCORS(NextResponse.json({ error: `Le sprint doit être en statut "Planifié" pour être démarré (actuellement: ${sprint.statut})` }, { status: 400 }));
       }
 
       sprint.statut = 'Actif';
       await sprint.save();
 
-      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Démarrage sprint ${sprint.nom}`);
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Démarrage sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/start', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint démarré avec succès',
@@ -2204,15 +4101,50 @@ export async function PUT(request) {
     // PUT /api/sprints/:id/complete - Terminer sprint
     if (path.match(/^\/sprints\/[^/]+\/complete\/?$/)) {
       const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.gererSprints) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const sprintId = path.split('/')[2];
-      const sprint = await Sprint.findById(sprintId);
+      const sprint = await Sprint.findById(sprintId).populate('projet_id');
 
       if (!sprint) {
         return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
+      }
+
+      // Load project with member roles
+      const project = await Project.findById(sprint.projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Check merged permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      if (!merged.permissions.gererSprints) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de terminer des sprints'
+        }, { status: 403 }));
       }
 
       if (sprint.statut !== 'Actif') {
@@ -2222,7 +4154,7 @@ export async function PUT(request) {
       sprint.statut = 'Terminé';
       await sprint.save();
 
-      await createAuditLog(user, 'modification', 'sprint', sprint._id, `Fin sprint ${sprint.nom}`);
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Fin sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/complete', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint terminé avec succès',
@@ -2230,110 +4162,86 @@ export async function PUT(request) {
       }));
     }
 
-    // PUT /api/projects/:id - Modifier projet
-    if (path.match(/^\/projects\/[^/]+\/?$/)) {
-      const user = await authenticate(request);
-      if (!user || !user.role_id?.permissions?.modifierProjet) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
-      }
-
-      const projectId = path.split('/')[2];
-      const project = await Project.findById(projectId);
-
-      if (!project) {
-        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
-      }
-
-      Object.keys(body).forEach(key => {
-        if (body[key] !== undefined && key !== '_id' && key !== 'budget') {
-          project[key] = body[key];
-        }
-      });
-
-      await project.save();
-      await createAuditLog(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`);
-
-      return handleCORS(NextResponse.json({
-        message: 'Projet modifié avec succès',
-        project
-      }));
-    }
 
     // PUT /api/deliverable-types/:id - Modifier type de livrable
     if (path.match(/^\/deliverable-types\/[^/]+\/?$/)) {
       const user = await authenticate(request);
-      if (!user || !user.role?.permissions?.adminConfig) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
       const typeId = path.split('/')[2];
       const { nom, description, couleur, workflow_étapes } = body;
 
-      if (!global.deliverableTypes) {
-        global.deliverableTypes = [];
-      }
-
-      const typeIndex = global.deliverableTypes.findIndex(t => t._id === typeId);
-      if (typeIndex === -1) {
+      const type = await DeliverableType.findById(typeId);
+      if (!type) {
         return handleCORS(NextResponse.json({ error: 'Type non trouvé' }, { status: 404 }));
       }
 
-      global.deliverableTypes[typeIndex] = {
-        ...global.deliverableTypes[typeIndex],
-        nom: nom || global.deliverableTypes[typeIndex].nom,
-        description: description !== undefined ? description : global.deliverableTypes[typeIndex].description,
-        couleur: couleur || global.deliverableTypes[typeIndex].couleur,
-        workflow_étapes: workflow_étapes || global.deliverableTypes[typeIndex].workflow_étapes
-      };
+      if (nom !== undefined) type.nom = nom;
+      if (description !== undefined) type.description = description;
+      if (couleur !== undefined) type.couleur = couleur;
+      if (workflow_étapes !== undefined) type.workflow_étapes = workflow_étapes;
+
+      await type.save();
+
+      await logActivity(user, 'modification', 'deliverable-type', type._id, `Modification type livrable ${type.nom}`, { request, httpMethod: 'PUT', endpoint: '/deliverable-types/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Type de livrable modifié',
-        type: global.deliverableTypes[typeIndex]
+        type
       }));
     }
 
     // PUT /api/settings/maintenance - Activer/désactiver maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
-      const user = await authenticate(request);
-      if (!user || !user.role?.permissions?.adminConfig) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      try {
+        const user = await authenticate(request);
+        if (!user || !user.role_id?.permissions?.adminConfig) {
+          return handleCORS(APIResponse.forbidden());
+        }
+
+        const { enabled, message } = body;
+
+        // Sauvegarder dans la BD via appSettingsService
+        await appSettingsService.setMaintenanceMode(enabled, user._id);
+
+        await logActivity(user, 'modification', 'système', null,
+          enabled ? 'Activation mode maintenance' : 'Désactivation mode maintenance',
+          { request, httpMethod: 'PUT', endpoint: '/settings/maintenance', httpStatus: 200 }
+        );
+
+        return handleCORS(APIResponse.success({
+          enabled,
+          message: enabled ? 'Mode maintenance activé' : 'Mode maintenance désactivé'
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'PUT /settings/maintenance'));
       }
-
-      const { enabled, message } = body;
-      
-      // Stocker dans une variable globale (en prod, utiliser une base de données ou Redis)
-      global.maintenanceMode = enabled;
-      global.maintenanceMessage = message || '';
-
-      await createAuditLog(user, 'modification', 'système', null, 
-        enabled ? 'Activation mode maintenance' : 'Désactivation mode maintenance'
-      );
-
-      return handleCORS(NextResponse.json({
-        message: enabled ? 'Mode maintenance activé' : 'Mode maintenance désactivé',
-        enabled,
-        maintenanceMessage: message
-      }));
     }
 
     // PUT /api/settings - Modifier paramètres système
     if (path === '/settings' || path === '/settings/') {
-      const user = await authenticate(request);
-      if (!user || !user.role?.permissions?.adminConfig) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      try {
+        const user = await authenticate(request);
+        if (!user || !user.role_id?.permissions?.adminConfig) {
+          return handleCORS(APIResponse.forbidden());
+        }
+
+        const { settings } = body;
+
+        // Sauvegarder dans la BD via appSettingsService
+        await appSettingsService.setAppSettings(settings, user._id);
+
+        await logActivity(user, 'modification', 'système', null, 'Modification paramètres système', { request, httpMethod: 'PUT', endpoint: '/settings', httpStatus: 200 });
+
+        return handleCORS(APIResponse.success({
+          message: 'Paramètres enregistrés avec succès',
+          settings
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'PUT /settings'));
       }
-
-      const { settings } = body;
-      
-      // En prod, sauvegarder dans une collection Settings
-      global.appSettings = settings;
-
-      await createAuditLog(user, 'modification', 'système', null, 'Modification paramètres système');
-
-      return handleCORS(NextResponse.json({
-        message: 'Paramètres enregistrés avec succès',
-        settings
-      }));
     }
 
     // PUT /api/roles/:id - Modifier rôle
@@ -2361,7 +4269,7 @@ export async function PUT(request) {
 
       const updatedRole = await Role.findByIdAndUpdate(roleId, updates, { new: true });
 
-      await createAuditLog(user, 'modification', 'rôle', roleId, `Modification rôle ${updatedRole.nom}`);
+      await logActivity(user, 'modification', 'rôle', roleId, `Modification rôle ${updatedRole.nom}`, { request, httpMethod: 'PUT', endpoint: '/roles/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle modifié avec succès',
@@ -2419,7 +4327,7 @@ export async function DELETE(request) {
 
       await Role.findByIdAndDelete(roleId);
 
-      await createAuditLog(user, 'suppression', 'rôle', roleId, `Suppression rôle ${role.nom}`);
+      await logActivity(user, 'suppression', 'rôle', roleId, `Suppression rôle ${role.nom}`, { request, httpMethod: 'DELETE', endpoint: '/roles/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle supprimé avec succès'
@@ -2429,28 +4337,80 @@ export async function DELETE(request) {
     // DELETE /api/notifications/:id - Supprimer notification
     if (path.match(/^\/notifications\/[^/]+\/?$/)) {
       const notificationId = path.split('/')[2];
+      const notification = await Notification.findById(notificationId);
+
+      if (!notification) {
+        return handleCORS(NextResponse.json({ error: 'Notification non trouvée' }, { status: 404 }));
+      }
+
+      const canDelete = user.role_id?.permissions?.adminConfig ||
+        notification.destinataire.toString() === user._id.toString();
+
+      if (!canDelete) {
+        return handleCORS(NextResponse.json({ error: 'Vous ne pouvez supprimer que vos propres notifications' }, { status: 403 }));
+      }
+
       await Notification.findByIdAndDelete(notificationId);
+      await logActivity(user, 'suppression', 'notification', notificationId, 'Suppression notification', { request, httpMethod: 'DELETE', endpoint: '/notifications/:id', httpStatus: 200 });
+
       return handleCORS(NextResponse.json({ message: 'Notification supprimée' }));
     }
 
     // DELETE /api/tasks/:id - Supprimer tâche
     if (path.match(/^\/tasks\/[^/]+\/?$/)) {
-      if (!user.role_id?.permissions?.gererTaches) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const taskId = path.split('/')[2];
-      const task = await Task.findByIdAndDelete(taskId);
+      const task = await Task.findById(taskId).populate({
+        path: 'projet_id',
+        populate: {
+          path: 'membres.project_role_id'
+        }
+      });
 
       if (!task) {
         return handleCORS(NextResponse.json({ error: 'Tâche non trouvée' }, { status: 404 }));
       }
 
+      const project = task.projet_id;
+
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Merge permissions
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.gererTaches) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de supprimer les tâches'
+        }, { status: 403 }));
+      }
+
+      await Task.findByIdAndDelete(taskId);
+
       await Project.findByIdAndUpdate(task.projet_id, {
         $inc: { 'stats.total_tâches': -1 }
       });
 
-      await createAuditLog(user, 'suppression', 'tâche', task._id, `Suppression tâche ${task.titre}`);
+      await logActivity(user, 'suppression', 'tâche', task._id, `Suppression tâche ${task.titre}`, { request, httpMethod: 'DELETE', endpoint: '/tasks/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Tâche supprimée avec succès'
@@ -2459,86 +4419,303 @@ export async function DELETE(request) {
 
     // DELETE /api/sprints/:id - Supprimer sprint
     if (path.match(/^\/sprints\/[^/]+\/?$/)) {
-      if (!user.role_id?.permissions?.gererSprints) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
       const sprintId = path.split('/')[2];
-      const sprint = await Sprint.findByIdAndDelete(sprintId);
+      const sprint = await Sprint.findById(sprintId).populate('projet_id');
 
       if (!sprint) {
         return handleCORS(NextResponse.json({ error: 'Sprint non trouvé' }, { status: 404 }));
       }
 
-      await createAuditLog(user, 'suppression', 'sprint', sprintId, `Suppression sprint ${sprint.nom}`);
+      // Load project with member roles
+      const project = await Project.findById(sprint.projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // Find member data
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      // Check project access
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined;
+      const canAccessProject = hasSystemAccess || isMember;
+
+      if (!canAccessProject) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas accès à ce projet'
+        }, { status: 403 }));
+      }
+
+      // Merge permissions (system + project)
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      // Check merged permission
+      if (!merged.permissions.gererSprints) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de supprimer les sprints'
+        }, { status: 403 }));
+      }
+
+      await Sprint.findByIdAndDelete(sprintId);
+
+      await logActivity(user, 'suppression', 'sprint', sprintId, `Suppression sprint ${sprint.nom}`, { request, httpMethod: 'DELETE', endpoint: '/sprints/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint supprimé avec succès'
       }));
     }
 
-    // DELETE /api/projects/:id - Supprimer projet
-    if (path.match(/^\/projects\/[^/]+\/?$/)) {
-      if (!user.role_id?.permissions?.supprimerProjet) {
-        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
-      }
-
+    // DELETE /api/projects/:id/members/:memberId - Retirer membre du projet
+    if (path.match(/^\/projects\/[^/]+\/members\/[^/]+\/?$/)) {
       const projectId = path.split('/')[2];
+      const memberId = path.split('/')[4];
+
       const project = await Project.findById(projectId);
 
       if (!project) {
         return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
       }
 
+      // Vérifier les permissions
+      const canManage = user.role_id?.permissions?.adminConfig ||
+        user.role_id?.permissions?.gererMembresProjet ||
+        project.chef_projet.toString() === user._id.toString();
+
+      if (!canManage) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      // Supprimer le membre
+      const memberExists = project.membres.some(m => m._id.toString() === memberId);
+      if (!memberExists) {
+        return handleCORS(NextResponse.json({ error: 'Membre non trouvé' }, { status: 404 }));
+      }
+
+      project.membres = project.membres.filter(m => m._id.toString() !== memberId);
+      await project.save();
+
+      await logActivity(user, 'modification', 'projet', project._id, `Suppression membre du projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id/members/:memberId', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Membre supprimé avec succès'
+      }));
+    }
+
+    // DELETE /api/projects/:id - Supprimer projet
+    if (path.match(/^\/projects\/[^/]+\/?$/)) {
+      const projectId = path.split('/')[2];
+      const project = await Project.findById(projectId).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      // SECURITY FIX: Check merged permissions (system + project level)
+      // Only project owners/admins or users with supprimerProjet permission AND project access can delete
+      const hasSystemPermission = user.role_id?.permissions?.supprimerProjet === true;
+      if (!hasSystemPermission) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé - permission système requise' }, { status: 403 }));
+      }
+
+      // Check admin override
+      if (user.role_id?.permissions?.adminConfig) {
+        // Admin can delete any project
+      } else {
+        // Non-admin must be project owner
+        const isProjectOwner = project.chef_projet.toString() === user._id.toString();
+        if (!isProjectOwner) {
+          return handleCORS(NextResponse.json({ error: 'Seul le chef de projet peut supprimer le projet' }, { status: 403 }));
+        }
+      }
+
       // Supprimer les tâches associées
       await Task.deleteMany({ projet_id: projectId });
-      
+
       // Supprimer les sprints associés
       await Sprint.deleteMany({ projet_id: projectId });
-      
+
       // Supprimer le projet
       await Project.findByIdAndDelete(projectId);
 
-      await createAuditLog(user, 'suppression', 'projet', projectId, `Suppression projet ${project.nom}`);
+      await logActivity(user, 'suppression', 'projet', projectId, `Suppression projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Projet supprimé avec succès'
       }));
     }
 
+    // DELETE /api/expenses/:id - Supprimer dépense
+    if (path.match(/^\/expenses\/[^/]+\/?$/) && !path.includes('/validate')) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const expenseId = path.split('/')[2];
+      const expense = await Expense.findById(expenseId);
+
+      if (!expense) {
+        return handleCORS(NextResponse.json({ error: 'Dépense non trouvée' }, { status: 404 }));
+      }
+
+      const project = await Project.findById(expense.projet_id).populate({
+        path: 'membres.project_role_id'
+      });
+
+      if (!project) {
+        return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
+      }
+
+      const memberData = project.membres.find(m =>
+        m.user_id.toString() === user._id.toString()
+      );
+
+      const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
+        user.role_id?.permissions?.adminConfig;
+
+      const isMember = memberData !== undefined ||
+        project.chef_projet.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString();
+
+      if (!hasSystemAccess && !isMember) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      if (!merged.permissions.modifierBudget) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de supprimer les dépenses'
+        }, { status: 403 }));
+      }
+
+      if (expense.saisi_par.toString() !== user._id.toString() && !merged.permissions.modifierBudget) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous ne pouvez supprimer que vos propres dépenses'
+        }, { status: 403 }));
+      }
+
+      await Expense.findByIdAndDelete(expenseId);
+      await logActivity(user, 'suppression', 'expense', expenseId, `Suppression dépense ${expense.montant}€`, { request, httpMethod: 'DELETE', endpoint: '/expenses/:id', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Dépense supprimée avec succès'
+      }));
+    }
+
     // DELETE /api/deliverable-types/:id - Supprimer type de livrable
     if (path.match(/^\/deliverable-types\/[^/]+\/?$/)) {
       const user = await authenticate(request);
-      if (!user || !user.role?.permissions?.adminConfig) {
+      if (!user || !user.role_id?.permissions?.adminConfig) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
       const typeId = path.split('/')[2];
 
-      if (!global.deliverableTypes) {
-        global.deliverableTypes = [];
-      }
+      const type = await DeliverableType.findByIdAndDelete(typeId);
 
-      const initialLength = global.deliverableTypes.length;
-      global.deliverableTypes = global.deliverableTypes.filter(t => t._id !== typeId);
-
-      if (global.deliverableTypes.length === initialLength) {
+      if (!type) {
         return handleCORS(NextResponse.json({ error: 'Type non trouvé' }, { status: 404 }));
       }
+
+      await logActivity(user, 'suppression', 'deliverable-type', typeId, `Suppression type livrable ${type.nom}`, { request, httpMethod: 'DELETE', endpoint: '/deliverable-types/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Type de livrable supprimé'
       }));
     }
 
+    // DELETE /api/project-templates/:id - Supprimer template
+    if (path.match(/^\/project-templates\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const templateId = path.split('/')[2];
+
+      const template = await ProjectTemplate.findByIdAndDelete(templateId);
+
+      if (!template) {
+        return handleCORS(NextResponse.json({ error: 'Template non trouvé' }, { status: 404 }));
+      }
+
+      await logActivity(user, 'suppression', 'template', templateId, `Suppression template ${template.nom}`, { request, httpMethod: 'DELETE', endpoint: '/project-templates/:id', httpStatus: 200 });
+
+      return handleCORS(NextResponse.json({
+        message: 'Template supprimé avec succès'
+      }));
+    }
+
     // DELETE /api/comments/:id - Supprimer commentaire
     if (path.match(/^\/comments\/[^/]+\/?$/)) {
+      if (!user.role_id?.permissions?.commenter) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
       const commentId = path.split('/')[2];
-      const comment = await Comment.findByIdAndDelete(commentId);
+      const comment = await Comment.findById(commentId);
 
       if (!comment) {
         return handleCORS(NextResponse.json({ error: 'Commentaire non trouvé' }, { status: 404 }));
       }
+
+      // SECURITY FIX: Verify user has access to the commented entity
+      let projet_id = null;
+      if (comment.entity_type === 'projet') {
+        projet_id = comment.entity_id;
+      } else if (comment.entity_type === 'tâche') {
+        const task = await Task.findById(comment.entity_id);
+        if (task) projet_id = task.projet_id;
+      } else if (comment.entity_type === 'livrable') {
+        const deliverable = await Deliverable.findById(comment.entity_id);
+        if (deliverable) projet_id = deliverable.projet_id;
+      } else if (comment.entity_type === 'sprint') {
+        const sprint = await Sprint.findById(comment.entity_id);
+        if (sprint) projet_id = sprint.projet_id;
+      }
+
+      // If comment is on a project entity, verify access
+      if (projet_id) {
+        const project = await Project.findById(projet_id).populate({
+          path: 'membres.project_role_id'
+        });
+
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Commentaire non trouvé' }, { status: 404 }));
+        }
+
+        const hasSystemAccess = user.role_id?.permissions?.voirTousProjets || user.role_id?.permissions?.adminConfig;
+        const isMember = project.chef_projet.toString() === user._id.toString() ||
+          project.product_owner?.toString() === user._id.toString() ||
+          project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+        if (!hasSystemAccess && !isMember) {
+          return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas accès à ce projet' }, { status: 403 }));
+        }
+      }
+
+      const canDelete = user.role_id?.permissions?.adminConfig || comment.auteur.toString() === user._id.toString();
+      if (!canDelete) {
+        return handleCORS(NextResponse.json({ error: 'Vous ne pouvez supprimer que vos propres commentaires' }, { status: 403 }));
+      }
+
+      await Comment.findByIdAndDelete(commentId);
+      await logActivity(user, 'suppression', 'comment', commentId, 'Suppression commentaire', { request, httpMethod: 'DELETE', endpoint: '/comments/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Commentaire supprimé avec succès'
@@ -2553,13 +4730,36 @@ export async function DELETE(request) {
       }
 
       const fileId = path.split('/')[2];
-      const file = await File.findByIdAndDelete(fileId);
+      const file = await File.findById(fileId);
 
       if (!file) {
         return handleCORS(NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 }));
       }
 
-      await createAuditLog(user, 'suppression', 'fichier', fileId, `Suppression fichier ${file.nom}`);
+      // SECURITY FIX: If file is attached to a project, verify user has access to project
+      if (file.projet_id) {
+        const project = await Project.findById(file.projet_id).populate({
+          path: 'membres.project_role_id'
+        });
+
+        if (!project) {
+          return handleCORS(NextResponse.json({ error: 'Projet du fichier non trouvé' }, { status: 404 }));
+        }
+
+        // Check if user is member or has voirTousProjets permission
+        const hasSystemAccess = user.role_id?.permissions?.voirTousProjets || user.role_id?.permissions?.adminConfig;
+        const isMember = project.chef_projet.toString() === user._id.toString() ||
+          project.product_owner?.toString() === user._id.toString() ||
+          project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+        if (!hasSystemAccess && !isMember) {
+          return handleCORS(NextResponse.json({ error: 'Vous n\'avez pas accès à ce projet' }, { status: 403 }));
+        }
+      }
+
+      await File.findByIdAndDelete(fileId);
+
+      await logActivity(user, 'suppression', 'fichier', fileId, `Suppression fichier ${file.nom}`, { request, httpMethod: 'DELETE', endpoint: '/files/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
         message: 'Fichier supprimé avec succès'

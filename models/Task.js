@@ -35,7 +35,10 @@ const taskSchema = new mongoose.Schema({
   
   // Sprint
   sprint_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sprint' },
-  
+
+  // Livrables
+  deliverable_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Deliverable' },
+
   // Dépendances
   dépendances: [{
     task_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },
@@ -70,5 +73,10 @@ const taskSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+taskSchema.index({ projet_id: 1, ordre_priorité: 1, created_at: -1 });
+taskSchema.index({ assigné_à: 1, statut: 1 });
+taskSchema.index({ sprint_id: 1 });
+taskSchema.index({ projet_id: 1, statut: 1 });
 
 export default mongoose.models.Task || mongoose.model('Task', taskSchema);

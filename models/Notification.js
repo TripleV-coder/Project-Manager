@@ -54,7 +54,7 @@ const notificationSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at' } });
 
-notificationSchema.index({ destinataire: 1, lu: 0, created_at: -1 });
+notificationSchema.index({ destinataire: 1, lu: 1, created_at: -1 });
 notificationSchema.index({ destinataire: 1, type: 1 });
 notificationSchema.index({ entity_type: 1, entity_id: 1 });
 notificationSchema.index({ created_at: -1 });

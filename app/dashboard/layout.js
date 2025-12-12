@@ -3,35 +3,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  Home,
-  FolderKanban, 
-  Layers, 
-  ListTodo, 
-  Calendar, 
-  Users, 
-  Clock, 
-  Wallet, 
-  MessageSquare, 
-  Bell, 
-  Settings,
+import {
+  FolderKanban,
   LogOut,
   Menu,
   X,
-  TrendingUp,
-  CheckCircle2,
-  Shield,
+  Settings,
   ChevronDown,
   ChevronRight,
-  Cloud,
-  BarChart3,
-  Files,
-  FileText,
+  Bell,
   User
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ConfirmationDialog';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import {
+  MAIN_MENU_ITEMS,
+  ADMIN_MENU_ITEMS,
+  NOTIFICATIONS_MENU,
+  filterMenuItemsByPermissions,
+  getAvailableMenus
+} from '@/lib/menuConfig';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
@@ -42,6 +36,7 @@ export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const { isOpen, dialogState, handleClose } = useConfirmation();
 
   const loadUser = useCallback(async () => {
     try {
@@ -51,36 +46,63 @@ export default function DashboardLayout({ children }) {
         return;
       }
 
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      // Load user with timeout
+      const userResponse = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
       });
 
-      if (!response.ok) {
+      if (!userResponse.ok) {
         localStorage.removeItem('pm_token');
         router.push('/login');
         return;
       }
 
-      const userData = await response.json();
-      console.log('User data:', userData);
+      let userData = await userResponse.json();
+
+      // Auto-migrate Administrateur to Super Administrateur if needed
+      if (userData.role?.nom === 'Administrateur') {
+        try {
+          const migrateRes = await fetch('/api/migrate-admin-role', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (migrateRes.ok) {
+            const migrateData = await migrateRes.json();
+            userData = {
+              ...userData,
+              role: migrateData.user.role
+            };
+            console.log('✅ Admin role migrated to Super Administrateur');
+          }
+        } catch (e) {
+          console.error('Migration failed:', e);
+        }
+      }
+
       setUser(userData);
       setLoading(false);
 
-      // Charger notifications
-      try {
-        const notifResponse = await fetch('/api/notifications', {
-          headers: { 'Authorization': `Bearer ${token}` }
+      // Load notifications in background (non-blocking)
+      fetch('/api/notifications', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000)
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.notifications) {
+            setUnreadNotifications(data.notifications.filter(n => !n.lu).length);
+          }
+        })
+        .catch(() => {
+          // Silently handle notification fetch errors
         });
-        if (notifResponse.ok) {
-          const notifData = await notifResponse.json();
-          setUnreadNotifications((notifData.notifications || []).filter(n => !n.lu).length);
-        }
-      } catch (e) {
-        console.log('Notifications error:', e);
-      }
     } catch (error) {
-      console.error('Erreur:', error);
-      router.push('/login');
+      console.error('Layout error:', error);
+      if (error.name !== 'AbortError') {
+        setLoading(false);
+        setUser(null);
+      }
     }
   }, [router]);
 
@@ -98,38 +120,31 @@ export default function DashboardLayout({ children }) {
     router.push('/login');
   };
 
-  // Vérifier les permissions - utiliser user.role (pas role_id)
+  // Vérifier les permissions de l'utilisateur
+  // Note: Ceci utilise SEULEMENT les permissions système (user.role)
+  // Pour les vérifications spécifiques à un projet, utiliser useRBACPermissions() avec projectRole
   const hasPermission = (permKey) => {
     return user?.role?.permissions?.[permKey] === true;
   };
 
+  const isMenuVisible = (menuKey) => {
+    return user?.role?.visibleMenus?.[menuKey] === true;
+  };
+
   const isAdmin = hasPermission('adminConfig');
 
-  // Menu principal - tous les éléments visibles pour simplifier
-  const mainMenuItems = [
-    { icon: Home, label: 'Dashboard', href: '/dashboard' },
-    { icon: FolderKanban, label: 'Projets', href: '/dashboard/projects' },
-    { icon: Layers, label: 'Kanban', href: '/dashboard/kanban' },
-    { icon: ListTodo, label: 'Backlog', href: '/dashboard/backlog' },
-    { icon: Calendar, label: 'Sprints', href: '/dashboard/sprints' },
-    { icon: TrendingUp, label: 'Roadmap', href: '/dashboard/roadmap' },
-    { icon: CheckCircle2, label: 'Tâches', href: '/dashboard/tasks' },
-    { icon: Files, label: 'Fichiers', href: '/dashboard/files' },
-    { icon: MessageSquare, label: 'Commentaires', href: '/dashboard/comments' },
-    { icon: Clock, label: 'Timesheets', href: '/dashboard/timesheets' },
-    { icon: Wallet, label: 'Budget', href: '/dashboard/budget' },
-    { icon: BarChart3, label: 'Rapports', href: '/dashboard/reports' },
-  ];
+  // Obtenir les menus filtrés selon les permissions de l'utilisateur
+  // Ceci utilise les permissions système. Les pages project-specific
+  // doivent vérifier les permissions fusionnées (système + projet)
+  const availableMenus = user ? getAvailableMenus(user) : {
+    mainMenuItems: [],
+    adminMenuItems: [],
+    notificationsMenu: null
+  };
 
-  // Sous-menu Administration
-  const adminMenuItems = [
-    { icon: Shield, label: 'Rôles & Permissions', href: '/dashboard/admin/roles' },
-    { icon: Users, label: 'Utilisateurs', href: '/dashboard/users' },
-    { icon: FileText, label: 'Templates Projets', href: '/dashboard/admin/templates' },
-    { icon: Layers, label: 'Types Livrables', href: '/dashboard/admin/deliverable-types' },
-    { icon: Cloud, label: 'SharePoint', href: '/dashboard/admin/sharepoint' },
-    { icon: Settings, label: 'Paramètres', href: '/dashboard/admin' },
-  ];
+  const mainMenuItems = availableMenus.mainMenuItems;
+  const adminMenuItems = availableMenus.adminMenuItems;
+  const notificationsMenu = availableMenus.notificationsMenu;
 
   if (loading) {
     return (
@@ -188,27 +203,29 @@ export default function DashboardLayout({ children }) {
             ))}
 
             {/* Notifications */}
-            <Link
-              href="/dashboard/notifications"
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                pathname === '/dashboard/notifications'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-              }`}
-            >
-              <div className="relative">
-                <Bell className="w-5 h-5" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </div>
-              <span className="font-medium">Notifications</span>
-            </Link>
+            {notificationsMenu && (
+              <Link
+                href={notificationsMenu.href}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  pathname === notificationsMenu.href
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                }`}
+              >
+                <div className="relative">
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {unreadNotifications}
+                    </span>
+                  )}
+                </div>
+                <span className="font-medium">{notificationsMenu.label}</span>
+              </Link>
+            )}
 
             {/* Section Admin */}
-            {isAdmin && (
+            {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t">
                 <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
                 {adminMenuItems.map((item) => (
@@ -293,33 +310,35 @@ export default function DashboardLayout({ children }) {
             ))}
 
             {/* Notifications */}
-            <Link
-              href="/dashboard/notifications"
-              title="Notifications"
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                pathname === '/dashboard/notifications'
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-              }`}
-            >
-              <div className="relative flex-shrink-0">
-                <Bell className="w-5 h-5" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </div>
-              {sidebarOpen && <span className="font-medium text-sm">Notifications</span>}
-            </Link>
+            {notificationsMenu && (
+              <Link
+                href={notificationsMenu.href}
+                title={notificationsMenu.label}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                  pathname === notificationsMenu.href
+                    ? 'bg-indigo-600 text-white shadow-lg'
+                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                }`}
+              >
+                <div className="relative flex-shrink-0">
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {unreadNotifications}
+                    </span>
+                  )}
+                </div>
+                {sidebarOpen && <span className="font-medium text-sm">{notificationsMenu.label}</span>}
+              </Link>
+            )}
 
             {/* Section Admin */}
-            {isAdmin && (
+            {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t">
                 {sidebarOpen && (
                   <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
                 )}
-                
+
                 {sidebarOpen ? (
                   <>
                     <button

@@ -17,9 +17,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
 
 export default function CommentsPage() {
   const router = useRouter();
+  const { confirm } = useConfirmation();
   const textareaRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [comments, setComments] = useState([]);
@@ -40,8 +42,16 @@ export default function CommentsPage() {
     loadData();
   }, [selectedProject, selectedTask]);
 
+  // Auto-select first project on initial load
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject === 'all') {
+      setSelectedProject(projects[0]._id);
+    }
+  }, [projects]);
+
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
@@ -50,8 +60,13 @@ export default function CommentsPage() {
 
       let commentsUrl = '/api/comments';
       const params = [];
-      if (selectedProject !== 'all') params.push(`projet_id=${selectedProject}`);
-      if (selectedTask !== 'all') params.push(`task_id=${selectedTask}`);
+      if (selectedTask !== 'all') {
+        params.push(`entity_type=tâche`);
+        params.push(`entity_id=${selectedTask}`);
+      } else if (selectedProject !== 'all') {
+        params.push(`entity_type=projet`);
+        params.push(`entity_id=${selectedProject}`);
+      }
       if (params.length > 0) commentsUrl += '?' + params.join('&');
 
       const [projectsRes, tasksRes, commentsRes, usersRes, activityRes] = await Promise.all([
@@ -120,7 +135,7 @@ export default function CommentsPage() {
         toast.success('Commentaire publié');
         setNewComment('');
         setReplyingTo(null);
-        loadData();
+        await loadData();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erreur lors de la publication');
@@ -132,7 +147,14 @@ export default function CommentsPage() {
   };
 
   const handleDeleteComment = async (commentId) => {
-    if (!confirm('Supprimer ce commentaire ?')) return;
+    const confirmed = await confirm({
+      title: 'Supprimer le commentaire',
+      description: 'Êtes-vous sûr de vouloir supprimer ce commentaire ?',
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('pm_token');
@@ -143,7 +165,7 @@ export default function CommentsPage() {
 
       if (response.ok) {
         toast.success('Commentaire supprimé');
-        loadData();
+        await loadData();
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -380,7 +402,7 @@ export default function CommentsPage() {
                               {comment.auteur?.nom_complet || 'Utilisateur'}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {formatDate(comment.créé_le)}
+                              {formatDate(comment.created_at)}
                             </span>
                             {comment.entity_type && (
                               <Badge variant="outline" className="text-xs">

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Shield, Mail, Lock, User, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,15 +34,21 @@ export default function FirstAdmin() {
         body: JSON.stringify(formData)
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        setError(data.error || 'Une erreur est survenue');
+        let errorMessage = 'Une erreur est survenue';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `Erreur ${response.status}`;
+        }
+        setError(errorMessage);
         setLoading(false);
         return;
       }
 
-      // Succès, rediriger vers login
+      const data = await response.json();
+
       router.push('/login?firstAdmin=true');
     } catch (err) {
       setError('Erreur de connexion au serveur');
@@ -61,21 +66,11 @@ export default function FirstAdmin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
+      <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg"
-          >
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
             <Shield className="w-10 h-10 text-white" />
-          </motion.div>
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">PM - Gestion de Projets</h1>
           <p className="text-gray-600">Création du premier administrateur</p>
         </div>
@@ -196,7 +191,7 @@ export default function FirstAdmin() {
             </CardFooter>
           </form>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

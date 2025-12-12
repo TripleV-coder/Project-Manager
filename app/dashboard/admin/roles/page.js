@@ -16,9 +16,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function RolesPage() {
   const router = useRouter();
+  const { confirm } = useConfirmation();
+  const [user, setUser] = useState(null);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -129,6 +133,8 @@ export default function RolesPage() {
     { key: 'admin', label: 'Administration' }
   ];
 
+  const { hasPermission: canManageRoles } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+
   const loadRoles = useCallback(async () => {
     try {
       const token = localStorage.getItem('pm_token');
@@ -137,12 +143,22 @@ export default function RolesPage() {
         return;
       }
 
-      const response = await fetch('/api/roles', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const [userRes, rolesRes] = await Promise.all([
+        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
 
-      const data = await response.json();
-      setRoles(data.roles || []);
+      const userData = await userRes.json();
+      const rolesData = await rolesRes.json();
+
+      // Client-side guard: redirect if not admin
+      if (!userData.role?.permissions?.adminConfig) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setUser(userData);
+      setRoles(rolesData.roles || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur chargement:', error);
@@ -216,7 +232,14 @@ export default function RolesPage() {
   };
 
   const handleDeleteRole = async (roleId, roleName) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`)) {
+    const confirmed = await confirm({
+      title: 'Supprimer le rôle',
+      description: `Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`,
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -299,13 +322,15 @@ export default function RolesPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Rôles</h1>
           <p className="text-gray-600">Configurez les 8 rôles et leurs 22 permissions atomiques</p>
         </div>
-        <Button 
-          className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Créer un rôle personnalisé
-        </Button>
+        {canManageRoles('adminConfig') && (
+          <Button
+            className="bg-indigo-600 hover:bg-indigo-700"
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Créer un rôle personnalisé
+          </Button>
+        )}
       </div>
 
       {/* Roles List */}

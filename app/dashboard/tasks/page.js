@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckSquare, Plus, Search, Calendar, Clock, MoreVertical, Edit2, Trash2 } from 'lucide-react';
+import { safeFetch } from '@/lib/fetch-with-timeout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,12 +16,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function TasksPage() {
   const router = useRouter();
+  const { confirm } = useConfirmation();
+  const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProject, setSelectedProject] = useState('');
@@ -33,9 +39,11 @@ export default function TasksPage() {
     projet_id: '',
     priorité: 'Moyenne',
     assigné_à: '',
+    date_début: '',
     date_échéance: '',
     estimation_heures: '',
     story_points: '',
+    deliverable_id: '',
     tags: []
   });
 
@@ -43,35 +51,52 @@ export default function TasksPage() {
     loadData();
   }, [selectedProject, selectedStatus]);
 
+  // Auto-select first project on initial load
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProject) {
+      setSelectedProject(projects[0]._id);
+      setNewTask(prev => ({ ...prev, projet_id: projects[0]._id }));
+    }
+  }, [projects]);
+
+  const { hasPermission: canManageTasks } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
-      let tasksUrl = '/api/tasks?';
-      if (selectedProject && selectedProject !== 'all') tasksUrl += `projet_id=${selectedProject}&`;
-      if (selectedStatus && selectedStatus !== 'all') tasksUrl += `statut=${selectedStatus}&`;
+      let tasksUrl = '/api/tasks?limit=100&page=1';
+      if (selectedProject && selectedProject !== 'all') tasksUrl += `&projet_id=${selectedProject}`;
+      if (selectedStatus && selectedStatus !== 'all') tasksUrl += `&statut=${selectedStatus}`;
 
-      const [tasksRes, projectsRes, usersRes] = await Promise.all([
-        fetch(tasksUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
+      const [userData, tasksData, projectsData, usersData, deliverablesData] = await Promise.all([
+        safeFetch('/api/auth/me', token),
+        safeFetch(tasksUrl, token),
+        safeFetch('/api/projects?limit=50&page=1', token),
+        safeFetch('/api/users?limit=100&page=1', token),
+        safeFetch('/api/deliverables?limit=100&page=1', token)
       ]);
 
-      const tasksData = await tasksRes.json();
-      const projectsData = await projectsRes.json();
-      const usersData = await usersRes.json();
-
+      setUser(userData);
       setTasks(tasksData.tasks || []);
       setProjects(projectsData.projects || []);
       setUsers(usersData.users || []);
+      setDeliverables(deliverablesData.deliverables || []);
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('Chargement dépassé - Veuillez recharger');
+      } else {
+        console.error('Erreur:', error);
+        toast.error('Erreur lors du chargement des tâches');
+      }
       setLoading(false);
     }
   };
@@ -84,41 +109,55 @@ export default function TasksPage() {
       }
 
       const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/tasks', {
+      await safeFetch('/api/tasks', token, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify(newTask)
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success('Tâche créée avec succès');
-        setCreateDialogOpen(false);
-        setNewTask({ titre: '', description: '', projet_id: '', priorité: 'Moyenne', assigné_à: '', date_échéance: '', estimation_heures: '', story_points: '', tags: [] });
-        loadData();
-      } else {
-        toast.error(data.error || 'Erreur lors de la création');
-      }
+      toast.success('Tâche créée avec succès');
+      setCreateDialogOpen(false);
+      setNewTask({ titre: '', description: '', projet_id: '', priorité: 'Moyenne', assigné_à: '', date_début: '', date_échéance: '', estimation_heures: '', story_points: '', deliverable_id: '', tags: [] });
+      await loadData();
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      if (error.message === 'UNAUTHORIZED') {
+        router.push('/login');
+      } else if (error.message === 'TIMEOUT') {
+        toast.error('La requête a dépassé le délai');
+      } else {
+        console.error('Erreur:', error);
+        toast.error('Erreur lors de la création');
+      }
     }
   };
 
   const handleUpdateTask = async () => {
     try {
+      if (!editingTask.titre || editingTask.titre.trim() === '') {
+        toast.error('Le titre est obligatoire');
+        return;
+      }
+
       const token = localStorage.getItem('pm_token');
+
+      // Prepare only allowed fields for update
+      const updateData = {
+        titre: editingTask.titre.trim(),
+        description: editingTask.description || '',
+        statut: editingTask.statut,
+        priorité: editingTask.priorité,
+        assigné_à: editingTask.assigné_à || null,
+        date_début: editingTask.date_début || null,
+        date_échéance: editingTask.date_échéance || null,
+        deliverable_id: editingTask.deliverable_id || null
+      };
+
       const response = await fetch(`/api/tasks/${editingTask._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(editingTask)
+        body: JSON.stringify(updateData)
       });
 
       const data = await response.json();
@@ -126,18 +165,26 @@ export default function TasksPage() {
       if (response.ok) {
         toast.success('Tâche modifiée avec succès');
         setEditingTask(null);
-        loadData();
+        await loadData();
       } else {
+        console.error('Erreur réponse:', data);
         toast.error(data.error || 'Erreur lors de la modification');
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('Erreur lors de la modification:', error);
       toast.error('Erreur de connexion');
     }
   };
 
   const handleDeleteTask = async (taskId, taskTitle) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer la tâche "${taskTitle}" ?`)) {
+    const confirmed = await confirm({
+      title: 'Supprimer la tâche',
+      description: `Êtes-vous sûr de vouloir supprimer la tâche "${taskTitle}" ?`,
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -150,7 +197,7 @@ export default function TasksPage() {
 
       if (response.ok) {
         toast.success('Tâche supprimée avec succès');
-        loadData();
+        await loadData();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erreur lors de la suppression');
@@ -203,13 +250,15 @@ export default function TasksPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Tâches</h1>
           <p className="text-gray-600">Créez, modifiez et suivez toutes vos tâches</p>
         </div>
-        <Button 
-          className="bg-indigo-600 hover:bg-indigo-700"
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Nouvelle tâche
-        </Button>
+        {canManageTasks('gererTaches') && (
+          <Button
+            className="bg-indigo-600 hover:bg-indigo-700"
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nouvelle tâche
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -294,14 +343,14 @@ export default function TasksPage() {
                       <span className="text-sm text-gray-600">{projects.find(p => p._id === task.projet_id)?.nom || 'N/A'}</span>
                     </TableCell>
                     <TableCell>
-                      {task.assigné_à ? (
+                      {task.assigné_à && typeof task.assigné_à === 'object' ? (
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
                             <span className="text-xs font-medium text-indigo-600">
-                              {users.find(u => u._id === task.assigné_à?.toString())?.nom_complet?.charAt(0) || '?'}
+                              {task.assigné_à.nom_complet?.charAt(0) || '?'}
                             </span>
                           </div>
-                          <span className="text-sm">{users.find(u => u._id === task.assigné_à?.toString())?.nom_complet || 'N/A'}</span>
+                          <span className="text-sm">{task.assigné_à.nom_complet || 'N/A'}</span>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">Non assigné</span>
@@ -412,17 +461,25 @@ export default function TasksPage() {
               </div>
               <div className="space-y-2">
                 <Label>Assigné à</Label>
-                <Select value={newTask.assigné_à} onValueChange={(val) => setNewTask({ ...newTask, assigné_à: val })}>
+                <Select value={newTask.assigné_à || 'none'} onValueChange={(val) => setNewTask({ ...newTask, assigné_à: val === 'none' ? null : val })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Aucun" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Aucun</SelectItem>
+                    <SelectItem value="none">Aucun</SelectItem>
                     {users.map(u => (
                       <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Date de début</Label>
+                <Input
+                  type="date"
+                  value={newTask.date_début}
+                  onChange={(e) => setNewTask({ ...newTask, date_début: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Date d'échéance</Label>
@@ -431,6 +488,20 @@ export default function TasksPage() {
                   value={newTask.date_échéance}
                   onChange={(e) => setNewTask({ ...newTask, date_échéance: e.target.value })}
                 />
+              </div>
+              <div className="col-span-2 space-y-2">
+                <Label>Livrable associé</Label>
+                <Select value={newTask.deliverable_id || 'none'} onValueChange={(val) => setNewTask({ ...newTask, deliverable_id: val === 'none' ? null : val })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Optionnel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun livrable</SelectItem>
+                    {deliverables.map(d => (
+                      <SelectItem key={d._id} value={d._id}>{d.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -469,7 +540,7 @@ export default function TasksPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Priorité</Label>
-                  <Select value={editingTask.priorité} onValueChange={(val) => setEditingTask({ ...editingTask, priorité: val })}>
+                  <Select value={['Basse', 'Moyenne', 'Haute', 'Critique'].includes(editingTask.priorité) ? editingTask.priorité : 'Moyenne'} onValueChange={(val) => setEditingTask({ ...editingTask, priorité: val })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Basse">Basse</SelectItem>
@@ -481,7 +552,7 @@ export default function TasksPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Statut</Label>
-                  <Select value={editingTask.statut} onValueChange={(val) => setEditingTask({ ...editingTask, statut: val })}>
+                  <Select value={['Backlog', 'À faire', 'En cours', 'Review', 'Terminé'].includes(editingTask.statut) ? editingTask.statut : 'Backlog'} onValueChange={(val) => setEditingTask({ ...editingTask, statut: val })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Backlog">Backlog</SelectItem>
@@ -494,15 +565,23 @@ export default function TasksPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Assigné à</Label>
-                  <Select value={editingTask.assigné_à?.toString() || ''} onValueChange={(val) => setEditingTask({ ...editingTask, assigné_à: val })}>
+                  <Select value={editingTask.assigné_à ? (typeof editingTask.assigné_à === 'string' ? editingTask.assigné_à : editingTask.assigné_à.toString()) : 'none'} onValueChange={(val) => setEditingTask({ ...editingTask, assigné_à: val === 'none' ? null : val })}>
                     <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Aucun</SelectItem>
+                      <SelectItem value="none">Aucun</SelectItem>
                       {users.map(u => (
                         <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date de début</Label>
+                  <Input
+                    type="date"
+                    value={editingTask.date_début ? new Date(editingTask.date_début).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditingTask({ ...editingTask, date_début: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Date d'échéance</Label>
@@ -511,6 +590,18 @@ export default function TasksPage() {
                     value={editingTask.date_échéance ? new Date(editingTask.date_échéance).toISOString().split('T')[0] : ''}
                     onChange={(e) => setEditingTask({ ...editingTask, date_échéance: e.target.value })}
                   />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Livrable associé</Label>
+                  <Select value={editingTask.deliverable_id ? (typeof editingTask.deliverable_id === 'string' ? editingTask.deliverable_id : editingTask.deliverable_id.toString()) : 'none'} onValueChange={(val) => setEditingTask({ ...editingTask, deliverable_id: val === 'none' ? null : val })}>
+                    <SelectTrigger><SelectValue placeholder="Optionnel" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucun livrable</SelectItem>
+                      {deliverables.map(d => (
+                        <SelectItem key={d._id} value={d._id}>{d.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

@@ -4,8 +4,12 @@ const timesheetEntrySchema = new mongoose.Schema({
   utilisateur: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   projet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
   task_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },
-  
+  sprint_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sprint' },
+
+  // Date tracking
   date: { type: Date, required: true },
+  date_début_réel: Date,
+  date_fin_réelle: Date,
   heures: { type: Number, required: true, min: 0, max: 24 },
   description: String,
   
@@ -45,9 +49,14 @@ const timesheetEntrySchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
+// Indexes for efficient time-based queries and reporting
 timesheetEntrySchema.index({ utilisateur: 1, date: 1 });
+timesheetEntrySchema.index({ utilisateur: 1, date_début_réel: 1, date_fin_réelle: 1 });
 timesheetEntrySchema.index({ projet_id: 1, date: 1 });
+timesheetEntrySchema.index({ projet_id: 1, sprint_id: 1, date: 1 });
 timesheetEntrySchema.index({ task_id: 1 });
+timesheetEntrySchema.index({ sprint_id: 1, date: 1 });
 timesheetEntrySchema.index({ statut: 1 });
+timesheetEntrySchema.index({ date_début_réel: 1, date_fin_réelle: 1 });
 
 export default mongoose.models.TimesheetEntry || mongoose.model('TimesheetEntry', timesheetEntrySchema);

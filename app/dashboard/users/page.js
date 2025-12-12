@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Mail, Shield, UserCheck, UserX } from 'lucide-react';
+import { Users, Plus, Search, Mail, Shield, UserCheck, UserX, Key, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,14 +13,25 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 
 export default function UsersPage() {
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [selectedUserForReset, setSelectedUserForReset] = useState(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [newUser, setNewUser] = useState({
     nom_complet: '',
     email: '',
@@ -32,22 +43,34 @@ export default function UsersPage() {
     loadData();
   }, []);
 
+  const { hasPermission: canManageUsers } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
-      const [usersRes, rolesRes] = await Promise.all([
+      const [userRes, usersRes, rolesRes] = await Promise.all([
+        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
+      const userData = await userRes.json();
       const usersData = await usersRes.json();
       const rolesData = await rolesRes.json();
 
+      // Client-side guard: redirect if not admin
+      if (!userData.role?.permissions?.adminConfig) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setUser(userData);
       setUsers(usersData.users || []);
       setRoles(rolesData.roles || []);
       setLoading(false);
@@ -74,7 +97,7 @@ export default function UsersPage() {
       if (response.ok) {
         setCreateDialogOpen(false);
         setNewUser({ nom_complet: '', email: '', role_id: '', status: 'Actif' });
-        loadData();
+        await loadData();
         alert(`Utilisateur créé ! Mot de passe temporaire: 00000000`);
       } else {
         alert(data.error || 'Erreur lors de la création');
@@ -82,6 +105,38 @@ export default function UsersPage() {
     } catch (error) {
       console.error('Erreur création utilisateur:', error);
       alert('Erreur de connexion');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUserForReset) return;
+
+    setResettingPassword(true);
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/users/${selectedUserForReset._id}/reset-password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResetPasswordDialogOpen(false);
+        setSelectedUserForReset(null);
+        await loadData();
+        alert(`Mot de passe réinitialisé ! Mot de passe temporaire: 00000000`);
+      } else {
+        alert(data.error || 'Erreur lors de la réinitialisation');
+      }
+    } catch (error) {
+      console.error('Erreur réinitialisation mot de passe:', error);
+      alert('Erreur de connexion');
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -106,74 +161,76 @@ export default function UsersPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Utilisateurs</h1>
           <p className="text-gray-600">Gérez les utilisateurs et leurs accès</p>
         </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Nouvel utilisateur
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Créer un utilisateur</DialogTitle>
-              <DialogDescription>
-                Le mot de passe temporaire sera 00000000. L'utilisateur devra le changer à la première connexion.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Nom complet</Label>
-                <Input
-                  value={newUser.nom_complet}
-                  onChange={(e) => setNewUser({ ...newUser, nom_complet: e.target.value })}
-                  placeholder="Ex: Jean Dupont"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="jean.dupont@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rôle</Label>
-                <Select value={newUser.role_id} onValueChange={(val) => setNewUser({ ...newUser, role_id: val })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez un rôle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map(r => (
-                      <SelectItem key={r._id} value={r._id}>
-                        {r.nom} - {r.description}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Statut</Label>
-                <Select value={newUser.status} onValueChange={(val) => setNewUser({ ...newUser, status: val })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Actif">Actif</SelectItem>
-                    <SelectItem value="Désactivé">Désactivé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-              <Button onClick={handleCreateUser} className="bg-indigo-600 hover:bg-indigo-700">
-                Créer l'utilisateur
+        {canManageUsers('adminConfig') && (
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Nouvel utilisateur
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Créer un utilisateur</DialogTitle>
+                <DialogDescription>
+                  Le mot de passe temporaire sera 00000000. L'utilisateur devra le changer à la première connexion.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nom complet</Label>
+                  <Input
+                    value={newUser.nom_complet}
+                    onChange={(e) => setNewUser({ ...newUser, nom_complet: e.target.value })}
+                    placeholder="Ex: Jean Dupont"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    placeholder="jean.dupont@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Rôle</Label>
+                  <Select value={newUser.role_id} onValueChange={(val) => setNewUser({ ...newUser, role_id: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez un rôle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map(r => (
+                        <SelectItem key={r._id} value={r._id}>
+                          {r.nom} - {r.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Statut</Label>
+                  <Select value={newUser.status} onValueChange={(val) => setNewUser({ ...newUser, status: val })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Actif">Actif</SelectItem>
+                      <SelectItem value="Désactivé">Désactivé</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
+                <Button onClick={handleCreateUser} className="bg-indigo-600 hover:bg-indigo-700">
+                  Créer l'utilisateur
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Search */}
@@ -210,6 +267,7 @@ export default function UsersPage() {
                   <TableHead>Rôle</TableHead>
                   <TableHead>Statut</TableHead>
                   <TableHead>Dernière connexion</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -242,7 +300,7 @@ export default function UsersPage() {
                     <TableCell>
                       <Badge variant="outline" className="gap-1">
                         <Shield className="w-3 h-3" />
-                        {user.role_id?.nom || 'N/A'}
+                        {user.role?.nom || 'N/A'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -255,10 +313,62 @@ export default function UsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-gray-600">
-                      {user.dernière_connexion 
+                      {user.dernière_connexion
                         ? new Date(user.dernière_connexion).toLocaleString('fr-FR')
                         : 'Jamais connecté'
                       }
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">⋮</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <Dialog open={resetPasswordDialogOpen && selectedUserForReset?._id === user._id}
+                                  onOpenChange={(open) => {
+                                    setResetPasswordDialogOpen(open);
+                                    if (!open) setSelectedUserForReset(null);
+                                  }}>
+                            <DialogTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setSelectedUserForReset(user);
+                                  setResetPasswordDialogOpen(true);
+                                }}
+                              >
+                                <Key className="w-4 h-4 mr-2" />
+                                Réinitialiser le mot de passe
+                              </DropdownMenuItem>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+                                <DialogDescription>
+                                  Êtes-vous sûr de vouloir réinitialiser le mot de passe de {selectedUserForReset?.nom_complet} ?
+                                  Le mot de passe temporaire sera 00000000 et l'utilisateur devra le changer à sa prochaine connexion.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="text-sm font-medium text-amber-900">Mot de passe temporaire</p>
+                                  <p className="text-sm text-amber-700">Mot de passe: <code className="bg-white px-2 py-1 rounded font-mono">00000000</code></p>
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>Annuler</Button>
+                                <Button
+                                  onClick={handleResetPassword}
+                                  disabled={resettingPassword}
+                                  className="bg-amber-600 hover:bg-amber-700"
+                                >
+                                  {resettingPassword ? 'Réinitialisation...' : 'Réinitialiser'}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </motion.tr>
                 ))}

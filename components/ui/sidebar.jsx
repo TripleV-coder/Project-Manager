@@ -257,7 +257,7 @@ const SidebarRail = React.forwardRef(({ className, ...props }, ref) => {
       ref={ref}
       data-sidebar="rail"
       aria-label="Toggle Sidebar"
-      tabIndex={-1}
+      tabIndex={0}
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(

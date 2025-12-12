@@ -28,10 +28,13 @@ const projectSchema = new mongoose.Schema({
   chef_projet: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   product_owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   membres: [{
-    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    rôle_projet: String,
+    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    project_role_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectRole', required: true },
     date_ajout: { type: Date, default: Date.now }
   }],
+
+  // Project-level custom roles
+  custom_project_roles: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProjectRole' }],
   
   // Budget
   budget: {
@@ -76,5 +79,10 @@ const projectSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+projectSchema.index({ archivé: 1, created_at: -1 });
+projectSchema.index({ chef_projet: 1 });
+projectSchema.index({ product_owner: 1 });
+projectSchema.index({ 'membres.user_id': 1 });
 
 export default mongoose.models.Project || mongoose.model('Project', projectSchema);

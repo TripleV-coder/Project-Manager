@@ -15,28 +15,34 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import StatusBadge from '@/components/StatusBadge';
+import { useConfirmation } from '@/hooks/useConfirmation';
 
 export default function BudgetPage() {
   const router = useRouter();
+  const { confirm } = useConfirmation();
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [loading, setLoading] = useState(true);
   const [projectData, setProjectData] = useState(null);
+  const [expenses, setExpenses] = useState([]);
   const [editBudgetDialogOpen, setEditBudgetDialogOpen] = useState(false);
   const [addExpenseDialogOpen, setAddExpenseDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+  const [submitting, setSubmitting] = useState(false);
+  const [userPermissions, setUserPermissions] = useState({});
+
   const [budgetForm, setBudgetForm] = useState({
-    budget_total: 0,
-    réserve_contingence: 0
+    prévisionnel: 0,
+    réel: 0
   });
-  
+
   const [expenseForm, setExpenseForm] = useState({
     description: '',
     catégorie: 'Ressources humaines',
     montant: 0,
-    date: new Date().toISOString().split('T')[0],
-    validé: false
+    date_dépense: new Date().toISOString().split('T')[0],
+    type: 'externe'
   });
 
   const catégories = [
@@ -51,6 +57,12 @@ export default function BudgetPage() {
     'Autre'
   ];
 
+  const handleStatusChange = (expenseId, newStatut) => {
+    setExpenses(expenses.map(e =>
+      e._id === expenseId ? { ...e, statut: newStatut } : e
+    ));
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -58,52 +70,122 @@ export default function BudgetPage() {
   useEffect(() => {
     if (selectedProject && selectedProject !== 'all') {
       loadProjectData();
+      loadExpenses(selectedProject);
     }
   }, [selectedProject]);
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       const data = await response.json();
       setProjects(data.projects || []);
-      
+
       if (data.projects && data.projects.length > 0 && !selectedProject) {
         setSelectedProject(data.projects[0]._id);
       }
-      
+
+      try {
+        const userResponse = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          setUserPermissions(userData.role?.permissions || {});
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des permissions:', error);
+      }
+
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      console.error('Erreur lors du chargement des projets:', error);
+      toast.error('Erreur lors du chargement des projets');
+      setLoading(false);
+      setProjects([]);
+    }
+  };
+
+  const loadExpenses = async (projectId) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('pm_token');
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(`/api/expenses?projet_id=${projectId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.error('Erreur chargement dépenses:', response.status, response.statusText);
+        setExpenses([]);
+        return;
+      }
+
+      const data = await response.json();
+      setExpenses(data.expenses || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Erreur lors du chargement des dépenses:', error);
+      setExpenses([]);
       setLoading(false);
     }
   };
 
   const loadProjectData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch(`/api/projects/${selectedProject}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.error('Erreur chargement projet:', response.status);
+        setProjectData(null);
+        return;
+      }
+
       const data = await response.json();
       setProjectData(data.project || null);
-      
+
       if (data.project?.budget) {
         setBudgetForm({
-          budget_total: data.project.budget.budget_total || 0,
-          réserve_contingence: data.project.budget.réserve_contingence || 0
+          prévisionnel: data.project.budget.prévisionnel || 0,
+          réel: data.project.budget.réel || 0
         });
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('Erreur lors du chargement du projet:', error);
+      setProjectData(null);
     }
   };
 
@@ -119,10 +201,8 @@ export default function BudgetPage() {
         },
         body: JSON.stringify({
           budget: {
-            budget_total: parseFloat(budgetForm.budget_total) || 0,
-            réserve_contingence: parseFloat(budgetForm.réserve_contingence) || 0,
-            dépenses_actuelles: projectData?.budget?.dépenses_actuelles || 0,
-            détails_dépenses: projectData?.budget?.détails_dépenses || []
+            prévisionnel: parseFloat(budgetForm.prévisionnel) || 0,
+            réel: parseFloat(budgetForm.réel) || 0
           }
         })
       });
@@ -149,38 +229,26 @@ export default function BudgetPage() {
       return;
     }
 
-    setSaving(true);
+    setSubmitting(true);
     try {
       const token = localStorage.getItem('pm_token');
-      const currentBudget = projectData?.budget || {};
-      const currentExpenses = currentBudget.détails_dépenses || [];
-      
-      const newExpense = {
-        id: Date.now().toString(),
-        description: expenseForm.description,
-        catégorie: expenseForm.catégorie,
-        montant: parseFloat(expenseForm.montant),
-        date: expenseForm.date,
-        validé: expenseForm.validé
-      };
-      
-      const updatedExpenses = [...currentExpenses, newExpense];
-      const newTotal = updatedExpenses.reduce((sum, exp) => sum + exp.montant, 0);
-      
-      const response = await fetch(`/api/budget/projects/${selectedProject}`, {
-        method: 'PUT',
+      const response = await fetch('/api/expenses', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          budget: {
-            ...currentBudget,
-            dépenses_actuelles: newTotal,
-            détails_dépenses: updatedExpenses
-          }
+          projet_id: selectedProject,
+          description: expenseForm.description,
+          catégorie: expenseForm.catégorie,
+          montant: parseFloat(expenseForm.montant),
+          date_dépense: expenseForm.date_dépense,
+          type: expenseForm.type
         })
       });
+
+      const data = await response.json();
 
       if (response.ok) {
         toast.success('Dépense ajoutée avec succès');
@@ -189,49 +257,46 @@ export default function BudgetPage() {
           description: '',
           catégorie: 'Ressources humaines',
           montant: 0,
-          date: new Date().toISOString().split('T')[0],
-          validé: false
+          date_dépense: new Date().toISOString().split('T')[0],
+          type: 'externe'
         });
-        loadProjectData();
+        loadExpenses(selectedProject);
       } else {
-        const data = await response.json();
         toast.error(data.error || 'Erreur lors de l\'ajout');
       }
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
   const handleDeleteExpense = async (expenseId) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette dépense ?')) return;
+    const confirmed = await confirm({
+      title: 'Supprimer la dépense',
+      description: 'Êtes-vous sûr de vouloir supprimer cette dépense ?',
+      actionLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      isDangerous: true
+    });
+    if (!confirmed) return;
 
     try {
       const token = localStorage.getItem('pm_token');
-      const currentBudget = projectData?.budget || {};
-      const updatedExpenses = (currentBudget.détails_dépenses || []).filter(e => e.id !== expenseId);
-      const newTotal = updatedExpenses.reduce((sum, exp) => sum + exp.montant, 0);
-      
-      const response = await fetch(`/api/budget/projects/${selectedProject}`, {
-        method: 'PUT',
+      const response = await fetch(`/api/expenses/${expenseId}`, {
+        method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          budget: {
-            ...currentBudget,
-            dépenses_actuelles: newTotal,
-            détails_dépenses: updatedExpenses
-          }
-        })
+        }
       });
 
       if (response.ok) {
         toast.success('Dépense supprimée');
-        loadProjectData();
+        loadExpenses(selectedProject);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Erreur lors de la suppression');
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -240,14 +305,13 @@ export default function BudgetPage() {
   };
 
   const budget = projectData?.budget || {};
-  const budgetTotal = budget.budget_total || 0;
-  const dépenses = budget.dépenses_actuelles || 0;
-  const réserve = budget.réserve_contingence || 0;
+  const budgetTotal = budget.prévisionnel || 0;
+  const dépenses = expenses.reduce((sum, exp) => sum + (exp.montant || 0), 0);
   const restant = budgetTotal - dépenses;
   const pourcentage = budgetTotal > 0 ? (dépenses / budgetTotal) * 100 : 0;
 
   // Calcul par catégorie
-  const expensesByCategory = (budget.détails_dépenses || []).reduce((acc, exp) => {
+  const expensesByCategory = expenses.reduce((acc, exp) => {
     acc[exp.catégorie] = (acc[exp.catégorie] || 0) + exp.montant;
     return acc;
   }, {});
@@ -365,20 +429,6 @@ export default function BudgetPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Réserve de contingence</CardTitle>
-                <CardDescription>Budget de sécurité</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-gray-900 mb-2">
-                  {réserve.toLocaleString('fr-FR')} FCFA
-                </div>
-                <p className="text-sm text-gray-600">
-                  {budgetTotal > 0 ? ((réserve / budgetTotal) * 100).toFixed(1) : 0}% du budget total
-                </p>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Répartition par catégorie */}
@@ -422,7 +472,7 @@ export default function BudgetPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {(!budget.détails_dépenses || budget.détails_dépenses.length === 0) ? (
+              {expenses.length === 0 ? (
                 <div className="text-center py-12">
                   <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 mb-4">Aucune dépense enregistrée</p>
@@ -444,10 +494,10 @@ export default function BudgetPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(budget.détails_dépenses || []).map((expense) => (
-                      <TableRow key={expense.id}>
+                    {expenses.map((expense) => (
+                      <TableRow key={expense._id}>
                         <TableCell className="text-gray-600">
-                          {new Date(expense.date).toLocaleDateString('fr-FR')}
+                          {new Date(expense.date_dépense).toLocaleDateString('fr-FR')}
                         </TableCell>
                         <TableCell className="font-medium">{expense.description}</TableCell>
                         <TableCell>
@@ -457,16 +507,20 @@ export default function BudgetPage() {
                           {expense.montant.toLocaleString('fr-FR')} FCFA
                         </TableCell>
                         <TableCell>
-                          <Badge variant={expense.validé ? 'default' : 'secondary'}>
-                            {expense.validé ? 'Validé' : 'En attente'}
-                          </Badge>
+                          <StatusBadge
+                          type="expense"
+                          statut={expense.statut || 'en_attente'}
+                          entityId={expense._id}
+                          onStatusChange={(newStatut) => handleStatusChange(expense._id, newStatut)}
+                          userPermissions={userPermissions}
+                        />
                         </TableCell>
                         <TableCell>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteExpense(expense.id)}
+                            onClick={() => handleDeleteExpense(expense._id)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -492,23 +546,22 @@ export default function BudgetPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Budget total (FCFA)</Label>
+              <Label>Budget prévisionnel (FCFA)</Label>
               <Input
                 type="number"
-                value={budgetForm.budget_total}
-                onChange={(e) => setBudgetForm({ ...budgetForm, budget_total: e.target.value })}
+                value={budgetForm.prévisionnel}
+                onChange={(e) => setBudgetForm({ ...budgetForm, prévisionnel: e.target.value })}
                 placeholder="Ex: 50000000"
               />
             </div>
             <div className="space-y-2">
-              <Label>Réserve de contingence (FCFA)</Label>
+              <Label>Budget réel (FCFA)</Label>
               <Input
                 type="number"
-                value={budgetForm.réserve_contingence}
-                onChange={(e) => setBudgetForm({ ...budgetForm, réserve_contingence: e.target.value })}
-                placeholder="Ex: 5000000"
+                value={budgetForm.réel}
+                onChange={(e) => setBudgetForm({ ...budgetForm, réel: e.target.value })}
+                placeholder="Ex: 45000000"
               />
-              <p className="text-xs text-gray-500">Recommandé : 5-10% du budget total</p>
             </div>
           </div>
           <DialogFooter>
@@ -570,24 +623,42 @@ export default function BudgetPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Date</Label>
+              <Label>Date de dépense *</Label>
               <Input
                 type="date"
-                value={expenseForm.date}
-                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                value={expenseForm.date_dépense}
+                onChange={(e) => setExpenseForm({ ...expenseForm, date_dépense: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select
+                value={expenseForm.type}
+                onValueChange={(val) => setExpenseForm({ ...expenseForm, type: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="interne">Interne</SelectItem>
+                  <SelectItem value="externe">Externe</SelectItem>
+                  <SelectItem value="matériel">Matériel</SelectItem>
+                  <SelectItem value="service">Service</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddExpenseDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setAddExpenseDialogOpen(false)} disabled={submitting}>
               Annuler
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700"
               onClick={handleAddExpense}
-              disabled={saving || !expenseForm.description || !expenseForm.montant}
+              disabled={submitting || !expenseForm.description || !expenseForm.montant}
             >
-              {saving ? 'Ajout...' : 'Ajouter'}
+              {submitting ? 'Ajout...' : 'Ajouter'}
             </Button>
           </DialogFooter>
         </DialogContent>

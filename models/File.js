@@ -6,7 +6,12 @@ const fileSchema = new mongoose.Schema({
   extension: String,
   taille: { type: Number, required: true }, // en bytes
   type_mime: String,
-  
+  type: String, // Alias for type_mime (API compatibility)
+  url: String, // Data URL or storage URL (API compatibility)
+
+  // Dossier/folder support
+  dossier: { type: String, default: '/' },
+
   // Stockage local
   url_local: String,
   path_local: String,
@@ -18,9 +23,10 @@ const fileSchema = new mongoose.Schema({
   last_sync_sharepoint: Date,
   
   // Contexte
-  entity_type: { type: String, required: true }, // projet, t\u00e2che, livrable, commentaire
+  entity_type: { type: String, required: true }, // projet, tâche, livrable, commentaire
   entity_id: { type: mongoose.Schema.Types.ObjectId, required: true },
-  
+  projet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' }, // Direct project reference (API compatibility)
+
   // Utilisateur
   uploadé_par: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   

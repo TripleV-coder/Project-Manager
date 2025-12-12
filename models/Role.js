@@ -6,7 +6,7 @@ const roleSchema = new mongoose.Schema({
   is_custom: { type: Boolean, default: false },
   is_predefined: { type: Boolean, default: false },
   
-  // 22 permissions atomiques (camelCase)
+  // 23 permissions atomiques (camelCase)
   permissions: {
     voirTousProjets: { type: Boolean, default: false },
     voirSesProjets: { type: Boolean, default: true },
@@ -29,6 +29,7 @@ const roleSchema = new mongoose.Schema({
     recevoirNotifications: { type: Boolean, default: true },
     genererRapports: { type: Boolean, default: false },
     voirAudit: { type: Boolean, default: false },
+    gererUtilisateurs: { type: Boolean, default: false },
     adminConfig: { type: Boolean, default: false }
   },
   
@@ -37,15 +38,15 @@ const roleSchema = new mongoose.Schema({
     portfolio: { type: Boolean, default: true },
     projects: { type: Boolean, default: true },
     kanban: { type: Boolean, default: true },
-    backlog: { type: Boolean, default: false },
-    sprints: { type: Boolean, default: false },
-    roadmap: { type: Boolean, default: false },
+    backlog: { type: Boolean, default: true },
+    sprints: { type: Boolean, default: true },
+    roadmap: { type: Boolean, default: true },
     tasks: { type: Boolean, default: true },
     files: { type: Boolean, default: true },
     comments: { type: Boolean, default: true },
     timesheets: { type: Boolean, default: true },
-    budget: { type: Boolean, default: false },
-    reports: { type: Boolean, default: false },
+    budget: { type: Boolean, default: true },
+    reports: { type: Boolean, default: true },
     notifications: { type: Boolean, default: true },
     admin: { type: Boolean, default: false }
   },

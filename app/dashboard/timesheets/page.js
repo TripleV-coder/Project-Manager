@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import StatusBadge from '@/components/StatusBadge';
 
 export default function TimesheetsPage() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export default function TimesheetsPage() {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newEntry, setNewEntry] = useState({
     projet_id: '',
@@ -28,23 +30,52 @@ export default function TimesheetsPage() {
     description: ''
   });
 
+  const handleStatusChange = (timesheetId, newStatut) => {
+    setTimesheets(timesheets.map(t =>
+      t._id === timesheetId ? { ...t, statut: newStatut } : t
+    ));
+  };
+
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('pm_token');
       if (!token) {
         router.push('/login');
         return;
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       const [projectsRes, tasksRes, timesheetsRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/timesheets', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/projects?limit=50&page=1', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        }),
+        fetch('/api/tasks?limit=100&page=1', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        }),
+        fetch('/api/timesheets?limit=100&page=1', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        })
       ]);
+
+      clearTimeout(timeoutId);
+
+      if (!projectsRes.ok || !tasksRes.ok || !timesheetsRes.ok) {
+        const status = !projectsRes.ok ? projectsRes.status : !tasksRes.ok ? tasksRes.status : timesheetsRes.status;
+        if (status === 401) {
+          router.push('/login');
+        }
+        throw new Error(`Erreur serveur ${status}`);
+      }
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
@@ -55,9 +86,18 @@ export default function TimesheetsPage() {
       setTimesheets(timesheetsData.timesheets || []);
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      if (error.name === 'AbortError') {
+        toast.error('La requête a dépassé le délai d\'attente - Veuillez vérifier votre connexion');
+      } else if (error.message.includes('Erreur serveur 401')) {
+        router.push('/login');
+      } else {
+        console.error('Erreur lors du chargement:', error);
+        toast.error('Erreur lors du chargement - Veuillez recharger la page');
+      }
       setLoading(false);
+      setProjects([]);
+      setTasks([]);
+      setTimesheets([]);
     }
   };
 
@@ -68,6 +108,7 @@ export default function TimesheetsPage() {
         return;
       }
 
+      setSubmitting(true);
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/timesheets', {
         method: 'POST',
@@ -84,13 +125,15 @@ export default function TimesheetsPage() {
         toast.success('Temps enregistré avec succès');
         setCreateDialogOpen(false);
         setNewEntry({ projet_id: '', tâche_id: '', date: new Date().toISOString().split('T')[0], heures: '', description: '' });
-        loadData();
+        await loadData();
       } else {
         toast.error(data.error || 'Erreur lors de l\'enregistrement');
       }
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -183,9 +226,12 @@ export default function TimesheetsPage() {
                       <Badge className="bg-indigo-100 text-indigo-800">{entry.heures}h</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={entry.validé ? 'default' : 'secondary'}>
-                        {entry.validé ? 'Validé' : 'En attente'}
-                      </Badge>
+                      <StatusBadge
+                        type="timesheet"
+                        statut={entry.statut || 'brouillon'}
+                        entityId={entry._id}
+                        onStatusChange={(newStatut) => handleStatusChange(entry._id, newStatut)}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -259,9 +305,9 @@ export default function TimesheetsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleCreateEntry} className="bg-indigo-600 hover:bg-indigo-700">
-              Enregistrer
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={submitting}>Annuler</Button>
+            <Button onClick={handleCreateEntry} className="bg-indigo-600 hover:bg-indigo-700" disabled={submitting}>
+              {submitting ? 'Enregistrement...' : 'Enregistrer'}
             </Button>
           </DialogFooter>
         </DialogContent>

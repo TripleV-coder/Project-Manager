@@ -1,15 +1,24 @@
 import './globals.css'
+import { SocketProvider } from '@/context/SocketContext'
+import { ConfirmationProvider } from '@/context/ConfirmationContext'
 
 export const metadata = {
-  title: 'Next.js MongoDB Template',
-  description: 'A simple template with App Router, MongoDB, and shadcn/ui',
+  title: 'PM - Gestion de Projets',
+  description: 'Plateforme complète de gestion de projets Agile avec Kanban, Sprints et Budget',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        {children}
+        <SocketProvider>
+          <ConfirmationProvider>
+            {children}
+          </ConfirmationProvider>
+        </SocketProvider>
       </body>
     </html>
   )

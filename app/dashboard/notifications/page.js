@@ -177,7 +177,7 @@ export default function NotificationsPage() {
                       </div>
                       <p className="text-gray-700 mb-2">{notification.message}</p>
                       <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span>{new Date(notification.créé_le).toLocaleDateString('fr-FR', {
+                        <span>{new Date(notification.created_at).toLocaleDateString('fr-FR', {
                           day: 'numeric',
                           month: 'long',
                           hour: '2-digit',

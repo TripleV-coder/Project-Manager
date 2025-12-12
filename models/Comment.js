@@ -4,7 +4,7 @@ const commentSchema = new mongoose.Schema({
   // Contexte
   entity_type: { 
     type: String, 
-    enum: ['projet', 't\u00e2che', 'livrable', 'sprint'],
+    enum: ['projet', 'tâche', 'task', 'livrable', 'sprint'],
     required: true 
   },
   entity_id: { type: mongoose.Schema.Types.ObjectId, required: true },

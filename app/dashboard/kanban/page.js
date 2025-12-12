@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import KanbanColumn from '@/components/kanban/KanbanColumn';
 import TaskCard from '@/components/kanban/TaskCard';
+import { toast } from 'sonner';
 
 export default function KanbanPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function KanbanPage() {
   const [tasks, setTasks] = useState([]);
   const [columns, setColumns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [activeTask, setActiveTask] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [users, setUsers] = useState([]);
@@ -34,7 +36,9 @@ export default function KanbanPage() {
     titre: '',
     description: '',
     priorité: 'Moyenne',
-    assigné_à: ''
+    assigné_à: '',
+    date_début: '',
+    date_échéance: ''
   });
 
   const sensors = useSensors(
@@ -45,11 +49,49 @@ export default function KanbanPage() {
     })
   );
 
+  // Load projects once on mount
   useEffect(() => {
-    loadData();
-  }, [selectedProject]);
+    const loadProjects = async () => {
+      try {
+        const token = localStorage.getItem('pm_token');
+        if (!token) {
+          router.push('/login');
+          return;
+        }
 
-  const loadData = async () => {
+        const projectsRes = await fetch('/api/projects?limit=100', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(8000)
+        });
+        
+        if (!projectsRes.ok) throw new Error('Failed to load projects');
+        
+        const projectsData = await projectsRes.json();
+        const projectsList = projectsData.projects || [];
+        setProjects(projectsList);
+
+        if (!projectId && projectsList.length > 0) {
+          setSelectedProject(projectsList[0]._id);
+        }
+        setProjectsLoaded(true);
+      } catch (error) {
+        console.error('Error loading projects:', error);
+        if (error.name !== 'AbortError') {
+          setProjectsLoaded(true);
+        }
+      }
+    };
+
+    loadProjects();
+  }, [projectId, router]);
+
+  // Load project data (tasks, columns, users) when project is selected
+  const loadProjectData = useCallback(async () => {
+    if (!selectedProject) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
@@ -57,31 +99,35 @@ export default function KanbanPage() {
         return;
       }
 
-      // Charger projets
-      const projectsRes = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const projectsData = await projectsRes.json();
-      setProjects(projectsData.projects || []);
+      setLoading(true);
 
-      if (!selectedProject && projectsData.projects?.length > 0) {
-        setSelectedProject(projectsData.projects[0]._id);
-        return;
+      // Load all data in parallel
+      const [tasksRes, projectRes, usersRes] = await Promise.all([
+        fetch(`/api/tasks?projet_id=${selectedProject}&limit=200`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(10000)
+        }),
+        fetch(`/api/projects/${selectedProject}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(10000)
+        }),
+        fetch('/api/users?limit=200', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(10000)
+        })
+      ]);
+
+      const [tasksData, projectData, usersData] = await Promise.all([
+        tasksRes.json(),
+        projectRes.json(),
+        usersRes.json()
+      ]);
+
+      if (tasksRes.ok) {
+        setTasks(tasksData.tasks || []);
       }
 
-      if (selectedProject) {
-        // Charger tâches du projet
-        const tasksRes = await fetch(`/api/tasks?projet_id=${selectedProject}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const tasksData = await tasksRes.json();
-        setTasks(tasksData.tasks || []);
-
-        // Charger colonnes du projet
-        const projectRes = await fetch(`/api/projects/${selectedProject}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const projectData = await projectRes.json();
+      if (projectRes.ok) {
         setColumns(projectData.project?.colonnes_kanban || [
           { id: 'backlog', nom: 'Backlog', couleur: '#94a3b8' },
           { id: 'todo', nom: 'À faire', couleur: '#60a5fa' },
@@ -89,21 +135,26 @@ export default function KanbanPage() {
           { id: 'review', nom: 'Review', couleur: '#8b5cf6' },
           { id: 'done', nom: 'Terminé', couleur: '#10b981' }
         ]);
+      }
 
-        // Charger utilisateurs
-        const usersRes = await fetch('/api/users', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const usersData = await usersRes.json();
+      if (usersRes.ok) {
         setUsers(usersData.users || []);
       }
 
       setLoading(false);
     } catch (error) {
-      console.error('Erreur:', error);
-      setLoading(false);
+      console.error('Error loading project data:', error);
+      if (error.name !== 'AbortError') {
+        setLoading(false);
+      }
     }
-  };
+  }, [selectedProject, router]);
+
+  useEffect(() => {
+    if (projectsLoaded && selectedProject) {
+      loadProjectData();
+    }
+  }, [selectedProject, projectsLoaded, loadProjectData]);
 
   const handleDragStart = (event) => {
     const { active } = event;
@@ -111,7 +162,7 @@ export default function KanbanPage() {
     setActiveTask(task);
   };
 
-  const handleDragEnd = async (event) => {
+  const handleDragEnd = useCallback(async (event) => {
     const { active, over } = event;
     
     if (!over) {
@@ -128,14 +179,14 @@ export default function KanbanPage() {
       return;
     }
 
-    // Mettre à jour localement
+    // Update locally first for instant feedback
     setTasks(tasks.map(t => 
       t._id === taskId 
         ? { ...t, colonne_kanban: newColumnId, statut: columns.find(c => c.id === newColumnId)?.nom || t.statut }
         : t
     ));
 
-    // Mettre à jour sur le serveur
+    // Update on server
     try {
       const token = localStorage.getItem('pm_token');
       await fetch(`/api/tasks/${taskId}/move`, {
@@ -147,19 +198,25 @@ export default function KanbanPage() {
         body: JSON.stringify({
           nouvelle_colonne: newColumnId,
           nouveau_statut: columns.find(c => c.id === newColumnId)?.nom
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       });
     } catch (error) {
-      console.error('Erreur déplacement:', error);
-      // Recharger en cas d'erreur
-      loadData();
+      console.error('Error moving task:', error);
+      toast.error('Erreur lors du déplacement');
+      loadProjectData();
     }
 
     setActiveTask(null);
-  };
+  }, [tasks, columns, loadProjectData]);
 
-  const handleCreateTask = async () => {
+  const handleCreateTask = useCallback(async () => {
     try {
+      if (!newTask.titre.trim()) {
+        toast.error('Le titre est requis');
+        return;
+      }
+
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/tasks', {
         method: 'POST',
@@ -172,23 +229,35 @@ export default function KanbanPage() {
           projet_id: selectedProject,
           statut: 'Backlog',
           colonne_kanban: 'backlog'
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       });
 
       if (response.ok) {
+        const createdTask = await response.json();
+        setTasks([...tasks, createdTask.task || createdTask]);
         setCreateDialogOpen(false);
-        setNewTask({ titre: '', description: '', priorité: 'Moyenne', assigné_à: '' });
-        loadData();
+        setNewTask({ titre: '', description: '', priorité: 'Moyenne', assigné_à: '', date_début: '', date_échéance: '' });
+        toast.success('Tâche créée avec succès');
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Erreur lors de la création');
       }
     } catch (error) {
-      console.error('Erreur:', error);
+      if (error.name !== 'AbortError') {
+        console.error('Error creating task:', error);
+        toast.error('Erreur de connexion');
+      }
     }
-  };
+  }, [newTask, selectedProject, tasks]);
 
-  if (loading) {
+  if (!projectsLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="space-y-4 text-center">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-gray-600">Chargement des projets...</p>
+        </div>
       </div>
     );
   }
@@ -214,7 +283,10 @@ export default function KanbanPage() {
         <div className="flex items-center justify-between max-w-full">
           <div className="flex items-center gap-4 flex-1">
             <h1 className="text-2xl font-bold text-gray-900">Kanban Board</h1>
-            <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <Select value={selectedProject} onValueChange={(value) => {
+              setSelectedProject(value);
+              setLoading(true);
+            }}>
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Sélectionner un projet" />
               </SelectTrigger>
@@ -252,46 +324,56 @@ export default function KanbanPage() {
                   <Textarea
                     value={newTask.description}
                     onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                    placeholder="Description..."
-                    rows={3}
+                    placeholder="Description (optionnel)"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Priorité</Label>
-                    <Select value={newTask.priorité} onValueChange={(val) => setNewTask({ ...newTask, priorité: val })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Basse">Basse</SelectItem>
-                        <SelectItem value="Moyenne">Moyenne</SelectItem>
-                        <SelectItem value="Haute">Haute</SelectItem>
-                        <SelectItem value="Critique">Critique</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Assigné à</Label>
-                    <Select value={newTask.assigné_à} onValueChange={(val) => setNewTask({ ...newTask, assigné_à: val })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Aucun" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Aucun</SelectItem>
-                        {users.map(u => (
-                          <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Priorité</Label>
+                  <Select value={newTask.priorité} onValueChange={(val) => setNewTask({ ...newTask, priorité: val })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Basse">Basse</SelectItem>
+                      <SelectItem value="Moyenne">Moyenne</SelectItem>
+                      <SelectItem value="Haute">Haute</SelectItem>
+                      <SelectItem value="Critique">Critique</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Assigné à</Label>
+                  <Select value={newTask.assigné_à || ''} onValueChange={(val) => setNewTask({ ...newTask, assigné_à: val === '' ? null : val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un utilisateur" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map(u => (
+                        <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date de début</Label>
+                  <Input
+                    type="date"
+                    value={newTask.date_début}
+                    onChange={(e) => setNewTask({ ...newTask, date_début: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date d'échéance</Label>
+                  <Input
+                    type="date"
+                    value={newTask.date_échéance}
+                    onChange={(e) => setNewTask({ ...newTask, date_échéance: e.target.value })}
+                  />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-                <Button onClick={handleCreateTask} className="bg-indigo-600 hover:bg-indigo-700">
-                  Créer la tâche
-                </Button>
+                <Button onClick={handleCreateTask} className="bg-indigo-600 hover:bg-indigo-700">Créer</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -299,30 +381,38 @@ export default function KanbanPage() {
       </div>
 
       {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 h-full min-w-max">
-            {columns.map((column) => {
-              const columnTasks = tasks.filter(t => t.colonne_kanban === column.id);
-              return (
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="space-y-4 text-center">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-gray-600">Chargement du tableau...</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-x-auto p-4">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 min-w-min">
+              {columns.map(column => (
                 <KanbanColumn
                   key={column.id}
                   column={column}
-                  tasks={columnTasks}
+                  tasks={tasks.filter(t => t.colonne_kanban === column.id)}
                 />
-              );
-            })}
-          </div>
-          <DragOverlay>
-            {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
-          </DragOverlay>
-        </DndContext>
-      </div>
+              ))}
+            </div>
+            <DragOverlay>
+              {activeTask ? (
+                <TaskCard task={activeTask} isDragging />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
+      )}
     </div>
   );
 }

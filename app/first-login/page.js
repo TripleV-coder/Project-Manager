@@ -46,13 +46,20 @@ export default function FirstLogin() {
         body: JSON.stringify(formData)
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        setError(data.error || 'Une erreur est survenue');
+        let errorMessage = 'Une erreur est survenue';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `Erreur ${response.status}`;
+        }
+        setError(errorMessage);
         setLoading(false);
         return;
       }
+
+      const data = await response.json();
 
       // Succès, rediriger vers dashboard
       router.push('/dashboard');
