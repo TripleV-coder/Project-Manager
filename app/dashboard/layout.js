@@ -107,6 +107,20 @@ export default function DashboardLayout({ children }) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  // Écouter les mises à jour du compteur de notifications
+  useEffect(() => {
+    const handleNotificationsUpdate = (event) => {
+      if (event.detail && typeof event.detail.unreadCount === 'number') {
+        setUnreadNotifications(event.detail.unreadCount);
+      }
+    };
+
+    window.addEventListener('notifications-updated', handleNotificationsUpdate);
+    return () => {
+      window.removeEventListener('notifications-updated', handleNotificationsUpdate);
+    };
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('pm_token');
     localStorage.removeItem('pm_user');

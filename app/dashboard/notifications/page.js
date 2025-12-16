@@ -53,10 +53,15 @@ export default function NotificationsPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      setNotifications(notifications.map(n =>
+      const updatedNotifications = notifications.map(n =>
         n._id === notificationId ? { ...n, lu: true } : n
-      ));
+      );
+      setNotifications(updatedNotifications);
       toast.success('Notification marquée comme lue');
+
+      // Émettre un événement pour mettre à jour le compteur dans le layout
+      const newUnreadCount = updatedNotifications.filter(n => !n.lu).length;
+      window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } }));
     } catch (error) {
       console.error('Erreur:', error);
     }
@@ -72,6 +77,9 @@ export default function NotificationsPage() {
 
       setNotifications(notifications.map(n => ({ ...n, lu: true })));
       toast.success('Toutes les notifications marquées comme lues');
+
+      // Émettre un événement pour mettre à jour le compteur dans le layout
+      window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: 0 } }));
     } catch (error) {
       console.error('Erreur:', error);
     }
@@ -85,8 +93,16 @@ export default function NotificationsPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      setNotifications(notifications.filter(n => n._id !== notificationId));
+      const deletedNotification = notifications.find(n => n._id === notificationId);
+      const updatedNotifications = notifications.filter(n => n._id !== notificationId);
+      setNotifications(updatedNotifications);
       toast.success('Notification supprimée');
+
+      // Si la notification supprimée était non lue, mettre à jour le compteur
+      if (deletedNotification && !deletedNotification.lu) {
+        const newUnreadCount = updatedNotifications.filter(n => !n.lu).length;
+        window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } }));
+      }
     } catch (error) {
       console.error('Erreur:', error);
     }

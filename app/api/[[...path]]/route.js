@@ -1047,7 +1047,27 @@ export async function GET(request) {
       const skip = (page - 1) * limit;
 
       const query = {};
-      if (projet_id) query.projet_id = projet_id;
+
+      if (projet_id) {
+        // Vérifier l'accès au projet spécifié
+        if (!user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
+          const hasAccess = await projectService.canUserAccessProject(user._id, projet_id);
+          if (!hasAccess) {
+            return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+          }
+        }
+        query.projet_id = projet_id;
+      } else {
+        // Filtrer par projets accessibles si l'utilisateur n'est pas admin
+        const accessibleProjectIds = await projectService.getAccessibleProjectIds(user._id, user.role_id);
+        if (accessibleProjectIds !== null) {
+          if (accessibleProjectIds.length === 0) {
+            return handleCORS(NextResponse.json({ deliverables: [], total: 0, page, limit, totalPages: 0 }));
+          }
+          query.projet_id = { $in: accessibleProjectIds };
+        }
+      }
+
       if (statut) query.statut_global = statut;
 
       const [deliverables, total] = await Promise.all([
@@ -1158,8 +1178,15 @@ export async function GET(request) {
               return handleCORS(APIResponse.forbidden('Accès refusé au projet'));
             }
           }
-        } else if (!user.role_id?.permissions?.gererTaches && !user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
-          query.assigné_à = user._id;
+        } else {
+          // Filtrer par projets accessibles si l'utilisateur n'est pas admin
+          const accessibleProjectIds = await projectService.getAccessibleProjectIds(user._id, user.role_id);
+          if (accessibleProjectIds !== null) {
+            if (accessibleProjectIds.length === 0) {
+              return handleCORS(APIResponse.success([], null, 200, { page, limit, total: 0, pages: 0 }));
+            }
+            query.projet_id = { $in: accessibleProjectIds };
+          }
         }
 
         // Apply other filters if provided
@@ -1480,7 +1507,26 @@ export async function GET(request) {
 
       const projetId = url.searchParams.get('projet_id');
       const query = {};
-      if (projetId) query.projet_id = projetId;
+
+      if (projetId) {
+        // Vérifier l'accès au projet spécifié
+        if (!user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
+          const hasAccess = await projectService.canUserAccessProject(user._id, projetId);
+          if (!hasAccess) {
+            return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+          }
+        }
+        query.projet_id = projetId;
+      } else {
+        // Filtrer par projets accessibles si l'utilisateur n'est pas admin
+        const accessibleProjectIds = await projectService.getAccessibleProjectIds(user._id, user.role_id);
+        if (accessibleProjectIds !== null) {
+          if (accessibleProjectIds.length === 0) {
+            return handleCORS(NextResponse.json({ sprints: [] }));
+          }
+          query.projet_id = { $in: accessibleProjectIds };
+        }
+      }
 
       const sprints = await Sprint.find(query)
         .sort({ date_début: -1 });
