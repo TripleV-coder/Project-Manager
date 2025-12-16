@@ -2,51 +2,64 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  Eye, Download, AlertTriangle, Activity, Users, Clock,
-  Filter, Search, Calendar, ChevronDown, AlertCircle, TrendingUp
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Eye, Download, Activity, RefreshCw, Search, X, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FolderKanban } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 
 export default function AuditDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
+  const [_user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [auditLogs, setAuditLogs] = useState([]);
   const [summary, setSummary] = useState(null);
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Filter states
   const [filters, setFilters] = useState({
     userId: '',
     action: '',
     entityType: '',
     severity: '',
+    projectId: '',
     startDate: '',
     endDate: '',
-    limit: 50,
+    limit: 15,
     skip: 0
   });
 
   const [availableActions, setAvailableActions] = useState([]);
   const [availableEntityTypes, setAvailableEntityTypes] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [availableProjects, setAvailableProjects] = useState([]);
   const [totalResults, setTotalResults] = useState(0);
 
-  // Load available filter options and check auth
+  const severityConfig = {
+    critical: { label: 'Critique', bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500' },
+    error: { label: 'Erreur', bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' },
+    warning: { label: 'Avertissement', bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
+    info: { label: 'Info', bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
+  };
+
+  const actionConfig = {
+    création: 'bg-emerald-100 text-emerald-700',
+    modification: 'bg-blue-100 text-blue-700',
+    suppression: 'bg-red-100 text-red-700',
+    connexion: 'bg-purple-100 text-purple-700',
+    déconnexion: 'bg-gray-100 text-gray-700',
+    default: 'bg-gray-100 text-gray-600'
+  };
+
   useEffect(() => {
     const loadOptions = async () => {
       try {
         const token = localStorage.getItem('pm_token');
-
-        // Check authorization first
         const userRes = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -57,58 +70,53 @@ export default function AuditDashboard() {
         }
 
         const userData = await userRes.json();
-
-        // Client-side guard: redirect if not admin
         if (!userData.role?.permissions?.adminConfig) {
           router.push('/dashboard');
           return;
         }
-
         setUser(userData);
 
-        const response = await fetch('/api/audit/actions', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const [actionsRes, usersRes, projectsRes] = await Promise.all([
+          fetch('/api/audit/actions', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/users?limit=100', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/projects?limit=200', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
 
-        if (response.ok) {
-          const data = await response.json();
+        if (actionsRes.ok) {
+          const data = await actionsRes.json();
           setAvailableActions(data.actions || []);
           setAvailableEntityTypes(data.entityTypes || []);
         }
+
+        if (usersRes.ok) {
+          const usersData = await usersRes.json();
+          setAvailableUsers(usersData.data || []);
+        }
+
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json();
+          setAvailableProjects(projectsData.data || []);
+        }
       } catch (error) {
-        console.error('Error loading filter options:', error);
+        console.error('Erreur:', error);
       }
     };
-
     loadOptions();
   }, [router]);
 
-  // Load audit data
   const loadAuditData = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('pm_token');
 
-      // Load summary
-      const summaryRes = await fetch('/api/audit/summary', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const [summaryRes, logsRes] = await Promise.all([
+        fetch('/api/audit/summary', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`/api/audit?${new URLSearchParams(Object.entries(filters).filter(([_, v]) => v))}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
 
-      if (summaryRes.ok) {
-        const summaryData = await summaryRes.json();
-        setSummary(summaryData);
-      }
-
-      // Build query string
-      const queryParams = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) queryParams.append(key, value);
-      });
-
-      // Load logs
-      const logsRes = await fetch(`/api/audit?${queryParams}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      if (summaryRes.ok) setSummary(await summaryRes.json());
 
       if (logsRes.ok) {
         const logsData = await logsRes.json();
@@ -117,456 +125,529 @@ export default function AuditDashboard() {
       } else if (logsRes.status === 403) {
         router.push('/login');
       }
-
-      setLoading(false);
     } catch (error) {
-      console.error('Error loading audit data:', error);
-      toast.error('Failed to load audit data');
+      console.error('Erreur:', error);
+      toast.error('Erreur lors du chargement');
+    } finally {
       setLoading(false);
     }
   }, [filters, router]);
 
-  // Load data on mount and when filters change
   useEffect(() => {
     loadAuditData();
   }, [loadAuditData]);
 
-  // Handle filter changes
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value, skip: 0 }));
   };
 
-  // Handle export
   const handleExport = async (format = 'csv') => {
     try {
-      const queryParams = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && key !== 'limit' && key !== 'skip') {
-          queryParams.append(key, value);
-        }
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v && !['limit', 'skip'].includes(k)) params.append(k, v);
       });
-      queryParams.append('format', format);
+      params.append('format', format);
 
       const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/audit/export?${queryParams}`, {
+      const response = await fetch(`/api/audit/export?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (!response.ok) throw new Error('Export failed');
+      if (!response.ok) throw new Error('Échec');
 
-      // Download file
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${format}`;
+      a.download = `audit-${new Date().toISOString().split('T')[0]}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
-      toast.success('Export completed');
+      toast.success('Export terminé');
     } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Failed to export audit logs');
+      toast.error('Erreur export');
     }
   };
 
-  // Get severity badge color
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800';
-      case 'error': return 'bg-orange-100 text-orange-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'info': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const resetFilters = () => {
+    setFilters({ userId: '', action: '', entityType: '', severity: '', projectId: '', startDate: '', endDate: '', limit: 15, skip: 0 });
+    setSearchQuery('');
   };
 
-  // Get action badge color
-  const getActionColor = (action) => {
-    if (['création', 'upload_fichier', 'validation'].includes(action))
-      return 'bg-green-100 text-green-800';
-    if (['suppression', 'modification'].includes(action))
-      return 'bg-blue-100 text-blue-800';
-    if (['connexion'].includes(action))
-      return 'bg-purple-100 text-purple-800';
-    if (['access_denied', 'login_failed'].includes(action))
-      return 'bg-red-100 text-red-800';
-    return 'bg-gray-100 text-gray-800';
+  const activeFiltersCount = Object.entries(filters).filter(([k, v]) => v && !['limit', 'skip'].includes(k)).length;
+
+  const getSeverity = (s) => severityConfig[s] || { label: s, bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
+  const getActionStyle = (a) => actionConfig[a] || actionConfig.default;
+
+  const filteredLogs = auditLogs.filter(log => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return [log.utilisateur_nom, log.utilisateur_email, log.action, log.entity_type, log.description]
+      .some(f => f?.toLowerCase().includes(q));
+  });
+
+  const currentPage = Math.floor(filters.skip / filters.limit) + 1;
+  const totalPages = Math.ceil(totalResults / filters.limit);
+  const goToPage = (p) => setFilters(prev => ({ ...prev, skip: (p - 1) * prev.limit }));
+
+  // Génération des numéros de page pour la pagination
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 4, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+    return pages;
   };
 
   if (loading && !summary) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Activity className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Audit Activity</h1>
-        <p className="text-gray-600 mt-2">Track all user activities and system events</p>
+    <div className="space-y-4 max-w-6xl mx-auto">
+      {/* Header compact */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Journal d'audit</h1>
+          <p className="text-xs text-gray-500">{totalResults} activités enregistrées</p>
+        </div>
+        <div className="flex gap-1.5">
+          <Button variant="ghost" size="sm" onClick={loadAuditData} disabled={loading} className="h-8 w-8 p-0">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                <Download className="w-4 h-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-28 p-1">
+              <button onClick={() => handleExport('csv')} className="w-full px-2 py-1.5 text-xs text-left hover:bg-gray-100 rounded">CSV</button>
+              <button onClick={() => handleExport('json')} className="w-full px-2 py-1.5 text-xs text-left hover:bg-gray-100 rounded">JSON</button>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Stats mini */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Activities</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.summary.totalActivities}</div>
-              <p className="text-xs text-gray-500 mt-1">Last {summary.period.days} days</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Critical Events</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{summary.summary.criticalEvents}</div>
-              <p className="text-xs text-gray-500 mt-1">Requires attention</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Failed Logins</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{summary.summary.failedLogins}</div>
-              <p className="text-xs text-gray-500 mt-1">Security alerts</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Active Users</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.summary.activeUsersCount}</div>
-              <p className="text-xs text-gray-500 mt-1">Today</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Activités', value: summary.summary?.totalActivities ?? 0 },
+            { label: 'Actions', value: summary.summary?.activitiesByAction?.length ?? 0 },
+            { label: 'Utilisateurs', value: summary.summary?.topUsers?.length ?? 0 },
+            { label: 'Période', value: `${summary.summary?.hoursWindow ?? 24}h` }
+          ].map((stat, i) => (
+            <div key={i} className="bg-white border rounded-lg px-3 py-2">
+              <p className="text-[10px] text-gray-400 uppercase">{stat.label}</p>
+              <p className="text-lg font-semibold text-gray-900">{stat.value}</p>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Critical Activities Alert */}
-      {summary && summary.recentCriticalActivities.length > 0 && (
-        <Card className="bg-red-50 border-red-200">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              Recent Critical Activities
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {summary.recentCriticalActivities.map((activity, idx) => (
-                <div key={idx} className="text-sm py-2 border-b last:border-b-0">
-                  <span className="font-medium">{activity.utilisateur?.nom_complet}</span>
-                  {' - '}
-                  <span className="text-red-600">{activity.action}</span>
-                  {' on '} 
-                  <span>{activity.entity_type}</span>
-                  <span className="text-gray-500 ml-2 text-xs">
-                    {new Date(activity.timestamp).toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Action</label>
-              <Select value={filters.action} onValueChange={(v) => handleFilterChange('action', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All actions" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableActions.map(action => (
-                    <SelectItem key={action} value={action}>
-                      {action}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-1 block">Entity Type</label>
-              <Select value={filters.entityType} onValueChange={(v) => handleFilterChange('entityType', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableEntityTypes.map(type => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-1 block">Severity</label>
-              <Select value={filters.severity} onValueChange={(v) => handleFilterChange('severity', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All severities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="critical">Critical</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
-                  <SelectItem value="warning">Warning</SelectItem>
-                  <SelectItem value="info">Info</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-1 block">Start Date</label>
+      {/* Barre de filtres */}
+      <Card className="border shadow-sm">
+        <CardContent className="p-3">
+          <div className="flex gap-2 items-center">
+            {/* Recherche */}
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 text-sm"
               />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <X className="w-3 h-3 text-gray-400" />
+                </button>
+              )}
             </div>
 
-            <div>
-              <label className="text-sm font-medium mb-1 block">End Date</label>
-              <Input
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              />
-            </div>
+            {/* Bouton filtres */}
+            <Button
+              variant={showFilters ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`h-8 gap-1 ${showFilters ? 'bg-indigo-600' : ''}`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span className="text-xs">Filtres</span>
+              {activeFiltersCount > 0 && (
+                <span className={`text-[10px] px-1 rounded ${showFilters ? 'bg-white/20' : 'bg-indigo-100 text-indigo-700'}`}>
+                  {activeFiltersCount}
+                </span>
+              )}
+            </Button>
 
-            <div>
-              <label className="text-sm font-medium mb-1 block">Limit</label>
-              <Select value={String(filters.limit)} onValueChange={(v) => handleFilterChange('limit', parseInt(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                  <SelectItem value="250">250</SelectItem>
-                  <SelectItem value="500">500</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2 items-end">
-              <Button
-                variant="outline"
-                onClick={() => setFilters({
-                  userId: '',
-                  action: '',
-                  entityType: '',
-                  severity: '',
-                  startDate: '',
-                  endDate: '',
-                  limit: 50,
-                  skip: 0
-                })}
-              >
-                Reset
-              </Button>
-              <Button onClick={loadAuditData} disabled={loading}>
-                Apply
-              </Button>
-            </div>
+            {activeFiltersCount > 0 && (
+              <button onClick={resetFilters} className="text-xs text-gray-500 hover:text-gray-700">
+                Effacer
+              </button>
+            )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Export Buttons */}
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          onClick={() => handleExport('csv')}
-          className="flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => handleExport('json')}
-          className="flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Export JSON
-        </Button>
-      </div>
-
-      {/* Audit Logs Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Audit Logs</span>
-            <span className="text-sm font-normal text-gray-600">
-              Showing {auditLogs.length} of {totalResults}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {auditLogs.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No audit logs found
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr className="border-b">
-                    <th className="px-4 py-2 text-left font-medium">User</th>
-                    <th className="px-4 py-2 text-left font-medium">Action</th>
-                    <th className="px-4 py-2 text-left font-medium">Entity</th>
-                    <th className="px-4 py-2 text-left font-medium">IP Address</th>
-                    <th className="px-4 py-2 text-left font-medium">Device</th>
-                    <th className="px-4 py-2 text-left font-medium">Severity</th>
-                    <th className="px-4 py-2 text-left font-medium">Time</th>
-                    <th className="px-4 py-2 text-center font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditLogs.map((log, idx) => (
-                    <tr key={idx} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{log.utilisateur_nom}</div>
-                        <div className="text-xs text-gray-500">{log.utilisateur_email}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge className={getActionColor(log.action)}>
-                          {log.action}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-sm">{log.entity_type}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-600">{log.ip_address}</td>
-                      <td className="px-4 py-3 text-xs">{log.navigateur} / {log.os}</td>
-                      <td className="px-4 py-3">
-                        <Badge className={getSeverityColor(log.severity)}>
-                          {log.severity}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedLog(log);
-                            setDetailsDialogOpen(true);
-                          }}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </td>
-                    </tr>
+          {/* Filtres avancés */}
+          {showFilters && (
+            <div className="mt-3 pt-3 border-t space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                <select
+                  value={filters.userId}
+                  onChange={(e) => handleFilterChange('userId', e.target.value)}
+                  className="h-8 px-2 text-xs border rounded bg-white"
+                >
+                  <option value="">Utilisateur</option>
+                  {availableUsers.map(u => (
+                    <option key={u.id || u._id} value={u.id || u._id}>{u.nom_complet}</option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+
+                <select
+                  value={filters.action}
+                  onChange={(e) => handleFilterChange('action', e.target.value)}
+                  className="h-8 px-2 text-xs border rounded bg-white"
+                >
+                  <option value="">Action</option>
+                  {availableActions.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+
+                <select
+                  value={filters.entityType}
+                  onChange={(e) => handleFilterChange('entityType', e.target.value)}
+                  className="h-8 px-2 text-xs border rounded bg-white"
+                >
+                  <option value="">Entité</option>
+                  {availableEntityTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+
+                <select
+                  value={filters.severity}
+                  onChange={(e) => handleFilterChange('severity', e.target.value)}
+                  className="h-8 px-2 text-xs border rounded bg-white"
+                >
+                  <option value="">Sévérité</option>
+                  {Object.entries(severityConfig).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                <select
+                  value={filters.projectId}
+                  onChange={(e) => handleFilterChange('projectId', e.target.value)}
+                  className="h-8 px-2 text-xs border rounded bg-white col-span-2 sm:col-span-1"
+                >
+                  <option value="">Filtrer par projet</option>
+                  {availableProjects.map(p => (
+                    <option key={p._id} value={p._id}>{p.nom}</option>
+                  ))}
+                </select>
+
+                <Input
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="Début"
+                />
+
+                <Input
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="Fin"
+                />
+              </div>
+
+              {filters.projectId && (
+                <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-indigo-600" />
+                  <span className="text-xs text-indigo-700">
+                    Affichage des activités du projet: <strong>{availableProjects.find(p => p._id === filters.projectId)?.nom}</strong>
+                  </span>
+                  <button
+                    onClick={() => handleFilterChange('projectId', '')}
+                    className="ml-auto text-indigo-600 hover:text-indigo-800"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Details Dialog */}
+      {/* Table compacte */}
+      <Card className="border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Utilisateur</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Action</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 hidden md:table-cell">Entité</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 hidden lg:table-cell">Projet</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 hidden xl:table-cell">Sévérité</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-gray-500">
+                    <Activity className="w-6 h-6 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">Aucune activité</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredLogs.map((log, i) => (
+                  <tr
+                    key={i}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => { setSelectedLog(log); setDetailsDialogOpen(true); }}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-[10px] font-medium text-gray-600">
+                            {(log.utilisateur_nom || 'U')[0].toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                          {log.utilisateur_nom}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded ${getActionStyle(log.action)}`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 hidden md:table-cell">{log.entity_type}</td>
+                    <td className="px-3 py-2 hidden lg:table-cell">
+                      {log.related_project_id?.nom ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-indigo-50 text-indigo-700">
+                          <FolderKanban className="w-3 h-3" />
+                          <span className="truncate max-w-[100px]">{log.related_project_id.nom}</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 hidden xl:table-cell">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded ${getSeverity(log.severity).bg} ${getSeverity(log.severity).text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${getSeverity(log.severity).dot}`}></span>
+                        {getSeverity(log.severity).label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {new Date(log.timestamp).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-2 py-2">
+                      <Eye className="w-3.5 h-3.5 text-gray-300" />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination professionnelle */}
+        {totalPages > 1 && !searchQuery && (
+          <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">
+                {filters.skip + 1}-{Math.min(filters.skip + filters.limit, totalResults)} sur {totalResults}
+              </span>
+              <select
+                value={filters.limit}
+                onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
+                className="h-7 px-2 text-xs border rounded bg-white"
+              >
+                <option value={10}>10 / page</option>
+                <option value={15}>15 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {/* Première page */}
+              <button
+                onClick={() => goToPage(1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+
+              {/* Page précédente */}
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Numéros de page */}
+              <div className="flex items-center gap-0.5 mx-1">
+                {getPageNumbers().map((page, i) => (
+                  page === '...' ? (
+                    <span key={`ellipsis-${i}`} className="px-2 text-gray-400">...</span>
+                  ) : (
+                    <button
+                      key={page}
+                      onClick={() => goToPage(page)}
+                      className={`min-w-[28px] h-7 px-2 text-xs font-medium rounded transition-colors ${
+                        currentPage === page
+                          ? 'bg-indigo-600 text-white'
+                          : 'hover:bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                ))}
+              </div>
+
+              {/* Page suivante */}
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Dernière page */}
+              <button
+                onClick={() => goToPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Dialog détails */}
       <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Activity Details</DialogTitle>
-            <DialogDescription>
-              Complete information about this activity
-            </DialogDescription>
+            <DialogTitle className="text-sm font-semibold">Détails de l'activité</DialogTitle>
           </DialogHeader>
 
           {selectedLog && (
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 text-sm">
+              {/* User info */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-semibold text-indigo-600">
+                    {(selectedLog.utilisateur_nom || 'U')[0].toUpperCase()}
+                  </span>
+                </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">User</label>
                   <p className="font-medium">{selectedLog.utilisateur_nom}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Email</label>
-                  <p className="text-sm">{selectedLog.utilisateur_email}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Action</label>
-                  <Badge className={getActionColor(selectedLog.action)}>
-                    {selectedLog.action}
-                  </Badge>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Severity</label>
-                  <Badge className={getSeverityColor(selectedLog.severity)}>
-                    {selectedLog.severity}
-                  </Badge>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Entity Type</label>
-                  <p className="text-sm">{selectedLog.entity_type}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Time</label>
-                  <p className="text-sm">{new Date(selectedLog.timestamp).toLocaleString()}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">IP Address</label>
-                  <p className="text-sm font-mono">{selectedLog.ip_address}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Device</label>
-                  <p className="text-sm">{selectedLog.navigateur} / {selectedLog.os}</p>
+                  <p className="text-xs text-gray-500">{selectedLog.utilisateur_email}</p>
                 </div>
               </div>
 
+              {/* Info grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Action</p>
+                  <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${getActionStyle(selectedLog.action)}`}>
+                    {selectedLog.action}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Sévérité</p>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded ${getSeverity(selectedLog.severity).bg} ${getSeverity(selectedLog.severity).text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${getSeverity(selectedLog.severity).dot}`}></span>
+                    {getSeverity(selectedLog.severity).label}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Entité</p>
+                  <p>{selectedLog.entity_type}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Date</p>
+                  <p>{new Date(selectedLog.timestamp).toLocaleString('fr-FR')}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">IP</p>
+                  <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{selectedLog.ip_address || '-'}</code>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Appareil</p>
+                  <p className="text-xs">{selectedLog.navigateur || '-'} / {selectedLog.os || '-'}</p>
+                </div>
+              </div>
+
+              {selectedLog.related_project_id && (
+                <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
+                  <FolderKanban className="w-4 h-4 text-indigo-600" />
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase">Projet associé</p>
+                    <p className="text-xs font-medium text-indigo-700">
+                      {selectedLog.related_project_id?.nom || selectedLog.related_project_id}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {selectedLog.description && (
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Description</label>
-                  <p className="text-sm">{selectedLog.description}</p>
+                  <p className="text-[10px] text-gray-400 uppercase mb-1">Description</p>
+                  <p className="text-sm p-2 bg-gray-50 rounded">{selectedLog.description}</p>
                 </div>
               )}
 
-              {selectedLog.old_value && (
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Old Value</label>
-                  <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                    {JSON.stringify(selectedLog.old_value, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {selectedLog.new_value && (
-                <div>
-                  <label className="text-xs font-medium text-gray-600">New Value</label>
-                  <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
-                    {JSON.stringify(selectedLog.new_value, null, 2)}
-                  </pre>
+              {(selectedLog.old_value || selectedLog.new_value) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedLog.old_value && (
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase mb-1">Avant</p>
+                      <pre className="text-[10px] p-2 bg-red-50 rounded overflow-auto max-h-20">
+                        {JSON.stringify(selectedLog.old_value, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {selectedLog.new_value && (
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase mb-1">Après</p>
+                      <pre className="text-[10px] p-2 bg-green-50 rounded overflow-auto max-h-20">
+                        {JSON.stringify(selectedLog.new_value, null, 2)}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

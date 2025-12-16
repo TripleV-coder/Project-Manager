@@ -2,24 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Users, Plus, Search, Mail, Shield, UserCheck, UserX, Key, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
+import TablePagination from '@/components/ui/table-pagination';
 
 export default function UsersPage() {
   const router = useRouter();
@@ -32,18 +28,38 @@ export default function UsersPage() {
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [selectedUserForReset, setSelectedUserForReset] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
   const [newUser, setNewUser] = useState({
     nom_complet: '',
     email: '',
     role_id: '',
     status: 'Actif'
   });
+  const [creatingUser, setCreatingUser] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, itemsPerPage]);
 
-  const { hasPermission: canManageUsers } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+  const permissions = useRBACPermissions(user);
+  const canManageUsers = permissions.hasPermission;
+
+  /**
+   * Extrait les données d'une réponse API de manière sécurisée
+   */
+  const extractApiData = (response, keys = ['data']) => {
+    if (!response) return [];
+    if (Array.isArray(response)) return response;
+    for (const key of keys) {
+      if (response[key] && Array.isArray(response[key])) {
+        return response[key];
+      }
+    }
+    return [];
+  };
 
   const loadData = async () => {
     try {
@@ -55,32 +71,77 @@ export default function UsersPage() {
       }
 
       const [userRes, usersRes, rolesRes] = await Promise.all([
-        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/users?limit=${itemsPerPage}&page=${currentPage}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
+
+      // Vérification des réponses
+      if (!userRes.ok) {
+        if (userRes.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw new Error('Erreur chargement utilisateur');
+      }
 
       const userData = await userRes.json();
       const usersData = await usersRes.json();
       const rolesData = await rolesRes.json();
 
-      // Client-side guard: redirect if not admin
       if (!userData.role?.permissions?.adminConfig) {
         router.push('/dashboard');
         return;
       }
 
       setUser(userData);
-      setUsers(usersData.users || []);
-      setRoles(rolesData.roles || []);
+
+      // Vérification sécurisée du format de réponse API pour les utilisateurs
+      if (usersRes.ok) {
+        const usersList = extractApiData(usersData, ['data', 'users']);
+        if (!Array.isArray(usersList)) {
+          console.error('Format de réponse invalide pour les utilisateurs:', usersData);
+          toast.error('Erreur de format de données');
+          setUsers([]);
+          setTotalUsers(0);
+        } else {
+          setUsers(usersList);
+          setTotalUsers(usersData.pagination?.total || usersData.total || usersList.length || 0);
+        }
+      } else {
+        toast.error('Erreur lors du chargement des utilisateurs');
+        setUsers([]);
+      }
+
+      // Vérification sécurisée du format de réponse API pour les rôles
+      if (rolesRes.ok) {
+        const rolesList = extractApiData(rolesData, ['roles', 'data']);
+        if (!Array.isArray(rolesList)) {
+          console.error('Format de réponse invalide pour les rôles:', rolesData);
+          setRoles([]);
+        } else {
+          setRoles(rolesList);
+        }
+      } else {
+        toast.error('Erreur lors du chargement des rôles');
+        setRoles([]);
+      }
+
       setLoading(false);
     } catch (error) {
       console.error('Erreur chargement:', error);
+      toast.error('Erreur lors du chargement des données');
       setLoading(false);
     }
   };
 
   const handleCreateUser = async () => {
+    if (!newUser.nom_complet || !newUser.email || !newUser.role_id) {
+      toast.error('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    setCreatingUser(true);
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/users', {
@@ -98,13 +159,15 @@ export default function UsersPage() {
         setCreateDialogOpen(false);
         setNewUser({ nom_complet: '', email: '', role_id: '', status: 'Actif' });
         await loadData();
-        alert(`Utilisateur créé ! Mot de passe temporaire: 00000000`);
+        toast.success('Utilisateur créé avec succès ! Mot de passe temporaire: 00000000');
       } else {
-        alert(data.error || 'Erreur lors de la création');
+        toast.error(data.error || 'Erreur lors de la création');
       }
     } catch (error) {
       console.error('Erreur création utilisateur:', error);
-      alert('Erreur de connexion');
+      toast.error('Erreur de connexion');
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -128,16 +191,25 @@ export default function UsersPage() {
         setResetPasswordDialogOpen(false);
         setSelectedUserForReset(null);
         await loadData();
-        alert(`Mot de passe réinitialisé ! Mot de passe temporaire: 00000000`);
+        toast.success('Mot de passe réinitialisé ! Mot de passe temporaire: 00000000');
       } else {
-        alert(data.error || 'Erreur lors de la réinitialisation');
+        toast.error(data.error || 'Erreur lors de la réinitialisation');
       }
     } catch (error) {
       console.error('Erreur réinitialisation mot de passe:', error);
-      alert('Erreur de connexion');
+      toast.error('Erreur de connexion');
     } finally {
       setResettingPassword(false);
     }
+  };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (items) => {
+    setItemsPerPage(items);
+    setCurrentPage(1);
   };
 
   const filteredUsers = users.filter(u =>
@@ -145,27 +217,30 @@ export default function UsersPage() {
     (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil((searchTerm ? filteredUsers.length : totalUsers) / itemsPerPage);
+  const displayedUsers = searchTerm ? filteredUsers : users;
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 max-w-6xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Utilisateurs</h1>
-          <p className="text-gray-600">Gérez les utilisateurs et leurs accès</p>
+          <h1 className="text-lg font-semibold text-gray-900">Utilisateurs</h1>
+          <p className="text-xs text-gray-500">{totalUsers} utilisateur(s) au total</p>
         </div>
         {canManageUsers('adminConfig') && (
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-indigo-600 hover:bg-indigo-700">
-                <Plus className="w-4 h-4 mr-2" />
+              <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-1" />
                 Nouvel utilisateur
               </Button>
             </DialogTrigger>
@@ -223,9 +298,9 @@ export default function UsersPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-                <Button onClick={handleCreateUser} className="bg-indigo-600 hover:bg-indigo-700">
-                  Créer l'utilisateur
+                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingUser}>Annuler</Button>
+                <Button onClick={handleCreateUser} disabled={creatingUser} className="bg-indigo-600 hover:bg-indigo-700">
+                  {creatingUser ? 'Création...' : 'Créer l\'utilisateur'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -234,149 +309,147 @@ export default function UsersPage() {
       </div>
 
       {/* Search */}
-      <div className="mb-6">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Rechercher un utilisateur..."
-            className="pl-10"
-          />
-        </div>
+      <div className="relative max-w-xs">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Input
+          value={searchTerm}
+          onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+          placeholder="Rechercher..."
+          className="pl-8 h-9 text-sm"
+        />
       </div>
 
       {/* Users Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Liste des utilisateurs</CardTitle>
-          <CardDescription>{filteredUsers.length} utilisateur(s)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filteredUsers.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Aucun utilisateur trouvé</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
+      <Card className="border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-50">
+                <TableHead className="text-xs font-medium">Utilisateur</TableHead>
+                <TableHead className="text-xs font-medium">Email</TableHead>
+                <TableHead className="text-xs font-medium">Rôle</TableHead>
+                <TableHead className="text-xs font-medium">Statut</TableHead>
+                <TableHead className="text-xs font-medium hidden md:table-cell">Dernière connexion</TableHead>
+                <TableHead className="w-10"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {displayedUsers.length === 0 ? (
                 <TableRow>
-                  <TableHead>Utilisateur</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Rôle</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead>Dernière connexion</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Aucun utilisateur trouvé</p>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user, idx) => (
-                  <motion.tr
-                    key={user._id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="hover:bg-gray-50"
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback className="bg-indigo-100 text-indigo-600">
-                            {(user.nom_complet || '?').charAt(0)}
+              ) : (
+                displayedUsers.map((u) => (
+                  <TableRow key={u._id} className="hover:bg-gray-50">
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="w-7 h-7">
+                          <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs">
+                            {(u.nom_complet || '?').charAt(0)}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <p className="font-medium">{user.nom_complet}</p>
-                        </div>
+                        <span className="text-sm font-medium">{u.nom_complet}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Mail className="w-4 h-4" />
-                        {user.email}
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <Mail className="w-3.5 h-3.5" />
+                        {u.email}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="gap-1">
+                    <TableCell className="py-2">
+                      <Badge variant="outline" className="text-[10px] gap-1">
                         <Shield className="w-3 h-3" />
-                        {user.role?.nom || 'N/A'}
+                        {u.role_id?.nom || u.role?.nom || 'N/A'}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant={user.status === 'Actif' ? 'default' : 'secondary'}>
-                        {user.status === 'Actif' ? (
+                    <TableCell className="py-2">
+                      <Badge variant={u.status === 'Actif' ? 'default' : 'secondary'} className="text-[10px]">
+                        {u.status === 'Actif' ? (
                           <><UserCheck className="w-3 h-3 mr-1" /> Actif</>
                         ) : (
                           <><UserX className="w-3 h-3 mr-1" /> Désactivé</>
                         )}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-gray-600">
-                      {user.dernière_connexion
-                        ? new Date(user.dernière_connexion).toLocaleString('fr-FR')
-                        : 'Jamais connecté'
+                    <TableCell className="py-2 text-xs text-gray-500 hidden md:table-cell">
+                      {u.dernière_connexion
+                        ? new Date(u.dernière_connexion).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                        : 'Jamais'
                       }
                     </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">⋮</Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <Dialog open={resetPasswordDialogOpen && selectedUserForReset?._id === user._id}
-                                  onOpenChange={(open) => {
-                                    setResetPasswordDialogOpen(open);
-                                    if (!open) setSelectedUserForReset(null);
-                                  }}>
-                            <DialogTrigger asChild>
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  setSelectedUserForReset(user);
-                                  setResetPasswordDialogOpen(true);
-                                }}
-                              >
-                                <Key className="w-4 h-4 mr-2" />
-                                Réinitialiser le mot de passe
-                              </DropdownMenuItem>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
-                                <DialogDescription>
-                                  Êtes-vous sûr de vouloir réinitialiser le mot de passe de {selectedUserForReset?.nom_complet} ?
-                                  Le mot de passe temporaire sera 00000000 et l'utilisateur devra le changer à sa prochaine connexion.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-amber-900">Mot de passe temporaire</p>
-                                  <p className="text-sm text-amber-700">Mot de passe: <code className="bg-white px-2 py-1 rounded font-mono">00000000</code></p>
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>Annuler</Button>
-                                <Button
-                                  onClick={handleResetPassword}
-                                  disabled={resettingPassword}
-                                  className="bg-amber-600 hover:bg-amber-700"
-                                >
-                                  {resettingPassword ? 'Réinitialisation...' : 'Réinitialiser'}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <TableCell className="py-2">
+                      {canManageUsers('adminConfig') && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">⋮</Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                setSelectedUserForReset(u);
+                                setResetPasswordDialogOpen(true);
+                              }}
+                            >
+                              <Key className="w-4 h-4 mr-2" />
+                              Réinitialiser le mot de passe
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
-                  </motion.tr>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={searchTerm ? filteredUsers.length : totalUsers}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          onItemsPerPageChange={handleItemsPerPageChange}
+        />
       </Card>
+
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={resetPasswordDialogOpen}
+        onOpenChange={(open) => {
+          setResetPasswordDialogOpen(open);
+          if (!open) setSelectedUserForReset(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir réinitialiser le mot de passe de {selectedUserForReset?.nom_complet} ?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">Mot de passe temporaire</p>
+              <p className="text-sm text-amber-700">Mot de passe: <code className="bg-white px-2 py-0.5 rounded font-mono">00000000</code></p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>Annuler</Button>
+            <Button onClick={handleResetPassword} disabled={resettingPassword} className="bg-amber-600 hover:bg-amber-700">
+              {resettingPassword ? 'Réinitialisation...' : 'Réinitialiser'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

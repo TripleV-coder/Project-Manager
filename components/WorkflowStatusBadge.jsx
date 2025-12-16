@@ -13,8 +13,7 @@ import { toast } from 'sonner';
 import { ChevronDown } from 'lucide-react';
 import {
   getStatusConfig,
-  getAvailableTransitions,
-  isTransitionAllowed
+  getAvailableTransitions
 } from '@/lib/workflows';
 
 /**

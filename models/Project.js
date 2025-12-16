@@ -80,9 +80,14 @@ const projectSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
+// Text search indexes
+projectSchema.index({ nom: 'text', description: 'text' });
+
+// Field indexes for common queries
 projectSchema.index({ archivé: 1, created_at: -1 });
 projectSchema.index({ chef_projet: 1 });
 projectSchema.index({ product_owner: 1 });
 projectSchema.index({ 'membres.user_id': 1 });
+projectSchema.index({ statut: 1, archivé: 1 });
 
 export default mongoose.models.Project || mongoose.model('Project', projectSchema);

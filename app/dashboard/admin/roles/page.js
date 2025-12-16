@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Shield, Plus, Edit2, Trash2, Save, X, Check } from 'lucide-react';
+import { Shield, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -34,7 +33,7 @@ export default function RolesPage() {
     visibleMenus: {}
   });
 
-  // Liste complète des 22 permissions atomiques
+  // Liste complète des 23 permissions atomiques
   const allPermissions = [
     {
       category: 'Projets',
@@ -110,6 +109,7 @@ export default function RolesPage() {
     {
       category: 'Administration',
       items: [
+        { key: 'gererUtilisateurs', label: 'Gérer les utilisateurs (créer, modifier, supprimer)' },
         { key: 'adminConfig', label: 'Accéder à la configuration globale (Admin seulement)' }
       ]
     }
@@ -133,7 +133,8 @@ export default function RolesPage() {
     { key: 'admin', label: 'Administration' }
   ];
 
-  const { hasPermission: canManageRoles } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+  const permissions = useRBACPermissions(user);
+  const canManageRoles = permissions.hasPermission;
 
   const loadRoles = useCallback(async () => {
     try {
@@ -158,7 +159,8 @@ export default function RolesPage() {
       }
 
       setUser(userData);
-      setRoles(rolesData.roles || []);
+      // API returns { roles: [...] } or { data: [...] }
+      setRoles(rolesData.roles || rolesData.data || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur chargement:', error);
@@ -320,7 +322,7 @@ export default function RolesPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Rôles</h1>
-          <p className="text-gray-600">Configurez les 8 rôles et leurs 22 permissions atomiques</p>
+          <p className="text-gray-600">Configurez les rôles système et leurs 23 permissions atomiques</p>
         </div>
         {canManageRoles('adminConfig') && (
           <Button
@@ -362,7 +364,7 @@ export default function RolesPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Permissions activées</span>
                     <span className="font-medium">
-                      {Object.values(role.permissions || {}).filter(Boolean).length} / 22
+                      {Object.values(role.permissions || {}).filter(Boolean).length} / 23
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -416,7 +418,7 @@ export default function RolesPage() {
             
             <Tabs defaultValue="permissions" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="permissions">Permissions (22)</TabsTrigger>
+                <TabsTrigger value="permissions">Permissions (23)</TabsTrigger>
                 <TabsTrigger value="menus">Menus Visibles (14)</TabsTrigger>
               </TabsList>
 
@@ -533,7 +535,7 @@ export default function RolesPage() {
 
             <Tabs defaultValue="permissions" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="permissions">Permissions (22)</TabsTrigger>
+                <TabsTrigger value="permissions">Permissions (23)</TabsTrigger>
                 <TabsTrigger value="menus">Menus Visibles (14)</TabsTrigger>
               </TabsList>
 

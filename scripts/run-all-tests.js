@@ -92,7 +92,7 @@ async function runTests() {
           // Fallback: parse stdout
           parseTestOutput(output, errorOutput, results)
         }
-      } catch (error) {
+      } catch (_error) {
         parseTestOutput(output, errorOutput, results)
       }
 
@@ -174,7 +174,7 @@ function displayResults(results) {
     'Agile Modules': ['sprintService', 'kanbanService', 'timesheetService', 'budgetService']
   }
 
-  let categoryTotals = {}
+  const categoryTotals = {}
   Object.entries(categories).forEach(([category, patterns]) => {
     categoryTotals[category] = { passed: 0, failed: 0, total: 0 }
 

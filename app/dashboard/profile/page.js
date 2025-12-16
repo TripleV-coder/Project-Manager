@@ -18,11 +18,12 @@ export default function ProfilePage() {
   const [formData, setFormData] = useState({
     nom_complet: '',
     telephone: '',
-    poste: ''
+    poste_titre: ''
   });
 
   useEffect(() => {
     loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadProfile = async () => {
@@ -34,7 +35,8 @@ export default function ProfilePage() {
       }
 
       const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
       });
       const data = await response.json();
       
@@ -42,7 +44,7 @@ export default function ProfilePage() {
       setFormData({
         nom_complet: data.nom_complet || '',
         telephone: data.telephone || '',
-        poste: data.poste || ''
+        poste_titre: data.poste_titre || ''
       });
       setLoading(false);
     } catch (error) {
@@ -186,8 +188,8 @@ export default function ProfilePage() {
                   <div className="relative">
                     <Briefcase className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
-                      value={formData.poste}
-                      onChange={(e) => setFormData({ ...formData, poste: e.target.value })}
+                      value={formData.poste_titre}
+                      onChange={(e) => setFormData({ ...formData, poste_titre: e.target.value })}
                       className="pl-10"
                       placeholder="Chef de projet"
                     />
@@ -234,7 +236,7 @@ export default function ProfilePage() {
                   <Briefcase className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-500">Poste / Fonction</p>
-                    <p className="font-medium">{formData.poste || 'Non renseigné'}</p>
+                    <p className="font-medium">{formData.poste_titre || 'Non renseigné'}</p>
                   </div>
                 </div>
               </div>

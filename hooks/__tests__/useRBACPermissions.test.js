@@ -69,7 +69,7 @@ describe('useRBACPermissions Hook', () => {
         visibleMenus: { projects: true }
       })
 
-      const { result } = renderHook(() => useRBACPermissions(user))
+      const { result: _result } = renderHook(() => useRBACPermissions(user))
 
       // Should convert user.role to user.role_id
       expect(getMergedPermissions).toHaveBeenCalledWith(
@@ -144,7 +144,7 @@ describe('useRBACPermissions Hook', () => {
         visibleMenus: { projects: false }
       })
 
-      const { result } = renderHook(() => useRBACPermissions(user, projectRole))
+      const { result: _result } = renderHook(() => useRBACPermissions(user, projectRole))
 
       expect(getMergedPermissions).toHaveBeenCalledWith(
         expect.objectContaining({ role_id: user.role_id }),
@@ -377,7 +377,7 @@ describe('useRBACPermissions Hook', () => {
         user.role_id.permissions[perm] === true
       )
 
-      const { result } = renderHook(() => useRBACPermissions(user))
+      const { result: _result } = renderHook(() => useRBACPermissions(user))
 
       // These are shortcuts that should call checkPermission
       expect(checkPermission).toHaveBeenCalledWith(

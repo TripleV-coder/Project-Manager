@@ -17,7 +17,6 @@ import {
   ChevronDown,
   Clock,
   AlertTriangle,
-  CheckCircle,
   ArrowRight
 } from 'lucide-react';
 import { formatStatusInfo } from '@/lib/statusTransitionUtils';

@@ -3,7 +3,6 @@
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const colors = {
   reset: '\x1b[0m',
@@ -25,10 +24,16 @@ function header(title) {
 
 async function checkMongoDB() {
   log('yellow', '📋 Checking MongoDB installation...');
-  
-  const mongoCommand = process.platform === 'win32' ? 'mongod.exe' : 'mongod';
-  const result = spawnSync('which', [mongoCommand], { shell: true });
-  
+
+  const isWindows = process.platform === 'win32';
+  const mongoCommand = isWindows ? 'mongod.exe' : 'mongod';
+  const checkCommand = isWindows ? 'where' : 'which';
+
+  const result = spawnSync(checkCommand, [mongoCommand], {
+    shell: true,
+    stdio: 'pipe'
+  });
+
   if (result.status !== 0) {
     log('red', '✗ MongoDB not found');
     log('yellow', '\nInstall MongoDB:');
@@ -37,7 +42,7 @@ async function checkMongoDB() {
     console.log('  Windows: https://www.mongodb.com/try/download/community');
     process.exit(1);
   }
-  
+
   log('green', '✓ MongoDB found');
 }
 
@@ -174,7 +179,7 @@ async function startApp() {
   log('blue', '🗄️  MongoDB: mongodb://localhost:27017/project-manager\n');
   
   // Start Next.js dev server
-  const npm = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
+  spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
     stdio: 'inherit',
     shell: true,
   });

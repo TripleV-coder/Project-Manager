@@ -4,20 +4,23 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
+import TablePagination from '@/components/ui/table-pagination';
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
 
   useEffect(() => {
     loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadNotifications = async () => {
@@ -32,7 +35,8 @@ export default function NotificationsPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
-      setNotifications(data.notifications || []);
+      // API returns { success: true, data: [...] } or legacy format
+      setNotifications(data.data || data.notifications || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -48,8 +52,8 @@ export default function NotificationsPage() {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
-      setNotifications(notifications.map(n => 
+
+      setNotifications(notifications.map(n =>
         n._id === notificationId ? { ...n, lu: true } : n
       ));
       toast.success('Notification marquée comme lue');
@@ -65,7 +69,7 @@ export default function NotificationsPage() {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       setNotifications(notifications.map(n => ({ ...n, lu: true })));
       toast.success('Toutes les notifications marquées comme lues');
     } catch (error) {
@@ -80,7 +84,7 @@ export default function NotificationsPage() {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       setNotifications(notifications.filter(n => n._id !== notificationId));
       toast.success('Notification supprimée');
     } catch (error) {
@@ -88,18 +92,13 @@ export default function NotificationsPage() {
     }
   };
 
-  const getNotificationIcon = (type) => {
-    return <Bell className="w-5 h-5 text-indigo-600" />;
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
   };
 
-  const getNotificationColor = (type) => {
-    const colors = {
-      'info': 'bg-blue-100 text-blue-800',
-      'success': 'bg-green-100 text-green-800',
-      'warning': 'bg-yellow-100 text-yellow-800',
-      'error': 'bg-red-100 text-red-800'
-    };
-    return colors[type] || colors['info'];
+  const handleItemsPerPageChange = (items) => {
+    setItemsPerPage(items);
+    setCurrentPage(1);
   };
 
   const filteredNotifications = notifications.filter(n => {
@@ -108,106 +107,123 @@ export default function NotificationsPage() {
     return true;
   });
 
+  // Pagination locale
+  const totalItems = filteredNotifications.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedNotifications = filteredNotifications.slice(startIndex, startIndex + itemsPerPage);
+
   const unreadCount = notifications.filter(n => !n.lu).length;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 max-w-4xl mx-auto space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Notifications</h1>
-          <p className="text-gray-600">
-            {unreadCount > 0 ? `${unreadCount} notification(s) non lue(s)` : 'Aucune nouvelle notification'}
+          <h1 className="text-lg font-semibold text-gray-900">Notifications</h1>
+          <p className="text-xs text-gray-500">
+            {unreadCount > 0 ? `${unreadCount} non lue(s)` : 'Aucune nouvelle notification'}
           </p>
         </div>
         {unreadCount > 0 && (
-          <Button onClick={handleMarkAllAsRead} variant="outline">
-            <Check className="w-4 h-4 mr-2" />
+          <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
+            <Check className="w-4 h-4 mr-1" />
             Tout marquer comme lu
           </Button>
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <Tabs value={filter} onValueChange={setFilter}>
-            <TabsList>
-              <TabsTrigger value="all">Toutes ({notifications.length})</TabsTrigger>
-              <TabsTrigger value="unread">Non lues ({unreadCount})</TabsTrigger>
-              <TabsTrigger value="read">Lues ({notifications.length - unreadCount})</TabsTrigger>
+      <Card className="border shadow-sm overflow-hidden">
+        <CardHeader className="p-3 border-b bg-gray-50/50">
+          <Tabs value={filter} onValueChange={(val) => { setFilter(val); setCurrentPage(1); }}>
+            <TabsList className="h-8">
+              <TabsTrigger value="all" className="text-xs h-7 px-3">Toutes ({notifications.length})</TabsTrigger>
+              <TabsTrigger value="unread" className="text-xs h-7 px-3">Non lues ({unreadCount})</TabsTrigger>
+              <TabsTrigger value="read" className="text-xs h-7 px-3">Lues ({notifications.length - unreadCount})</TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>
-        <CardContent>
-          {filteredNotifications.length === 0 ? (
-            <div className="text-center py-12">
-              <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucune notification</h3>
-              <p className="text-gray-600">Vous êtes à jour !</p>
+        <CardContent className="p-0">
+          {paginatedNotifications.length === 0 ? (
+            <div className="text-center py-10">
+              <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-sm font-medium text-gray-900 mb-1">Aucune notification</h3>
+              <p className="text-xs text-gray-500">Vous êtes à jour</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredNotifications.map((notification, idx) => (
-                <motion.div
+            <div className="divide-y">
+              {paginatedNotifications.map((notification) => (
+                <div
                   key={notification._id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className={`p-4 rounded-lg border transition-colors ${
-                    notification.lu ? 'bg-white' : 'bg-indigo-50 border-indigo-200'
+                  className={`p-3 transition-colors ${
+                    notification.lu ? 'bg-white' : 'bg-indigo-50/50'
                   }`}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      {getNotificationIcon(notification.type)}
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <Bell className="w-4 h-4 text-indigo-600" />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-gray-900">{notification.titre}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-sm font-medium text-gray-900">{notification.titre}</span>
                         {!notification.lu && (
-                          <Badge className="bg-indigo-600 text-white">Nouveau</Badge>
+                          <Badge className="bg-indigo-600 text-white text-[10px] px-1.5 py-0">Nouveau</Badge>
                         )}
                       </div>
-                      <p className="text-gray-700 mb-2">{notification.message}</p>
-                      <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span>{new Date(notification.created_at).toLocaleDateString('fr-FR', {
+                      <p className="text-xs text-gray-600 line-clamp-2">{notification.message}</p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {new Date(notification.created_at).toLocaleDateString('fr-FR', {
                           day: 'numeric',
-                          month: 'long',
+                          month: 'short',
                           hour: '2-digit',
                           minute: '2-digit'
-                        })}</span>
-                      </div>
+                        })}
+                      </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1 flex-shrink-0">
                       {!notification.lu && (
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-7 w-7 p-0"
                           onClick={() => handleMarkAsRead(notification._id)}
                         >
-                          <Check className="w-4 h-4" />
+                          <Check className="w-3.5 h-3.5" />
                         </Button>
                       )}
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-red-600 hover:text-red-700"
+                        className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                         onClick={() => handleDelete(notification._id)}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
+          )}
+
+          {/* Pagination */}
+          {filteredNotifications.length > 0 && (
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={handlePageChange}
+              onItemsPerPageChange={handleItemsPerPageChange}
+            />
           )}
         </CardContent>
       </Card>

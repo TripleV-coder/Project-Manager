@@ -224,14 +224,21 @@ echo -e "${YELLOW}🗄️  MongoDB:${NC}       ${CYAN}mongodb://localhost:${MONG
 echo -e "${YELLOW}📊 Username:${NC}       ${CYAN}admin${NC}"
 echo -e "${YELLOW}📊 Password:${NC}       ${CYAN}check .env file${NC}"
 echo ""
-echo -e "${YELLOW}Starting application...${NC}\n"
+# Cleanup function
+cleanup() {
+    echo -e "\n${YELLOW}Shutting down Docker services...${NC}"
+    $COMPOSE_CMD down
+    exit 0
+}
 
-# Start the application
+# Set trap before starting the app
+trap cleanup EXIT INT TERM
+
+echo -e "${YELLOW}Starting application with Socket.io server...${NC}\n"
+
+# Start the application with Socket.io server
 if command -v yarn &> /dev/null; then
-    yarn dev
+    yarn dev:socket
 else
-    npm run dev
+    npm run dev:socket
 fi
-
-# Cleanup on exit
-trap 'echo -e "\n${YELLOW}Shutting down Docker services...${NC}"; $COMPOSE_CMD down; exit' EXIT INT TERM

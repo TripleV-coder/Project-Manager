@@ -30,6 +30,15 @@ const createQueryHelper = (defaultResult = null) => {
     limit: jest.fn(function() {
       return this
     }),
+    // Make the query thenable so await works on direct calls
+    [Symbol.toStringTag]: 'Query'
+  }
+  // Make the query thenable for async/await
+  query.then = function(resolve, reject) {
+    return Promise.resolve(this._result).then(resolve, reject)
+  }
+  query.catch = function(reject) {
+    return Promise.resolve(this._result).catch(reject)
   }
   return query
 }
@@ -88,10 +97,14 @@ jest.mock('mongoose', () => {
     this.add = jest.fn(() => this)
     this.pre = jest.fn(() => this)
     this.post = jest.fn(() => this)
-    this.statics = jest.fn(() => this)
-    this.methods = jest.fn(() => this)
+    this.statics = {}
+    this.methods = {}
     this.index = jest.fn(() => this)
-    this.virtual = jest.fn(() => this)
+    // Virtual returns chainable object with get/set
+    this.virtual = jest.fn(() => ({
+      get: jest.fn(() => this),
+      set: jest.fn(() => this)
+    }))
     this.Types = {
       ObjectId,
       Mixed: {},
@@ -113,7 +126,7 @@ jest.mock('mongoose', () => {
 
   const models = {}
 
-  const model = function(name, schema) {
+  const model = function(name, _schema) {
     if (!models[name]) {
       const mockModel = jest.fn(function(data = {}) {
         return createDocumentHelper(data)

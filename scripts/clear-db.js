@@ -1,7 +1,5 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-
-dotenv.config();
+const mongoose = require('mongoose');
+require('dotenv').config();
 
 const MONGO_URL = process.env.MONGO_URL;
 
@@ -12,19 +10,20 @@ async function clearDatabase() {
     console.log('✅ Connecté!');
 
     const db = mongoose.connection.db;
-    
+
     console.log('\n⏳ Suppression de toutes les collections...');
     const collections = await db.listCollections().toArray();
-    
+
     for (const collection of collections) {
       await db.collection(collection.name).deleteMany({});
       console.log(`  ✓ ${collection.name} - vidée`);
     }
 
     console.log('\n✅ Base de données complètement vidée!');
-    
+
     await mongoose.disconnect();
     console.log('🔌 Déconnecté.');
+    process.exit(0);
   } catch (error) {
     console.error('❌ Erreur:', error);
     process.exit(1);

@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
-export default function TaskCard({ task, isDragging }) {
+export default function TaskCard({ task, isDragging: _isDragging }) {
   const {
     attributes,
     listeners,

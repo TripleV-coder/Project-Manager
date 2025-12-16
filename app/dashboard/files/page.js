@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Files, Upload, Download, Trash2, Search, FolderPlus, 
-  File, FileText, FileImage, FileVideo, FileAudio, 
-  MoreVertical, Eye, Grid, List, Filter, X, Check,
+import {
+  Files, Upload, Download, Trash2, Search, FolderPlus,
+  File, FileText, FileImage, FileVideo, FileAudio,
+  MoreVertical, Eye, Grid, List, X,
   Folder, ChevronRight, Home
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -40,9 +40,15 @@ export default function FilesPage() {
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [previewFile, setPreviewFile] = useState(null);
+  const [userPermissions, setUserPermissions] = useState({});
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  // RBAC: Vérifier les permissions fichiers
+  const canManageFiles = userPermissions.gererFichiers || userPermissions.adminConfig;
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
 
   // Auto-select first project on initial load
@@ -50,6 +56,7 @@ export default function FilesPage() {
     if (projects.length > 0 && selectedProject === 'all') {
       setSelectedProject(projects[0]._id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects]);
 
   const loadData = async () => {
@@ -61,18 +68,35 @@ export default function FilesPage() {
         return;
       }
 
+      // Load user permissions first to ensure RBAC is applied before rendering
+      const userRes = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        setUserPermissions(userData?.role?.permissions || {});
+        // Vérification sécurisée de l'ID utilisateur (peut être id ou _id selon le format API)
+        setCurrentUserId(userData?.id || userData?._id || null);
+      } else if (userRes.status === 401) {
+        router.push('/login');
+        return;
+      }
+
       const [projectsRes, filesRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/files${selectedProject !== 'all' ? `?projet_id=${selectedProject}` : ''}`, { 
-          headers: { 'Authorization': `Bearer ${token}` } 
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/files${selectedProject !== 'all' ? `?projet_id=${selectedProject}` : ''}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(10000)
         })
       ]);
 
       const projectsData = await projectsRes.json();
       const filesData = await filesRes.json();
 
-      setProjects(projectsData.projects || []);
-      setFiles(filesData.files || []);
+      // API returns { success: true, data: [...] } or legacy format
+      setProjects(projectsData.data || projectsData.projects || []);
+      setFiles(filesData.files || filesData.data || []);
       setFolders(filesData.folders || []);
       setLoading(false);
     } catch (error) {
@@ -276,24 +300,28 @@ export default function FilesPage() {
           <p className="text-gray-600 text-sm lg:text-base">Gérez tous les documents de vos projets</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setNewFolderDialogOpen(true)}>
-            <FolderPlus className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Nouveau dossier</span>
-          </Button>
-          <Button 
-            className="bg-indigo-600 hover:bg-indigo-700"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Téléverser
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileSelect}
-          />
+          {canManageFiles && (
+            <>
+              <Button variant="outline" onClick={() => setNewFolderDialogOpen(true)}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Nouveau dossier</span>
+              </Button>
+              <Button
+                className="bg-indigo-600 hover:bg-indigo-700"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Téléverser
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -491,13 +519,15 @@ export default function FilesPage() {
                               <Download className="w-4 h-4 mr-2" />
                               Télécharger
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(file._id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Supprimer
-                            </DropdownMenuItem>
+                            {(canManageFiles || file.uploadé_par === currentUserId) && (
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(file._id)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Supprimer
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -552,14 +582,16 @@ export default function FilesPage() {
                         <Button variant="ghost" size="icon" onClick={() => handleDownload(file)}>
                           <Download className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleDelete(file._id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {(canManageFiles || file.uploadé_par === currentUserId) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(file._id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -28,7 +28,7 @@ const connectDB = async () => {
 };
 
 // Load models
-let User, Project, ProjectRole, Role;
+let User, Project, _ProjectRole, _Role;
 
 const loadModels = async () => {
   try {
@@ -40,8 +40,8 @@ const loadModels = async () => {
     // Handle both ES6 default exports and CommonJS
     User = userModule.default || userModule;
     Project = projectModule.default || projectModule;
-    ProjectRole = projectRoleModule.default || projectRoleModule;
-    Role = roleModule.default || roleModule;
+    _ProjectRole = projectRoleModule.default || projectRoleModule;
+    _Role = roleModule.default || roleModule;
 
     console.log('✓ Models loaded');
   } catch (error) {
@@ -162,7 +162,7 @@ const verifyToken = async (token) => {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET);
     const { payload } = await jwtVerify(token, secret);
     return payload;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

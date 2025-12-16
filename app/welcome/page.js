@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, BarChart3, Users, Zap, Target, CheckCircle2, Loader2 } from 'lucide-react';
+import Footer from '@/components/Footer';
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -17,17 +18,34 @@ export default function WelcomePage() {
     let mounted = true;
     const controller = new AbortController();
     let timeoutId = null;
+    let failsafeTimeoutId = null;
 
     const checkAuthState = async () => {
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem('pm_token') : null;
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
+        // Timeout pour la requête (5s)
         timeoutId = setTimeout(() => {
           if (mounted) {
             controller.abort();
           }
         }, 5000);
+
+        // Failsafe: si après 8s on n'a toujours pas de réponse, forcer l'état
+        failsafeTimeoutId = setTimeout(() => {
+          if (mounted && !state.checked) {
+            console.warn('[Welcome] Failsafe timeout triggered - forcing no-auth state');
+            localStorage.removeItem('pm_token');
+            localStorage.removeItem('pm_user');
+            setState(prev => ({
+              ...prev,
+              scenario: 'no-auth',
+              checked: true,
+              error: 'Timeout de vérification - veuillez vous connecter'
+            }));
+          }
+        }, 8000);
 
         const res = await fetch('/api/init', {
           headers,
@@ -44,30 +62,53 @@ export default function WelcomePage() {
 
         if (!mounted) return;
 
+        console.log('[Welcome] Auth check result:', { hasAdmin: data.hasAdmin, user: !!data.user, token: !!token });
+
         if (!data.hasAdmin) {
+          console.log('[Welcome] No admin found - showing first-admin setup');
+          localStorage.removeItem('pm_token');
+          localStorage.removeItem('pm_user');
           setState(prev => ({ ...prev, scenario: 'no-admin', checked: true }));
         } else if (!data.user) {
+          console.log('[Welcome] Admin exists but user not authenticated - showing login');
+          if (token) {
+            console.warn('[Welcome] Token exists but API returned no user - clearing stale token');
+            localStorage.removeItem('pm_token');
+            localStorage.removeItem('pm_user');
+          }
           setState(prev => ({ ...prev, scenario: 'no-auth', checked: true }));
         } else if (data.user.first_login || data.user.must_change_password) {
+          console.log('[Welcome] First login required - redirecting to first-login');
+          setState(prev => ({ ...prev, checked: true }));
           router.push('/first-login');
         } else {
+          console.log('[Welcome] User authenticated - showing dashboard link');
           setState(prev => ({ ...prev, scenario: 'authenticated', checked: true }));
         }
       } catch (error) {
         if (!mounted) return;
         if (error.name === 'AbortError') {
+          console.log('[Welcome] Auth check timed out');
+          localStorage.removeItem('pm_token');
+          localStorage.removeItem('pm_user');
+          setState(prev => ({
+            ...prev,
+            scenario: 'no-auth',
+            checked: true
+          }));
           return;
         }
-        console.error('Auth check error:', error);
+        console.error('[Welcome] Auth check error:', error);
+        localStorage.removeItem('pm_token');
+        localStorage.removeItem('pm_user');
         setState(prev => ({
           ...prev,
           scenario: 'no-auth',
           checked: true
         }));
       } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
+        if (timeoutId) clearTimeout(timeoutId);
+        if (failsafeTimeoutId) clearTimeout(failsafeTimeoutId);
       }
     };
 
@@ -75,11 +116,13 @@ export default function WelcomePage() {
 
     return () => {
       mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (failsafeTimeoutId) clearTimeout(failsafeTimeoutId);
+      if (!controller.signal.aborted) {
+        controller.abort();
       }
-      controller.abort();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const handleNavigate = async (path) => {
@@ -118,9 +161,45 @@ export default function WelcomePage() {
 
   const config = buttonConfig[state.scenario];
 
+  // Show loading state while checking auth
+  if (!state.checked) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+            <p className="text-gray-600">Vérification de l'application...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Safety check: if config not found, show error
+  if (!config) {
+    console.error('[Welcome] Invalid scenario state:', state.scenario);
+    return (
+      <div className="flex flex-col min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <p className="text-red-600 font-semibold">Erreur: État d'authentification invalide</p>
+            <p className="text-gray-600 text-sm mt-2">Scenario: {state.scenario}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+            >
+              Recharger la page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6">
-      <div className="w-full max-w-6xl">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-6xl">
         <div className="grid md:grid-cols-2 gap-8 items-center">
           <div>
             <div className="mb-6">
@@ -135,27 +214,31 @@ export default function WelcomePage() {
               Une plateforme intuitive pour gérer vos projets en toute sérénité, qu'ils soient Scrum, Kanban ou mixtes
             </p>
 
-            <button
-              onClick={() => handleNavigate(config.path)}
-              disabled={state.loading}
-              className={`px-6 py-3 ${config.color} disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 min-w-full`}
-              type="button"
-            >
-              {state.loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Chargement...</span>
-                </>
-              ) : (
-                <>
-                  <span>{config.label}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
+            {config && (
+              <>
+                <button
+                  onClick={() => handleNavigate(config.path)}
+                  disabled={state.loading}
+                  className={`px-6 py-3 ${config.color} disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 min-w-full`}
+                  type="button"
+                >
+                  {state.loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Chargement...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{config.label}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
 
-            {state.error && (
-              <p className="text-sm text-red-600 mt-4">{state.error}</p>
+                {state.error && (
+                  <p className="text-sm text-red-600 mt-4">{state.error}</p>
+                )}
+              </>
             )}
           </div>
 
@@ -184,11 +267,9 @@ export default function WelcomePage() {
             </div>
           </div>
         </div>
-
-        <div className="py-12 text-center text-gray-600">
-          <p>© 2025 PM - Gestion de Projets Agile</p>
-        </div>
       </div>
+      </div>
+      <Footer />
     </div>
   );
 }

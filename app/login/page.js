@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import Footer from '@/components/Footer';
 
 function LoginContent() {
   const router = useRouter();
@@ -34,7 +35,8 @@ function LoginContent() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(15000)
       });
 
       if (!response.ok) {
@@ -52,15 +54,28 @@ function LoginContent() {
 
       const data = await response.json();
 
+      // Validate response structure
+      if (!data.token || !data.user) {
+        setError('Réponse d\'authentification invalide');
+        setLoading(false);
+        return;
+      }
+
       localStorage.setItem('pm_token', data.token);
       localStorage.setItem('pm_user', JSON.stringify(data.user));
 
-      if (data.user.first_login || data.user.must_change_password) {
-        router.push('/first-login');
-      } else {
-        router.push('/dashboard');
-      }
-    } catch (err) {
+      // Stop loading before redirect
+      setLoading(false);
+
+      // Navigate after a brief delay to allow UI update
+      setTimeout(() => {
+        if (data.user.first_login || data.user.must_change_password) {
+          router.push('/first-login');
+        } else {
+          router.push('/dashboard');
+        }
+      }, 100);
+    } catch (_err) {
       setError('Erreur de connexion au serveur');
       setLoading(false);
     }
@@ -152,9 +167,6 @@ function LoginContent() {
           </form>
         </Card>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Version 1.0.0 - © 2025 PM - Gestion de Projets
-        </p>
       </div>
     </div>
   );
@@ -162,8 +174,13 @@ function LoginContent() {
 
 export default function Login() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Chargement...</div>}>
-      <LoginContent />
-    </Suspense>
+    <div className="flex flex-col min-h-screen">
+      <div className="flex-1">
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Chargement...</div>}>
+          <LoginContent />
+        </Suspense>
+      </div>
+      <Footer />
+    </div>
   );
 }

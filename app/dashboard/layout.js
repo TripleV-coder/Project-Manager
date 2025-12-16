@@ -17,15 +17,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
-import { ConfirmationDialog } from '@/components/ConfirmationDialog';
 import { useConfirmation } from '@/hooks/useConfirmation';
-import {
-  MAIN_MENU_ITEMS,
-  ADMIN_MENU_ITEMS,
-  NOTIFICATIONS_MENU,
-  filterMenuItemsByPermissions,
-  getAvailableMenus
-} from '@/lib/menuConfig';
+import { getAvailableMenus } from '@/lib/menuConfig';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
@@ -36,7 +29,7 @@ export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const { isOpen, dialogState, handleClose } = useConfirmation();
+  useConfirmation(); // Initialize confirmation hook
 
   const loadUser = useCallback(async () => {
     try {
@@ -116,22 +109,10 @@ export default function DashboardLayout({ children }) {
 
   const handleLogout = () => {
     localStorage.removeItem('pm_token');
+    localStorage.removeItem('pm_user');
     toast.success('Déconnexion réussie');
     router.push('/login');
   };
-
-  // Vérifier les permissions de l'utilisateur
-  // Note: Ceci utilise SEULEMENT les permissions système (user.role)
-  // Pour les vérifications spécifiques à un projet, utiliser useRBACPermissions() avec projectRole
-  const hasPermission = (permKey) => {
-    return user?.role?.permissions?.[permKey] === true;
-  };
-
-  const isMenuVisible = (menuKey) => {
-    return user?.role?.visibleMenus?.[menuKey] === true;
-  };
-
-  const isAdmin = hasPermission('adminConfig');
 
   // Obtenir les menus filtrés selon les permissions de l'utilisateur
   // Ceci utilise les permissions système. Les pages project-specific

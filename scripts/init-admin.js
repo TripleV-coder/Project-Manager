@@ -2,7 +2,8 @@
 // WARNING: This is a setup script - never commit actual credentials
 // USAGE: node scripts/init-admin.js <email> <password>
 
-const fetch = require('node-fetch');
+// Use native fetch (Node 18+) or fallback to node-fetch
+const fetch = globalThis.fetch || require('node-fetch');
 
 async function createFirstAdmin() {
   // Get credentials from command line arguments
@@ -14,7 +15,7 @@ async function createFirstAdmin() {
     console.error('Example: node scripts/init-admin.js admin@example.com "MySecurePassword123!"');
     console.error('');
     console.error('Password requirements:');
-    console.error('  - 8-12 characters');
+    console.error('  - 8-128 characters');
     console.error('  - At least 1 uppercase letter');
     console.error('  - At least 1 lowercase letter');
     console.error('  - At least 1 digit');

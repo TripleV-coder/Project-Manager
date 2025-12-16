@@ -1,6 +1,7 @@
 import './globals.css'
 import { SocketProvider } from '@/context/SocketContext'
 import { ConfirmationProvider } from '@/context/ConfirmationContext'
+import { Toaster } from '@/components/ui/sonner'
 
 export const metadata = {
   title: 'PM - Gestion de Projets',
@@ -17,6 +18,7 @@ export default function RootLayout({ children }) {
         <SocketProvider>
           <ConfirmationProvider>
             {children}
+            <Toaster richColors position="top-right" />
           </ConfirmationProvider>
         </SocketProvider>
       </body>

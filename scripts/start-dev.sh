@@ -82,6 +82,16 @@ if [ -d ".next" ]; then
     rm -rf .next
 fi
 
+# Cleanup function
+cleanup() {
+    echo -e "\n${YELLOW}Shutting down MongoDB...${NC}"
+    pkill -f "mongod.*$DATA_DIR" 2>/dev/null
+    exit 0
+}
+
+# Set trap before starting the app
+trap cleanup EXIT INT TERM
+
 # Start the application
 echo -e "${BLUE}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ Everything ready!${NC}"
@@ -91,6 +101,3 @@ echo -e "${BLUE}📱 App URL: http://localhost:3000${NC}"
 echo -e "${BLUE}🗄️  MongoDB: mongodb://localhost:27017/project-manager${NC}\n"
 
 npm run dev
-
-# Cleanup on exit
-trap 'echo -e "\n${YELLOW}Shutting down MongoDB...${NC}"; pkill -f mongod; exit' EXIT INT TERM

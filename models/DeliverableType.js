@@ -5,10 +5,10 @@ const étapeWorkflowSchema = new mongoose.Schema({
   nom: { type: String, required: true },
   description: String,
   ordre: { type: Number, required: true },
-  type: { 
-    type: String, 
+  type: {
+    type: String,
     enum: ['Création', 'Révision', 'Approbation', 'Signature', 'Archivage'],
-    required: true 
+    required: true
   },
   approbateurs: [{
     type: { type: String, enum: ['rôle', 'utilisateur'] },
@@ -25,17 +25,23 @@ const deliverableTypeSchema = new mongoose.Schema({
   description: String,
   icône: String,
   couleur: String,
-  
+
   // Hiérarchie
-  scope: { 
-    type: String, 
+  scope: {
+    type: String,
     enum: ['global', 'template', 'projet'],
     default: 'global'
   },
   template_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectTemplate' },
   projet_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
-  
-  // Workflow de validation
+
+  // Workflow de validation simplifié (noms des étapes)
+  workflow_étapes: {
+    type: [String],
+    default: ['Création', 'Revue', 'Validation', 'Approbation']
+  },
+
+  // Workflow de validation avancé (structure complète)
   workflow_enabled: { type: Boolean, default: true },
   étapes_workflow: [étapeWorkflowSchema],
   

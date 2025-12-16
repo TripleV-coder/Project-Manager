@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  TrendingUp, Calendar, ChevronLeft, ChevronRight, Filter,
-  Milestone, Flag, Clock, CheckCircle2, Circle, AlertCircle,
-  ZoomIn, ZoomOut, Download, Plus
+import {
+  Calendar, ChevronLeft, ChevronRight,
+  Milestone, Flag, CheckCircle2, AlertCircle,
+  ZoomIn, ZoomOut, Link2, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 export default function RoadmapPage() {
@@ -26,6 +28,10 @@ export default function RoadmapPage() {
   const [viewMode, setViewMode] = useState('month'); // month, quarter, year
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoom, setZoom] = useState(1);
+  const [showDependencies, setShowDependencies] = useState(true);
+  const [hoveredTask, setHoveredTask] = useState(null);
+  const _ganttRef = useRef(null); // Reserved for future Gantt chart implementation
+  const taskRowRefs = useRef({});
 
   const loadData = useCallback(async () => {
     try {
@@ -39,10 +45,10 @@ export default function RoadmapPage() {
       const projectFilter = selectedProject !== 'all' ? `?projet_id=${selectedProject}` : '';
 
       const [projectsRes, tasksRes, sprintsRes, deliverablesRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/tasks${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/sprints${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/deliverables${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/tasks${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/sprints${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(`/api/deliverables${projectFilter}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
 
       const projectsData = await projectsRes.json();
@@ -50,10 +56,11 @@ export default function RoadmapPage() {
       const sprintsData = await sprintsRes.json();
       const deliverablesData = await deliverablesRes.json();
 
-      setProjects(projectsData.projects || []);
-      setTasks(tasksData.tasks || []);
-      setSprints(sprintsData.sprints || []);
-      setDeliverables(deliverablesData.deliverables || []);
+      // API returns { success: true, data: [...] } or legacy format
+      setProjects(projectsData.data || projectsData.projects || []);
+      setTasks(tasksData.data || tasksData.tasks || []);
+      setSprints(sprintsData.sprints || sprintsData.data || []);
+      setDeliverables(deliverablesData.deliverables || deliverablesData.data || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -105,12 +112,12 @@ export default function RoadmapPage() {
   const lastDate = timelineDates[timelineDates.length - 1];
   const totalDays = Math.ceil((lastDate - firstDate) / (1000 * 60 * 60 * 24)) + 1;
 
-  const getBarPosition = (startDate, endDate) => {
+  const getBarPosition = useCallback((startDate, endDate) => {
     if (!startDate) return null;
-    
+
     const start = new Date(startDate);
     const end = endDate ? new Date(endDate) : new Date(startDate);
-    
+
     if (end < firstDate || start > lastDate) return null;
 
     const startOffset = Math.max(0, Math.ceil((start - firstDate) / (1000 * 60 * 60 * 24)));
@@ -121,14 +128,15 @@ export default function RoadmapPage() {
       left: `${(startOffset / totalDays) * 100}%`,
       width: `${(width / totalDays) * 100}%`
     };
-  };
+  }, [firstDate, lastDate, totalDays]);
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'Terminé': return 'bg-green-500';
       case 'En cours': return 'bg-blue-500';
-      case 'En attente': return 'bg-yellow-500';
-      case 'Bloqué': return 'bg-red-500';
+      case 'Review': return 'bg-purple-500';
+      case 'À faire': return 'bg-yellow-500';
+      case 'Backlog': return 'bg-gray-400';
       default: return 'bg-gray-400';
     }
   };
@@ -178,6 +186,58 @@ export default function RoadmapPage() {
   // Filtrer les tâches avec des dates
   const scheduledTasks = tasks.filter(t => t.date_début || t.date_échéance);
   const unscheduledTasks = tasks.filter(t => !t.date_début && !t.date_échéance);
+
+  // Calculer les dépendances pour le rendu SVG
+  const dependencyLines = useMemo(() => {
+    if (!showDependencies) return [];
+
+    const lines = [];
+    scheduledTasks.forEach(task => {
+      if (task.dépendances && task.dépendances.length > 0) {
+        task.dépendances.forEach(dep => {
+          const dependentTask = scheduledTasks.find(t => t._id === dep.task_id);
+          if (dependentTask) {
+            const fromPos = getBarPosition(dependentTask.date_début || dependentTask.date_échéance, dependentTask.date_échéance);
+            const toPos = getBarPosition(task.date_début || task.date_échéance, task.date_échéance);
+
+            if (fromPos && toPos) {
+              lines.push({
+                from: dependentTask._id,
+                to: task._id,
+                fromTask: dependentTask,
+                toTask: task,
+                type: dep.type,
+                fromPos,
+                toPos
+              });
+            }
+          }
+        });
+      }
+    });
+    return lines;
+  }, [scheduledTasks, showDependencies, getBarPosition]);
+
+  // Obtenir les tâches qui dépendent de la tâche survolée
+  const getRelatedTasks = useCallback((taskId) => {
+    if (!taskId) return { blocking: [], blockedBy: [] };
+
+    const task = tasks.find(t => t._id === taskId);
+    if (!task) return { blocking: [], blockedBy: [] };
+
+    // Tâches que cette tâche bloque
+    const blocking = tasks.filter(t =>
+      t.dépendances?.some(d => d.task_id === taskId && d.type === 'bloqué_par')
+    );
+
+    // Tâches qui bloquent cette tâche
+    const blockedBy = task.dépendances
+      ?.filter(d => d.type === 'bloqué_par')
+      .map(d => tasks.find(t => t._id === d.task_id))
+      .filter(Boolean) || [];
+
+    return { blocking, blockedBy };
+  }, [tasks]);
 
   // Stats
   const totalTasks = tasks.length;
@@ -295,13 +355,24 @@ export default function RoadmapPage() {
               </Button>
             </div>
             <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setCurrentDate(new Date())}
               >
                 Aujourd'hui
               </Button>
+              <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                <Switch
+                  id="show-deps"
+                  checked={showDependencies}
+                  onCheckedChange={setShowDependencies}
+                />
+                <Label htmlFor="show-deps" className="text-sm flex items-center gap-1 cursor-pointer">
+                  <Link2 className="w-4 h-4" />
+                  Dépendances
+                </Label>
+              </div>
               <Button variant="outline" size="icon" onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}>
                 <ZoomOut className="w-4 h-4" />
               </Button>
@@ -313,6 +384,34 @@ export default function RoadmapPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dependencies Summary */}
+      {showDependencies && dependencyLines.length > 0 && (
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <Link2 className="w-5 h-5 text-indigo-600" />
+              <span className="font-medium text-gray-700">
+                {dependencyLines.length} dépendance{dependencyLines.length > 1 ? 's' : ''} détectée{dependencyLines.length > 1 ? 's' : ''}
+              </span>
+              <div className="flex gap-4 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-red-500" />
+                  Bloque
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-blue-500" />
+                  Bloqué par
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-gray-400" />
+                  Lié à
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gantt Chart */}
       <Card>
@@ -481,13 +580,29 @@ export default function RoadmapPage() {
                 <p className="text-sm">Ajoutez des dates de début et d'échéance à vos tâches</p>
               </div>
             ) : (
-              scheduledTasks.map((task) => {
+              scheduledTasks.map((task, taskIndex) => {
                 const position = getBarPosition(task.date_début || task.date_échéance, task.date_échéance);
                 const project = projects.find(p => p._id === task.projet_id);
+                const hasDependencies = task.dépendances && task.dépendances.length > 0;
+                const { blocking, blockedBy } = getRelatedTasks(task._id);
+                const isBlocked = blockedBy.some(t => t.statut !== 'Terminé');
+                const isHighlighted = hoveredTask && (
+                  hoveredTask === task._id ||
+                  blocking.some(t => t._id === hoveredTask) ||
+                  blockedBy.some(t => t._id === hoveredTask)
+                );
+
                 return (
-                  <div 
-                    key={task._id} 
-                    className={`flex border-b border-gray-100 hover:bg-gray-50 border-l-4 ${getPriorityColor(task.priorité)}`}
+                  <div
+                    key={task._id}
+                    ref={el => taskRowRefs.current[task._id] = el}
+                    data-task-id={task._id}
+                    data-task-index={taskIndex}
+                    className={`flex border-b border-gray-100 hover:bg-gray-50 border-l-4 ${getPriorityColor(task.priorité)} ${
+                      isHighlighted ? 'bg-indigo-50' : ''
+                    } ${isBlocked ? 'opacity-70' : ''}`}
+                    onMouseEnter={() => setHoveredTask(task._id)}
+                    onMouseLeave={() => setHoveredTask(null)}
                   >
                     <div className="w-64 flex-shrink-0 p-3 border-r border-gray-200">
                       <div className="flex items-center gap-2">
@@ -495,10 +610,43 @@ export default function RoadmapPage() {
                         <span className="font-medium truncate text-sm" title={task.titre}>
                           {task.titre}
                         </span>
+                        {hasDependencies && showDependencies && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Link2 className={`w-3 h-3 ${isBlocked ? 'text-red-500' : 'text-gray-400'}`} />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {task.dépendances.length} dépendance{task.dépendances.length > 1 ? 's' : ''}
+                                </p>
+                                {isBlocked && (
+                                  <p className="text-xs text-red-500">Bloquée par des tâches non terminées</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-1">
                         {project?.nom || 'Sans projet'}
                       </p>
+                      {showDependencies && (blocking.length > 0 || blockedBy.length > 0) && (
+                        <div className="flex gap-2 mt-1">
+                          {blockedBy.length > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-red-600 border-red-300">
+                              <ArrowRight className="w-2 h-2 mr-0.5 rotate-180" />
+                              {blockedBy.length}
+                            </Badge>
+                          )}
+                          {blocking.length > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-blue-600 border-blue-300">
+                              <ArrowRight className="w-2 h-2 mr-0.5" />
+                              {blocking.length}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 relative py-2">
                       {position && (
@@ -506,18 +654,20 @@ export default function RoadmapPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div
-                                className={`absolute top-1/2 -translate-y-1/2 h-5 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(task.statut)}`}
+                                className={`absolute top-1/2 -translate-y-1/2 h-5 rounded cursor-pointer transition-all ${getStatusColor(task.statut)} ${
+                                  isHighlighted ? 'ring-2 ring-indigo-400 ring-offset-1' : 'hover:opacity-80'
+                                } ${isBlocked ? 'opacity-60' : ''}`}
                                 style={position}
                               >
                                 {task.progression > 0 && (
-                                  <div 
+                                  <div
                                     className="h-full bg-white/30 rounded-l"
                                     style={{ width: `${task.progression}%` }}
                                   />
                                 )}
                               </div>
                             </TooltipTrigger>
-                            <TooltipContent>
+                            <TooltipContent className="max-w-xs">
                               <p className="font-semibold">{task.titre}</p>
                               <p className="text-xs">Statut: {task.statut}</p>
                               <p className="text-xs">Priorité: {task.priorité}</p>
@@ -525,6 +675,21 @@ export default function RoadmapPage() {
                                 <p className="text-xs">
                                   Échéance: {new Date(task.date_échéance).toLocaleDateString('fr-FR')}
                                 </p>
+                              )}
+                              {hasDependencies && (
+                                <div className="mt-2 pt-2 border-t">
+                                  <p className="text-xs font-medium">Dépendances:</p>
+                                  {blockedBy.map(t => (
+                                    <p key={t._id} className="text-xs text-red-500">
+                                      ← Bloqué par: {t.titre}
+                                    </p>
+                                  ))}
+                                  {blocking.map(t => (
+                                    <p key={t._id} className="text-xs text-blue-500">
+                                      → Bloque: {t.titre}
+                                    </p>
+                                  ))}
+                                </div>
                               )}
                             </TooltipContent>
                           </Tooltip>

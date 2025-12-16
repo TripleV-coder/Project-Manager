@@ -30,14 +30,46 @@ export default function TimesheetsPage() {
     description: ''
   });
 
-  const handleStatusChange = (timesheetId, newStatut) => {
+  const handleStatusChange = async (timesheetId, newStatut) => {
+    // Optimistic update
+    const previousTimesheets = [...timesheets];
     setTimesheets(timesheets.map(t =>
       t._id === timesheetId ? { ...t, statut: newStatut } : t
     ));
+
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/timesheets/${timesheetId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ statut: newStatut }),
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        setTimesheets(previousTimesheets);
+        const error = await response.json();
+        toast.error(error.error || 'Erreur lors de la mise à jour du statut');
+      } else {
+        toast.success('Statut mis à jour');
+      }
+    } catch (error) {
+      // Revert on error
+      setTimesheets(previousTimesheets);
+      if (error.name !== 'AbortError') {
+        console.error('Error updating timesheet status:', error);
+        toast.error('Erreur de connexion');
+      }
+    }
   };
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -81,9 +113,10 @@ export default function TimesheetsPage() {
       const tasksData = await tasksRes.json();
       const timesheetsData = await timesheetsRes.json();
 
-      setProjects(projectsData.projects || []);
-      setTasks(tasksData.tasks || []);
-      setTimesheets(timesheetsData.timesheets || []);
+      // API returns { success: true, data: [...] } or legacy format
+      setProjects(projectsData.data || projectsData.projects || []);
+      setTasks(tasksData.data || tasksData.tasks || []);
+      setTimesheets(timesheetsData.timesheets || timesheetsData.data || []);
       setLoading(false);
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -221,7 +254,7 @@ export default function TimesheetsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{projects.find(p => p._id === entry.projet_id)?.nom || 'N/A'}</TableCell>
-                    <TableCell>{entry.tâche_id ? tasks.find(t => t._id === entry.tâche_id)?.titre : 'Général'}</TableCell>
+                    <TableCell>{(entry.task_id || entry.tâche_id) ? tasks.find(t => t._id === (entry.task_id?._id || entry.task_id || entry.tâche_id))?.titre || entry.task_id?.titre : 'Général'}</TableCell>
                     <TableCell>
                       <Badge className="bg-indigo-100 text-indigo-800">{entry.heures}h</Badge>
                     </TableCell>

@@ -1,28 +1,38 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus, Search, User as UserIcon } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import KanbanColumn from '@/components/kanban/KanbanColumn';
 import TaskCard from '@/components/kanban/TaskCard';
 import { toast } from 'sonner';
+import { useRBACPermissions } from '@/hooks/useRBACPermissions';
+import { useItemFormData } from '@/hooks/useItemFormData';
+import ItemFormDialog from '@/components/ItemFormDialog';
+
+/**
+ * Extrait les données d'une réponse API de manière sécurisée
+ */
+function extractApiData(response, keys = ['data']) {
+  if (!response) return [];
+  if (Array.isArray(response)) return response;
+  for (const key of keys) {
+    if (response[key] && Array.isArray(response[key])) {
+      return response[key];
+    }
+  }
+  return [];
+}
 
 export default function KanbanPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get('project');
 
-  const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(projectId || '');
   const [tasks, setTasks] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -30,16 +40,35 @@ export default function KanbanPage() {
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [activeTask, setActiveTask] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [users, setUsers] = useState([]);
-  
-  const [newTask, setNewTask] = useState({
-    titre: '',
-    description: '',
-    priorité: 'Moyenne',
-    assigné_à: '',
-    date_début: '',
-    date_échéance: ''
+  const [user, setUser] = useState(null);
+
+  // Hook pour charger les données du formulaire
+  const handleUnauthorized = useCallback(() => {
+    router.push('/login');
+  }, [router]);
+
+  const {
+    projects,
+    users,
+    sprints,
+    epics,
+    stories,
+    loading: formDataLoading,
+    dataReady,
+    errors: dataErrors,
+    refresh: refreshFormData
+  } = useItemFormData({
+    projectId: selectedProject || null,
+    loadProjects: true,
+    loadUsers: true,
+    loadSprints: true,
+    loadDeliverables: false,
+    onUnauthorized: handleUnauthorized
   });
+
+  const permissions = useRBACPermissions(user);
+  const canManageTasks = permissions.hasPermission;
+  const canMoveTasks = permissions.hasPermission;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -49,43 +78,17 @@ export default function KanbanPage() {
     })
   );
 
-  // Load projects once on mount
+  // Auto-select first project when projects are loaded
   useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const token = localStorage.getItem('pm_token');
-        if (!token) {
-          router.push('/login');
-          return;
-        }
+    if (projects.length > 0 && !selectedProject && !projectId) {
+      setSelectedProject(projects[0]._id);
+    }
+    if (projects.length > 0) {
+      setProjectsLoaded(true);
+    }
+  }, [projects, selectedProject, projectId]);
 
-        const projectsRes = await fetch('/api/projects?limit=100', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(8000)
-        });
-        
-        if (!projectsRes.ok) throw new Error('Failed to load projects');
-        
-        const projectsData = await projectsRes.json();
-        const projectsList = projectsData.projects || [];
-        setProjects(projectsList);
-
-        if (!projectId && projectsList.length > 0) {
-          setSelectedProject(projectsList[0]._id);
-        }
-        setProjectsLoaded(true);
-      } catch (error) {
-        console.error('Error loading projects:', error);
-        if (error.name !== 'AbortError') {
-          setProjectsLoaded(true);
-        }
-      }
-    };
-
-    loadProjects();
-  }, [projectId, router]);
-
-  // Load project data (tasks, columns, users) when project is selected
+  // Load project data (tasks, columns) when project is selected
   const loadProjectData = useCallback(async () => {
     if (!selectedProject) {
       setLoading(false);
@@ -101,8 +104,8 @@ export default function KanbanPage() {
 
       setLoading(true);
 
-      // Load all data in parallel
-      const [tasksRes, projectRes, usersRes] = await Promise.all([
+      // Load tasks and project data in parallel
+      const [tasksRes, projectRes, userRes] = await Promise.all([
         fetch(`/api/tasks?projet_id=${selectedProject}&limit=200`, {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: AbortSignal.timeout(10000)
@@ -111,40 +114,61 @@ export default function KanbanPage() {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: AbortSignal.timeout(10000)
         }),
-        fetch('/api/users?limit=200', {
+        fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: AbortSignal.timeout(10000)
         })
       ]);
 
-      const [tasksData, projectData, usersData] = await Promise.all([
+      const [tasksData, projectData, userData] = await Promise.all([
         tasksRes.json(),
         projectRes.json(),
-        usersRes.json()
+        userRes.json()
       ]);
 
+      if (userRes.ok) {
+        setUser(userData);
+      }
+
       if (tasksRes.ok) {
-        setTasks(tasksData.tasks || []);
+        // Vérification sécurisée du format de réponse API
+        const tasksList = extractApiData(tasksData, ['data', 'tasks']);
+        if (!Array.isArray(tasksList)) {
+          console.error('Format de réponse invalide pour les tâches:', tasksData);
+          toast.error('Erreur de format de données');
+          setTasks([]);
+        } else {
+          setTasks(tasksList);
+        }
+      } else {
+        toast.error('Erreur lors du chargement des tâches');
+        setTasks([]);
       }
 
       if (projectRes.ok) {
-        setColumns(projectData.project?.colonnes_kanban || [
-          { id: 'backlog', nom: 'Backlog', couleur: '#94a3b8' },
-          { id: 'todo', nom: 'À faire', couleur: '#60a5fa' },
-          { id: 'in_progress', nom: 'En cours', couleur: '#f59e0b' },
-          { id: 'review', nom: 'Review', couleur: '#8b5cf6' },
-          { id: 'done', nom: 'Terminé', couleur: '#10b981' }
-        ]);
-      }
+        const project = projectData.data || projectData.project || projectData;
+        const kanbanColumns = project?.colonnes_kanban;
 
-      if (usersRes.ok) {
-        setUsers(usersData.users || []);
+        // Vérification que les colonnes sont valides
+        if (Array.isArray(kanbanColumns) && kanbanColumns.length > 0) {
+          setColumns(kanbanColumns);
+        } else {
+          // Colonnes par défaut
+          setColumns([
+            { id: 'backlog', nom: 'Backlog', couleur: '#94a3b8' },
+            { id: 'todo', nom: 'À faire', couleur: '#60a5fa' },
+            { id: 'in_progress', nom: 'En cours', couleur: '#f59e0b' },
+            { id: 'review', nom: 'Review', couleur: '#8b5cf6' },
+            { id: 'done', nom: 'Terminé', couleur: '#10b981' }
+          ]);
+        }
       }
 
       setLoading(false);
     } catch (error) {
       console.error('Error loading project data:', error);
       if (error.name !== 'AbortError') {
+        toast.error('Erreur de connexion');
         setLoading(false);
       }
     }
@@ -164,7 +188,7 @@ export default function KanbanPage() {
 
   const handleDragEnd = useCallback(async (event) => {
     const { active, over } = event;
-    
+
     if (!over) {
       setActiveTask(null);
       return;
@@ -172,16 +196,23 @@ export default function KanbanPage() {
 
     const taskId = active.id;
     const newColumnId = over.id;
-    
+
     const task = tasks.find(t => t._id === taskId);
     if (!task || task.colonne_kanban === newColumnId) {
       setActiveTask(null);
       return;
     }
 
+    // Check permission before moving
+    if (!canMoveTasks('deplacerTaches')) {
+      toast.error('Vous n\'avez pas la permission de déplacer les tâches');
+      setActiveTask(null);
+      return;
+    }
+
     // Update locally first for instant feedback
-    setTasks(tasks.map(t => 
-      t._id === taskId 
+    setTasks(tasks.map(t =>
+      t._id === taskId
         ? { ...t, colonne_kanban: newColumnId, statut: columns.find(c => c.id === newColumnId)?.nom || t.statut }
         : t
     ));
@@ -189,7 +220,7 @@ export default function KanbanPage() {
     // Update on server
     try {
       const token = localStorage.getItem('pm_token');
-      await fetch(`/api/tasks/${taskId}/move`, {
+      const response = await fetch(`/api/tasks/${taskId}/move`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -201,6 +232,14 @@ export default function KanbanPage() {
         }),
         signal: AbortSignal.timeout(8000)
       });
+
+      if (response.ok) {
+        toast.success('Tâche déplacée avec succès');
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Erreur lors du déplacement');
+        loadProjectData();
+      }
     } catch (error) {
       console.error('Error moving task:', error);
       toast.error('Erreur lors du déplacement');
@@ -208,48 +247,13 @@ export default function KanbanPage() {
     }
 
     setActiveTask(null);
-  }, [tasks, columns, loadProjectData]);
+  }, [tasks, columns, loadProjectData, canMoveTasks]);
 
-  const handleCreateTask = useCallback(async () => {
-    try {
-      if (!newTask.titre.trim()) {
-        toast.error('Le titre est requis');
-        return;
-      }
-
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...newTask,
-          projet_id: selectedProject,
-          statut: 'Backlog',
-          colonne_kanban: 'backlog'
-        }),
-        signal: AbortSignal.timeout(8000)
-      });
-
-      if (response.ok) {
-        const createdTask = await response.json();
-        setTasks([...tasks, createdTask.task || createdTask]);
-        setCreateDialogOpen(false);
-        setNewTask({ titre: '', description: '', priorité: 'Moyenne', assigné_à: '', date_début: '', date_échéance: '' });
-        toast.success('Tâche créée avec succès');
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Erreur lors de la création');
-      }
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Error creating task:', error);
-        toast.error('Erreur de connexion');
-      }
-    }
-  }, [newTask, selectedProject, tasks]);
+  // Callback après création réussie
+  const handleFormSuccess = useCallback(async () => {
+    await loadProjectData();
+    refreshFormData();
+  }, [loadProjectData, refreshFormData]);
 
   if (!projectsLoaded) {
     return (
@@ -298,85 +302,15 @@ export default function KanbanPage() {
             </Select>
           </div>
 
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-indigo-600 hover:bg-indigo-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Nouvelle tâche
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Créer une tâche</DialogTitle>
-                <DialogDescription>Ajoutez une nouvelle tâche au backlog</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Titre</Label>
-                  <Input
-                    value={newTask.titre}
-                    onChange={(e) => setNewTask({ ...newTask, titre: e.target.value })}
-                    placeholder="Titre de la tâche"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={newTask.description}
-                    onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                    placeholder="Description (optionnel)"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Priorité</Label>
-                  <Select value={newTask.priorité} onValueChange={(val) => setNewTask({ ...newTask, priorité: val })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Basse">Basse</SelectItem>
-                      <SelectItem value="Moyenne">Moyenne</SelectItem>
-                      <SelectItem value="Haute">Haute</SelectItem>
-                      <SelectItem value="Critique">Critique</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Assigné à</Label>
-                  <Select value={newTask.assigné_à || ''} onValueChange={(val) => setNewTask({ ...newTask, assigné_à: val === '' ? null : val })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un utilisateur" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map(u => (
-                        <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Date de début</Label>
-                  <Input
-                    type="date"
-                    value={newTask.date_début}
-                    onChange={(e) => setNewTask({ ...newTask, date_début: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date d'échéance</Label>
-                  <Input
-                    type="date"
-                    value={newTask.date_échéance}
-                    onChange={(e) => setNewTask({ ...newTask, date_échéance: e.target.value })}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-                <Button onClick={handleCreateTask} className="bg-indigo-600 hover:bg-indigo-700">Créer</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {canManageTasks('gererTaches') && (
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Nouvelle tâche
+            </Button>
+          )}
         </div>
       </div>
 
@@ -413,6 +347,29 @@ export default function KanbanPage() {
           </DndContext>
         </div>
       )}
+
+      {/* Formulaire unifié de création */}
+      <ItemFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        type="Tâche"
+        editingItem={null}
+        parentItem={null}
+        projectId={selectedProject}
+        projects={projects}
+        users={users}
+        sprints={sprints}
+        epics={epics}
+        stories={stories}
+        dataLoading={formDataLoading}
+        dataReady={dataReady}
+        dataErrors={dataErrors}
+        onSuccess={handleFormSuccess}
+        onUnauthorized={handleUnauthorized}
+        showProjectSelect={false}
+        showTypeSelect={true}
+        showParentSelect={true}
+      />
     </div>
   );
 }

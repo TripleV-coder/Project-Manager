@@ -18,7 +18,7 @@
 1. Cliquer sur "Créer un rôle personnalisé"
 2. Entrer le nom (ex: "Consultant Externe")
 3. Entrer la description
-4. **Onglet Permissions (22 au total):**
+4. **Onglet Permissions (23 au total):**
    - Cocher les permissions souhaitées
    - Permissions organisées par catégorie:
      * Projets (5 permissions)
@@ -31,20 +31,20 @@
      * Fichiers (1 permission)
      * Communication (2 permissions)
      * Rapports & Audit (2 permissions)
-     * Administration (1 permission)
+     * Administration (2 permissions)
 5. **Onglet Menus Visibles (14 au total):**
    - Cocher les menus visibles
 6. Cliquer sur "Créer le rôle"
 
 **8 Rôles Prédéfinis:**
-- Administrateur (22/22 permissions)
-- Chef de Projet (17/22 permissions)
-- Responsable Équipe (11/22 permissions)
-- Product Owner (9/22 permissions)
-- Membre Équipe (6/22 permissions)
-- Partie Prenante (3/22 permissions)
-- Observateur (2/22 permissions)
-- Invité (1/22 permissions)
+- Administrateur (23/23 permissions)
+- Chef de Projet (17/23 permissions)
+- Responsable Équipe (11/23 permissions)
+- Product Owner (9/23 permissions)
+- Membre Équipe (6/23 permissions)
+- Partie Prenante (3/23 permissions)
+- Observateur (2/23 permissions)
+- Invité (1/23 permissions)
 
 ### 2. 📊 Génération de Rapports (FONCTIONNEL ✅)
 
@@ -262,7 +262,7 @@ Pour toute question, contacter l'administrateur système.
 - [x] Rapports (PDF, Excel, CSV) ✨
 - [x] Notifications (Temps réel)
 - [x] Gestion Utilisateurs
-- [x] Gestion Rôles (22 permissions, Rôles personnalisés) ✨
+- [x] Gestion Rôles (23 permissions, Rôles personnalisés) ✨
 - [x] Templates Projets
 - [x] Types Livrables
 - [x] Paramètres Utilisateur

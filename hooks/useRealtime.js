@@ -15,14 +15,14 @@ import { toast } from 'sonner';
  */
 export function useRealtime(eventName, onDataReceived, options = {}) {
   const { socket, isConnected } = useSocket();
-  const [loading, setLoading] = useState(false);
+  const [loading, _setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
   const {
     showErrorToast = true,
     errorMessage = 'Connection lost',
-    retryOnError = true,
+    retryOnError: _retryOnError = true,
     maxRetries = 3
   } = options;
 

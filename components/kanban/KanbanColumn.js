@@ -1,6 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import TaskCard from './TaskCard';
 

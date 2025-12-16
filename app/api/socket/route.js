@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
  * 3. Using a proxy like nginx for WebSocket upgrade
  */
 
-export async function GET(request) {
+export async function GET(_request) {
   return NextResponse.json({
     message: 'Socket.io is configured to use polling transport',
     info: 'For WebSocket support, please use a separate socket.io server'

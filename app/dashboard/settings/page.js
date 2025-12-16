@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Settings, Globe, Bell, Shield, Palette, Database, Mail,
-  Save, RefreshCw, Check, AlertTriangle, Lock, Clock,
+  Globe, Bell, Shield, Palette, Mail,
+  Save, RefreshCw,
   Moon, Sun, Monitor
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 
@@ -61,7 +60,8 @@ export default function SettingsPage() {
       }
 
       const response = await fetch('/api/settings', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000)
       });
 
       if (response.ok) {

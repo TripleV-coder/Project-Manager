@@ -42,6 +42,7 @@ export default function Home() {
 
         if (!data.user) {
           localStorage.removeItem('pm_token');
+          localStorage.removeItem('pm_user');
           router.push('/login');
           return;
         }

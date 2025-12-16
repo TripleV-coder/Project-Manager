@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
-import { randomBytes } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import { hashPassword, verifyPassword, signToken, verifyToken, validatePassword } from '@/lib/auth';
-import { initializeProjectRoles, getProjectRoles, getProjectRoleById } from '@/lib/projectRoleInit';
-import { getMergedPermissions, getAccessibleData } from '@/lib/permissions';
-import { emitToProject, emitToUser, emitToAll } from '@/lib/socket-emitter';
+import { initializeProjectRoles } from '@/lib/projectRoleInit';
+import { getMergedPermissions } from '@/lib/permissions';
+import { emitToProject } from '@/lib/socket-emitter';
 import { SOCKET_EVENTS } from '@/lib/socket-events';
 import { logActivity } from '@/lib/auditService';
-import { handleGetAuditLogs, handleGetUserActivity, handleGetAuditStatistics, handleExportAuditLogs } from '@/lib/auditApiHandler';
+import { handleGetAuditLogs, handleGetUserActivity, handleGetAuditStatistics, handleExportAuditLogs, handleGetAvailableActions } from '@/lib/auditApiHandler';
 import { checkRateLimit, getClientIP, getRateLimitHeaders, RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import { createAuthCookieHeader } from '@/lib/authCookie';
 import { APIResponse, handleError } from '@/lib/apiResponse';
-import { withValidation } from '@/lib/inputValidator';
 import appSettingsService from '@/lib/appSettingsService';
 import projectService from '@/lib/services/projectService';
 import userService from '@/lib/services/userService';
@@ -43,14 +41,27 @@ async function authenticate(request) {
 
   const token = authHeader.split(' ')[1];
   const payload = await verifyToken(token);
-  
+
   if (!payload) {
     return null;
   }
 
-  await connectDB();
-  const user = await User.findById(payload.userId).populate('role_id');
-  return user;
+  try {
+    await connectDB();
+    const user = await User.findById(payload.userId).select('+password').populate('role_id');
+    if (!user) {
+      return null;
+    }
+    // Ensure role_id is loaded, if not return null
+    if (!user.role_id) {
+      console.warn('[Auth] User found but role_id not populated for userId:', payload.userId);
+      return null;
+    }
+    return user;
+  } catch (error) {
+    console.error('[Auth] Error authenticating user:', error);
+    return null;
+  }
 }
 
 // Helper pour générer un mot de passe temporaire sécurisé
@@ -80,22 +91,91 @@ function generateSecureTemporaryPassword() {
 
 // Helper pour créer une réponse d'erreur sécurisée (ne divulgue pas les détails en production)
 function createSecureErrorResponse(error, statusCode = 500) {
-  // Log full error server-side
-  if (process.env.NODE_ENV === 'production') {
-    console.error('API Error:', error);
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Log full error server-side (with stack trace in dev only)
+  if (isProduction) {
+    console.error('API Error:', error.message);
   } else {
-    console.error('API Error:', error);
+    console.error('API Error:', error.message, error.stack);
   }
 
   // Return generic error to client in production, detailed in development
-  const errorMessage = process.env.NODE_ENV === 'development'
-    ? error.message
-    : 'Une erreur s\'est produite. Veuillez réessayer plus tard.';
+  const errorMessage = isProduction
+    ? 'Une erreur s\'est produite. Veuillez réessayer plus tard.'
+    : error.message;
 
   return {
     statusCode,
     message: errorMessage
   };
+}
+
+// Helper pour mettre à jour le burndown d'un sprint actif quand une tâche change
+async function updateSprintBurndown(sprintId) {
+  try {
+    if (!sprintId) return;
+
+    const sprint = await Sprint.findById(sprintId);
+    if (!sprint || sprint.statut !== 'Actif') return;
+
+    // Get all tasks for this sprint
+    const sprintTasks = await Task.find({ sprint_id: sprintId });
+    const totalStoryPoints = sprint.story_points_planifiés || sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+
+    // Calculate current remaining points
+    const completedTasks = sprintTasks.filter(t => t.statut === 'Terminé');
+    const completedPoints = completedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+    const remainingPoints = totalStoryPoints - completedPoints;
+
+    // Get today's date (normalized to start of day)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Update or add today's burndown entry
+    let burndownData = sprint.burndown_data || [];
+    const todayStr = today.toDateString();
+    const existingEntryIndex = burndownData.findIndex(entry =>
+      new Date(entry.date).toDateString() === todayStr
+    );
+
+    if (existingEntryIndex >= 0) {
+      // Update existing entry for today
+      burndownData[existingEntryIndex].story_points_restants = remainingPoints;
+    } else {
+      // Check if today is within sprint period
+      const startDate = new Date(sprint.date_début);
+      const endDate = new Date(sprint.date_fin);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+
+      if (today >= startDate && today <= endDate) {
+        // Calculate ideal for today
+        const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const dayIndex = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
+        const idealRemaining = Math.max(0, totalStoryPoints - (totalStoryPoints / Math.max(1, totalDays - 1)) * dayIndex);
+
+        burndownData.push({
+          date: today,
+          story_points_restants: remainingPoints,
+          heures_restantes: null,
+          idéal: Math.round(idealRemaining * 10) / 10
+        });
+
+        // Sort by date
+        burndownData.sort((a, b) => new Date(a.date) - new Date(b.date));
+      }
+    }
+
+    // Update sprint
+    sprint.story_points_complétés = completedPoints;
+    sprint.burndown_data = burndownData;
+    await sprint.save();
+
+    return sprint;
+  } catch (error) {
+    console.error('Error updating sprint burndown:', error);
+  }
 }
 
 // Helper pour créer une notification
@@ -163,6 +243,18 @@ async function createNotificationsBatch(destinataires, type, titre, message, ent
   } catch (error) {
     console.error('Erreur création notifications batch:', error);
   }
+}
+
+// Helper pour mapper le statut français vers l'ID de colonne Kanban anglais
+function getKanbanColumnId(statut) {
+  const statusToColumnMap = {
+    'Backlog': 'backlog',
+    'À faire': 'todo',
+    'En cours': 'in_progress',
+    'Review': 'review',
+    'Terminé': 'done'
+  };
+  return statusToColumnMap[statut] || 'backlog';
 }
 
 // CORS Helper
@@ -662,6 +754,7 @@ export async function GET(request) {
           compétences: user.compétences,
           status: user.status,
           first_login: user.first_login,
+          must_change_password: user.must_change_password,
           projets_assignés: user.projets_assignés
         } : null
       }));
@@ -939,6 +1032,45 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ types }));
     }
 
+    // GET /api/deliverables - Liste des livrables avec filtres
+    if (path === '/deliverables' || path === '/deliverables/') {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const url = new URL(request.url);
+      const projet_id = url.searchParams.get('projet_id');
+      const statut = url.searchParams.get('statut');
+      const page = parseInt(url.searchParams.get('page')) || 1;
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      const skip = (page - 1) * limit;
+
+      const query = {};
+      if (projet_id) query.projet_id = projet_id;
+      if (statut) query.statut_global = statut;
+
+      const [deliverables, total] = await Promise.all([
+        Deliverable.find(query)
+          .populate('projet_id', 'nom')
+          .populate('type_id', 'nom')
+          .populate('assigné_à', 'nom_complet email avatar')
+          .sort({ created_at: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Deliverable.countDocuments(query)
+      ]);
+
+      return handleCORS(NextResponse.json({
+        deliverables,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }));
+    }
+
     // GET /api/settings/maintenance - État du mode maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
       try {
@@ -1048,7 +1180,7 @@ export async function GET(request) {
       }
     }
 
-    // GET /api/expenses - Liste dépenses avec filtres
+    // GET /api/expenses - Liste dépenses avec filtres (OPTIMIZED with pagination)
     if (path === '/expenses' || path === '/expenses/') {
       const user = await authenticate(request);
       if (!user) {
@@ -1056,11 +1188,17 @@ export async function GET(request) {
       }
 
       const projectId = url.searchParams.get('projet_id');
+      const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
+      const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+      const skip = (page - 1) * limit;
       const query = {};
 
       if (projectId) {
         query.projet_id = projectId;
-        const project = await Project.findById(projectId);
+        const project = await Project.findById(projectId)
+          .select('chef_projet product_owner membres.user_id')
+          .lean();
+
         if (!project) {
           return handleCORS(NextResponse.json({ error: 'Projet non trouvé' }, { status: 404 }));
         }
@@ -1068,9 +1206,9 @@ export async function GET(request) {
         const hasSystemAccess = user.role_id?.permissions?.voirTousProjets ||
           user.role_id?.permissions?.adminConfig;
 
-        const isMember = project.chef_projet.toString() === user._id.toString() ||
+        const isMember = project.chef_projet?.toString() === user._id.toString() ||
           project.product_owner?.toString() === user._id.toString() ||
-          project.membres.some(m => m.user_id.toString() === user._id.toString());
+          project.membres?.some(m => m.user_id?.toString() === user._id.toString());
 
         if (!hasSystemAccess && !isMember && !user.role_id?.permissions?.voirBudget) {
           return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
@@ -1081,14 +1219,27 @@ export async function GET(request) {
         }
       }
 
-      const expenses = await Expense.find(query)
-        .populate('saisi_par', 'nom_complet email')
-        .populate('validé_par', 'nom_complet email')
-        .populate('projet_id', 'nom')
-        .sort({ date_dépense: -1 })
-        .limit(200);
+      const [expenses, total] = await Promise.all([
+        Expense.find(query)
+          .populate('saisi_par', 'nom_complet email')
+          .populate('validé_par', 'nom_complet email')
+          .populate('projet_id', 'nom')
+          .sort({ date_dépense: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Expense.countDocuments(query)
+      ]);
 
-      return handleCORS(NextResponse.json({ expenses }));
+      return handleCORS(NextResponse.json({
+        expenses,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      }));
     }
 
     // GET /api/notifications - Liste notifications utilisateur
@@ -1115,7 +1266,7 @@ export async function GET(request) {
       return handleCORS(NextResponse.json({ notifications, unreadCount }));
     }
 
-    // GET /api/comments - Liste commentaires
+    // GET /api/comments - Liste commentaires (OPTIMIZED with pagination)
     if (path === '/comments' || path === '/comments/') {
       const user = await authenticate(request);
       if (!user) {
@@ -1124,19 +1275,35 @@ export async function GET(request) {
 
       const entityType = url.searchParams.get('entity_type');
       const entityId = url.searchParams.get('entity_id');
+      const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
+      const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
+      const skip = (page - 1) * limit;
 
-      const query = {};
+      const query = { supprimé: { $ne: true } }; // Exclure les commentaires supprimés
       if (entityType) query.entity_type = entityType;
       if (entityId) query.entity_id = entityId;
 
-      const comments = await Comment.find(query)
-        .populate('auteur', 'nom_complet email avatar')
-        .populate('mentions', 'nom_complet')
-        .populate('parent_id')
-        .sort({ created_at: -1 })
-        .limit(200);
+      const [comments, total] = await Promise.all([
+        Comment.find(query)
+          .populate('auteur', 'nom_complet email avatar')
+          .populate('mentions', 'nom_complet')
+          .populate('parent_id')
+          .sort({ created_at: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Comment.countDocuments(query)
+      ]);
 
-      return handleCORS(NextResponse.json({ comments }));
+      return handleCORS(NextResponse.json({
+        comments,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      }));
     }
 
     // GET /api/activity - Flux d'activité global
@@ -1235,6 +1402,19 @@ export async function GET(request) {
       if (file.url && file.url.startsWith('data:')) {
         const base64Data = file.url.split(',')[1];
         const buffer = Buffer.from(base64Data, 'base64');
+
+        // Log file download activity
+        await logActivity(user, 'download_fichier', 'fichier', file._id, `Téléchargement du fichier: ${file.nom}`, {
+          request,
+          severity: 'info',
+          relatedProjectId: file.projet_id || null,
+          metadata: {
+            fileName: file.nom,
+            fileSize: buffer.length,
+            mimeType: file.type_mime || file.type,
+            dossier: file.dossier
+          }
+        });
 
         return new NextResponse(buffer, {
           headers: {
@@ -1385,6 +1565,15 @@ export async function GET(request) {
       return handleCORS(await handleExportAuditLogs(request.url, user));
     }
 
+    // GET /api/audit/actions - Get available actions and entity types for filters
+    if (path === '/audit/actions' || path === '/audit/actions/') {
+      const user = await authenticate(request);
+      if (!user || !user.role_id?.permissions?.voirAudit) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+      return handleCORS(handleGetAvailableActions(user));
+    }
+
     // GET /api/audit/summary - Quick audit summary
     if (path === '/audit/summary' || path === '/audit/summary/') {
       const user = await authenticate(request);
@@ -1491,7 +1680,7 @@ export async function POST(request) {
       if (contentType && contentType.includes('application/json')) {
         body = await request.json();
       }
-    } catch (e) {
+    } catch (_e) {
       // Pas de body, c'est OK pour certaines routes
     }
 
@@ -1535,6 +1724,10 @@ export async function POST(request) {
       }
 
       const hashedPassword = await hashPassword(password);
+      console.log('[FirstAdmin] Creating admin with email:', email.toLowerCase());
+      console.log('[FirstAdmin] Password hashed successfully');
+      console.log('[FirstAdmin] Role ID:', adminRole._id);
+
       const user = await User.create({
         nom_complet,
         email: email.toLowerCase(),
@@ -1545,6 +1738,10 @@ export async function POST(request) {
         must_change_password: false,
         password_history: [{ hash: hashedPassword, date: new Date() }]
       });
+
+      console.log('[FirstAdmin] User created successfully:', user._id);
+      console.log('[FirstAdmin] User email:', user.email);
+      console.log('[FirstAdmin] User password stored:', !!user.password);
 
       await logActivity(user, 'création', 'utilisateur', user._id, 'Création du premier administrateur', { request, httpMethod: 'POST', endpoint: '/auth/first-admin', httpStatus: 200 });
 
@@ -1584,9 +1781,12 @@ export async function POST(request) {
         return handleCORS(response);
       }
 
-      const user = await User.findOne({ email: email.toLowerCase() }).populate('role_id');
+      console.log('[Login] Attempting login for email:', email.toLowerCase());
+
+      let user = await User.findOne({ email: email.toLowerCase() }).select('+password').populate('role_id');
 
       if (!user) {
+        console.log('[Login] User not found for email:', email.toLowerCase());
         const response = NextResponse.json({
           error: 'Email ou mot de passe incorrect'
         }, { status: 401 });
@@ -1596,7 +1796,10 @@ export async function POST(request) {
         return handleCORS(response);
       }
 
+      console.log('[Login] User found:', user.nom_complet, '| Status:', user.status, '| Has password:', !!user.password);
+
       if (user.status !== 'Actif') {
+        console.log('[Login] User account not active:', user.status);
         const response = NextResponse.json({
           error: 'Compte désactivé'
         }, { status: 403 });
@@ -1606,10 +1809,46 @@ export async function POST(request) {
         return handleCORS(response);
       }
 
-      const isValidPassword = await verifyPassword(password, user.password);
-      if (!isValidPassword) {
+      // Check if account is locked due to failed login attempts
+      if (user.lockUntil && user.lockUntil > new Date()) {
+        const minutesRemaining = Math.ceil((user.lockUntil - new Date()) / 60000);
+        console.log('[Login] Account locked for user:', email.toLowerCase(), 'Minutes remaining:', minutesRemaining);
+        await logActivity(user, 'login_failed', 'utilisateur', user._id, `Tentative de connexion - Compte verrouillé (${minutesRemaining} min restantes)`, { request, httpMethod: 'POST', endpoint: '/auth/login', httpStatus: 423 });
         const response = NextResponse.json({
-          error: 'Email ou mot de passe incorrect'
+          error: `Compte temporairement verrouillé après trop de tentatives. Veuillez réessayer dans ${minutesRemaining} minute(s).`
+        }, { status: 423 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
+      }
+
+      const isValidPassword = await verifyPassword(password, user.password);
+      console.log('[Login] Password valid:', isValidPassword);
+      if (!isValidPassword) {
+        console.log('[Login] Invalid password for user:', email.toLowerCase());
+        // Increment failed login attempts
+        await user.incLoginAttempts();
+        // Reload user to get updated lockUntil if account got locked
+        user = await User.findOne({ email: email.toLowerCase() }).select('+password').populate('role_id');
+        const failedAttempts = user.failedLoginAttempts;
+        const isNowLocked = user.lockUntil && user.lockUntil > new Date();
+
+        let errorMessage = 'Email ou mot de passe incorrect';
+        if (isNowLocked) {
+          const minutesRemaining = Math.ceil((user.lockUntil - new Date()) / 60000);
+          errorMessage = `Trop de tentatives échouées. Compte verrouillé pour ${minutesRemaining} minute(s).`;
+        } else {
+          const remainingAttempts = Math.max(0, 5 - failedAttempts);
+          if (remainingAttempts > 0 && remainingAttempts < 3) {
+            errorMessage = `Email ou mot de passe incorrect. ${remainingAttempts} tentative(s) restante(s) avant verrouillage.`;
+          }
+        }
+
+        await logActivity(user, 'login_failed', 'utilisateur', user._id, 'Mot de passe incorrect', { request, httpMethod: 'POST', endpoint: '/auth/login', httpStatus: 401 });
+
+        const response = NextResponse.json({
+          error: errorMessage
         }, { status: 401 });
         Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
           response.headers.set(key, value);
@@ -1623,8 +1862,8 @@ export async function POST(request) {
         role: user.role_id?.nom || 'user'
       });
 
-      user.dernière_connexion = new Date();
-      await user.save();
+      // Reset failed login attempts on successful login
+      await user.resetLoginAttempts();
 
       await logActivity(user, 'connexion', 'utilisateur', user._id, 'Connexion réussie', { request, httpMethod: 'POST', endpoint: '/auth/login', httpStatus: 200 });
 
@@ -1787,6 +2026,51 @@ export async function POST(request) {
       }));
     }
 
+    // POST /api/users/:userId/unlock - Débloquer compte utilisateur (admin)
+    if (path.match(/^\/users\/[^/]+\/unlock\/?$/)) {
+      const user = await authenticate(request);
+      if (!user || (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const userId = path.split('/')[2];
+      const targetUser = await User.findById(userId);
+
+      if (!targetUser) {
+        return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
+      }
+
+      // Reset failed login attempts and remove lock
+      await targetUser.updateOne({
+        $set: { failedLoginAttempts: 0 },
+        $unset: { lockUntil: 1 }
+      });
+
+      await logActivity(user, 'déblocage', 'utilisateur', targetUser._id, `Compte de ${targetUser.nom_complet} débloqué par administrateur`, { request, httpMethod: 'POST', endpoint: `/users/${userId}/unlock`, httpStatus: 200 });
+
+      await createNotification(
+        targetUser._id,
+        'sécurité',
+        'Compte débloqué',
+        'Votre compte a été débloqué par un administrateur. Vous pouvez maintenant vous connecter.',
+        'utilisateur',
+        targetUser._id,
+        targetUser.nom_complet,
+        user._id
+      );
+
+      return handleCORS(NextResponse.json({
+        message: `Compte de ${targetUser.nom_complet} débloqué avec succès`,
+        user: {
+          id: targetUser._id,
+          nom_complet: targetUser.nom_complet,
+          email: targetUser.email,
+          failedLoginAttempts: 0,
+          isLocked: false
+        }
+      }));
+    }
+
     // POST /api/projects - Créer projet
     if (path === '/projects' || path === '/projects/') {
       const user = await authenticate(request);
@@ -1849,7 +2133,7 @@ export async function POST(request) {
         $inc: { utilisé_count: 1 }
       });
 
-      await logActivity(user, 'création', 'projet', project._id, `Création projet ${nom}`, { request, httpMethod: 'POST', endpoint: '/projects', httpStatus: 201 });
+      await logActivity(user, 'création', 'projet', project._id, `Création projet ${nom}`, { request, httpMethod: 'POST', endpoint: '/projects', httpStatus: 201, relatedProjectId: project._id });
 
       if (membres.length > 0) {
         await createNotificationsBatch(
@@ -1966,7 +2250,7 @@ export async function POST(request) {
         user._id
       );
 
-      await logActivity(user, 'modification', 'projet', project._id, `Ajout membre ${targetUser.nom_complet} au projet ${project.nom} (rôle: ${projectRole.nom})`, { request, httpMethod: 'POST', endpoint: '/projects/:id/members', httpStatus: 201 });
+      await logActivity(user, 'modification', 'projet', project._id, `Ajout membre ${targetUser.nom_complet} au projet ${project.nom} (rôle: ${projectRole.nom})`, { request, httpMethod: 'POST', endpoint: '/projects/:id/members', httpStatus: 201, relatedProjectId: project._id });
 
       return handleCORS(NextResponse.json({
         message: 'Membre ajouté avec succès',
@@ -2023,7 +2307,7 @@ export async function POST(request) {
       project.custom_project_roles.push(customRole._id);
       await project.save();
 
-      await logActivity(user, 'création', 'rôle_projet', customRole._id, `Création rôle personnalisé ${nom} pour projet ${project.nom}`, { request, httpMethod: 'POST', endpoint: '/projects/:id/roles', httpStatus: 201 });
+      await logActivity(user, 'création', 'rôle_projet', customRole._id, `Création rôle personnalisé ${nom} pour projet ${project.nom}`, { request, httpMethod: 'POST', endpoint: '/projects/:id/roles', httpStatus: 201, relatedProjectId: project._id });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle personnalisé créé avec succès',
@@ -2130,7 +2414,7 @@ export async function POST(request) {
         parent_id,
         epic_id,
         statut,
-        colonne_kanban: statut.toLowerCase().replace(' ', '_'),
+        colonne_kanban: getKanbanColumnId(statut),
         priorité,
         assigné_à,
         story_points,
@@ -2324,7 +2608,7 @@ export async function POST(request) {
         statut: 'Planifié'
       });
 
-      await logActivity(user, 'création', 'sprint', sprint._id, `Création sprint ${nom}`, { request, httpMethod: 'POST', endpoint: '/sprints', httpStatus: 201 });
+      await logActivity(user, 'création', 'sprint', sprint._id, `Création sprint ${nom}`, { request, httpMethod: 'POST', endpoint: '/sprints', httpStatus: 201, relatedProjectId: projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint créé avec succès',
@@ -2603,7 +2887,7 @@ export async function POST(request) {
           uploadé_par: user._id
         });
 
-        await logActivity(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${sanitizedFilename}`, { request, httpMethod: 'POST', endpoint: '/files/upload', httpStatus: 201 });
+        await logActivity(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${sanitizedFilename}`, { request, httpMethod: 'POST', endpoint: '/files/upload', httpStatus: 201, relatedProjectId: projetId || null });
 
         return handleCORS(NextResponse.json({
           message: 'Fichier téléversé avec succès',
@@ -2663,6 +2947,15 @@ export async function POST(request) {
         uploadé_par: user._id
       });
 
+      await logActivity(user, 'création', 'dossier', folder._id, `Création dossier ${nom}`, {
+        request,
+        httpMethod: 'POST',
+        endpoint: '/files/folder',
+        httpStatus: 201,
+        relatedProjectId: projet_id || null,
+        metadata: { folderName: nom, parentFolder: parent || '/' }
+      });
+
       return handleCORS(NextResponse.json({
         message: 'Dossier créé avec succès',
         folder
@@ -2689,9 +2982,10 @@ export async function POST(request) {
         }, { status: 400 }));
       }
 
-      // Validate and normalize entity_type
-      const validEntityTypes = ['projet', 'tâche', 'task', 'livrable', 'sprint'];
+      // Validate and normalize entity_type - aligned with Comment model enum
+      const validEntityTypes = ['projet', 'tâche', 'livrable', 'sprint'];
       const entityTypeMap = {
+        // English -> French mapping for backwards compatibility
         'project': 'projet',
         'projet': 'projet',
         'task': 'tâche',
@@ -2700,7 +2994,7 @@ export async function POST(request) {
         'livrable': 'livrable',
         'sprint': 'sprint'
       };
-      const normalizedEntityType = entityTypeMap[entity_type.toLowerCase()] || validEntityTypes.find(t => t.toLowerCase() === entity_type.toLowerCase());
+      const normalizedEntityType = entityTypeMap[entity_type.toLowerCase()];
 
       if (!normalizedEntityType) {
         return handleCORS(NextResponse.json({
@@ -2861,7 +3155,7 @@ export async function POST(request) {
         créé_par: user._id
       });
 
-      await logActivity(user, 'création', 'deliverable', deliverable._id, `Création livrable ${nom}`, { request, httpMethod: 'POST', endpoint: '/deliverables', httpStatus: 201 });
+      await logActivity(user, 'création', 'deliverable', deliverable._id, `Création livrable ${nom}`, { request, httpMethod: 'POST', endpoint: '/deliverables', httpStatus: 201, relatedProjectId: projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Livrable créé avec succès',
@@ -2876,7 +3170,7 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { tenant_id, client_id, client_secret, site_id } = body;
+      const { tenant_id, client_id, client_secret } = body;
 
       if (!tenant_id || !client_id || !client_secret) {
         return handleCORS(NextResponse.json({ 
@@ -3056,7 +3350,20 @@ export async function PUT(request) {
   try {
     const url = new URL(request.url);
     const path = url.pathname.replace('/api', '');
-    const body = await request.json();
+
+    // Don't parse body for routes that don't need it (like reset-password)
+    let body = {};
+    const contentType = request.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const text = await request.text();
+        if (text && text.trim()) {
+          body = JSON.parse(text);
+        }
+      } catch (e) {
+        // Body is empty or invalid, continue with empty body
+      }
+    }
 
     await connectDB();
 
@@ -3127,6 +3434,11 @@ export async function PUT(request) {
       }
 
       await task.save();
+
+      // Update sprint burndown if task has a sprint and status changed
+      if (task.sprint_id && nouveau_statut) {
+        await updateSprintBurndown(task.sprint_id);
+      }
 
       await logActivity(user, 'modification', 'tâche', task._id, `Déplacement tâche vers ${nouveau_statut || nouvelle_colonne}`, { request, httpMethod: 'PUT', endpoint: '/tasks/:id/move', httpStatus: 200 });
 
@@ -3248,7 +3560,7 @@ export async function PUT(request) {
       if (visibleMenus) projectRole.visibleMenus = visibleMenus;
 
       await projectRole.save();
-      await logActivity(user, 'modification', 'rôle_projet', roleId, `Modification rôle ${projectRole.nom} du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id/roles/:roleId', httpStatus: 200 });
+      await logActivity(user, 'modification', 'rôle_projet', roleId, `Modification rôle ${projectRole.nom} du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id/roles/:roleId', httpStatus: 200, relatedProjectId: project._id });
 
       return handleCORS(NextResponse.json({
         message: 'Rôle modifié avec succès',
@@ -3344,7 +3656,7 @@ export async function PUT(request) {
         }
       }
 
-      const allowedFields = ['nom', 'description', 'date_début', 'date_fin_prévue', 'statut', 'budget', 'product_owner', 'archivé', 'colonnes_kanban', 'champs_dynamiques'];
+      const allowedFields = ['nom', 'description', 'date_début', 'date_fin_prévue', 'statut', 'priorité', 'budget', 'product_owner', 'archivé', 'colonnes_kanban', 'champs_dynamiques'];
       const restrictedFields = ['_id', 'chef_projet', 'créé_par', 'membres', 'template_id', 'created_at', 'updated_at'];
 
       Object.keys(body).forEach(key => {
@@ -3356,7 +3668,7 @@ export async function PUT(request) {
       });
 
       await project.save();
-      await logActivity(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id', httpStatus: 200 });
+      await logActivity(user, 'modification', 'projet', project._id, `Modification projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/projects/:id', httpStatus: 200, relatedProjectId: project._id });
 
       return handleCORS(NextResponse.json({
         message: 'Projet modifié avec succès',
@@ -3407,8 +3719,8 @@ export async function PUT(request) {
         }, { status: 403 }));
       }
 
-      const allowedFields = ['titre', 'description', 'statut', 'assigné_à', 'date_début', 'date_échéance', 'priorité', 'labels', 'ordre_priorité', 'deliverable_id', 'story_points', 'estimation_heures'];
-      const restrictedFields = ['_id', 'créé_par', 'projet_id', 'sprint_id', 'date_création'];
+      const allowedFields = ['titre', 'description', 'statut', 'assigné_à', 'date_début', 'date_échéance', 'priorité', 'labels', 'ordre_priorité', 'deliverable_id', 'story_points', 'estimation_heures', 'sprint_id'];
+      const restrictedFields = ['_id', 'créé_par', 'projet_id', 'date_création'];
 
       const validStatuts = ['Backlog', 'À faire', 'En cours', 'Review', 'Terminé'];
       const validPriorités = ['Basse', 'Moyenne', 'Haute', 'Critique'];
@@ -3433,6 +3745,11 @@ export async function PUT(request) {
 
         await task.save();
         await logActivity(user, 'modification', 'tâche', task._id, `Modification tâche ${task.titre}`, { request, httpMethod: 'PUT', endpoint: '/tasks/:id', httpStatus: 200 });
+
+        // Update sprint burndown if task has a sprint and status changed
+        if (task.sprint_id && body.statut) {
+          await updateSprintBurndown(task.sprint_id);
+        }
       } catch (error) {
         const safeError = createSecureErrorResponse(error, 400);
         return handleCORS(NextResponse.json({
@@ -3507,7 +3824,7 @@ export async function PUT(request) {
         }, { status: 403 }));
       }
 
-      const allowedFields = ['nom', 'description', 'date_début', 'date_fin', 'objectifs', 'capacité'];
+      const allowedFields = ['nom', 'objectif', 'date_début', 'date_fin', 'capacité_équipe'];
       const restrictedFields = ['_id', 'projet_id', 'statut', 'créé_par', 'date_création'];
 
       Object.keys(body).forEach(key => {
@@ -3519,7 +3836,7 @@ export async function PUT(request) {
       });
 
       await sprint.save();
-      await logActivity(user, 'modification', 'sprint', sprint._id, `Modification sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id', httpStatus: 200 });
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Modification sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id', httpStatus: 200, relatedProjectId: sprint.projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint modifié avec succès',
@@ -3691,6 +4008,11 @@ export async function PUT(request) {
 
     // PUT /api/expenses/:id/status - Changer statut dépense
     if (path.match(/^\/expenses\/[^/]+\/status\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
       const expenseId = path.split('/')[2];
       const { statut } = body;
 
@@ -3754,11 +4076,11 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { enabled, config } = body;
+      const { enabled } = body;
 
       // Dans une vraie implémentation, on sauvegarderait dans une collection Settings
       // ou dans des variables d'environnement chiffrées
-      
+
       await logActivity(user, 'modification', 'sharepoint', null,
         `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`,
         { request, httpMethod: 'PUT', endpoint: '/sharepoint/config', httpStatus: 200 });
@@ -3837,7 +4159,7 @@ export async function PUT(request) {
         project.budget = { ...project.budget, ...cleanedBudget };
         await project.save();
 
-        await logActivity(user, 'modification', 'budget', project._id, `Modification budget du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/budget/projects/:id', httpStatus: 200 });
+        await logActivity(user, 'modification', 'budget', project._id, `Modification budget du projet ${project.nom}`, { request, httpMethod: 'PUT', endpoint: '/budget/projects/:id', httpStatus: 200, relatedProjectId: project._id });
       }
 
       return handleCORS(NextResponse.json({
@@ -3853,12 +4175,14 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      const { nom_complet, telephone, poste } = body;
+      const { nom_complet, telephone, poste, poste_titre } = body;
 
       const updateData = {};
       if (nom_complet) updateData.nom_complet = nom_complet;
       if (telephone !== undefined) updateData.telephone = telephone;
-      if (poste !== undefined) updateData.poste = poste;
+      // Support both field names for backwards compatibility
+      if (poste_titre !== undefined) updateData.poste_titre = poste_titre;
+      else if (poste !== undefined) updateData.poste_titre = poste;
 
       await User.findByIdAndUpdate(user._id, updateData);
 
@@ -4001,9 +4325,9 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 }));
       }
 
-      // Generate secure temporary password (not stored in DB, only displayed once)
-      const tempPassword = generateSecureTemporaryPassword();
-      const hashedPassword = await hashPassword(tempPassword);
+      // Reset to default password '00000000' - user must change it on next login
+      const defaultPassword = '00000000';
+      const hashedPassword = await hashPassword(defaultPassword);
 
       targetUser.password = hashedPassword;
       targetUser.must_change_password = true;
@@ -4014,13 +4338,13 @@ export async function PUT(request) {
 
       await targetUser.save();
 
-      await logActivity(user, 'modification', 'utilisateur', targetUser._id, `Réinitialisation mot de passe utilisateur ${targetUser.nom_complet}`, { request, httpMethod: 'PUT', endpoint: '/users/:id/reset-password', httpStatus: 200 });
+      await logActivity(user, 'password_reset', 'utilisateur', targetUser._id, `Réinitialisation mot de passe utilisateur ${targetUser.nom_complet}`, { request, httpMethod: 'PUT', endpoint: '/users/:id/reset-password', httpStatus: 200 });
 
       await createNotification(
         targetUser._id,
         'autre',
         'Mot de passe réinitialisé',
-        `Votre mot de passe a été réinitialisé par un administrateur. Veuillez vous connecter avec le mot de passe temporaire fourni et le modifier immédiatement.`,
+        `Votre mot de passe a été réinitialisé par un administrateur. Connectez-vous avec le mot de passe par défaut (00000000) et modifiez-le immédiatement.`,
         'utilisateur',
         targetUser._id,
         targetUser.nom_complet,
@@ -4029,7 +4353,7 @@ export async function PUT(request) {
 
       return handleCORS(NextResponse.json({
         message: 'Mot de passe réinitialisé avec succès',
-        tempPassword: tempPassword,
+        tempPassword: defaultPassword,
         success: true
       }));
     }
@@ -4087,10 +4411,43 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: `Le sprint doit être en statut "Planifié" pour être démarré (actuellement: ${sprint.statut})` }, { status: 400 }));
       }
 
+      // Calculate initial metrics from tasks assigned to this sprint
+      const sprintTasks = await Task.find({ sprint_id: sprint._id });
+      const totalStoryPoints = sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+      const totalEstimationHeures = sprintTasks.reduce((sum, t) => sum + (t.estimation_heures || 0), 0);
+
+      // Calculate already completed points (in case tasks were completed before sprint start)
+      const completedTasks = sprintTasks.filter(t => t.statut === 'Terminé');
+      const completedPoints = completedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+
+      // Initialize burndown data
+      const startDate = new Date(sprint.date_début);
+      const endDate = new Date(sprint.date_fin);
+      const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+      const burndownData = [];
+      for (let i = 0; i < totalDays; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+
+        // Calculate ideal burndown (linear)
+        const idealRemaining = Math.max(0, totalStoryPoints - (totalStoryPoints / Math.max(1, totalDays - 1)) * i);
+
+        burndownData.push({
+          date: currentDate,
+          story_points_restants: i === 0 ? totalStoryPoints - completedPoints : null, // Only first day has actual data
+          heures_restantes: i === 0 ? totalEstimationHeures : null,
+          idéal: Math.round(idealRemaining * 10) / 10
+        });
+      }
+
       sprint.statut = 'Actif';
+      sprint.story_points_planifiés = totalStoryPoints;
+      sprint.story_points_complétés = completedPoints;
+      sprint.burndown_data = burndownData;
       await sprint.save();
 
-      await logActivity(user, 'modification', 'sprint', sprint._id, `Démarrage sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/start', httpStatus: 200 });
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Démarrage sprint ${sprint.nom} (${totalStoryPoints} story points planifiés)`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/start', httpStatus: 200, relatedProjectId: sprint.projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint démarré avec succès',
@@ -4151,10 +4508,52 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Le sprint doit être en statut "Actif" pour être terminé' }, { status: 400 }));
       }
 
+      // Calculate final metrics from tasks assigned to this sprint
+      const sprintTasks = await Task.find({ sprint_id: sprint._id });
+      const totalStoryPoints = sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+
+      // Calculate completed points
+      const completedTasks = sprintTasks.filter(t => t.statut === 'Terminé');
+      const completedPoints = completedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+      const completedHeures = completedTasks.reduce((sum, t) => sum + (t.temps_réel || t.estimation_heures || 0), 0);
+
+      // Update burndown data with final entry
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+
+      // Find today's entry in burndown data or add final entry
+      let burndownData = sprint.burndown_data || [];
+      const todayStr = today.toDateString();
+      const existingEntryIndex = burndownData.findIndex(entry =>
+        new Date(entry.date).toDateString() === todayStr
+      );
+
+      const remainingPoints = totalStoryPoints - completedPoints;
+
+      if (existingEntryIndex >= 0) {
+        burndownData[existingEntryIndex].story_points_restants = remainingPoints;
+        burndownData[existingEntryIndex].heures_restantes = completedHeures;
+      } else {
+        // Add final entry if today is outside the sprint period
+        burndownData.push({
+          date: today,
+          story_points_restants: remainingPoints,
+          heures_restantes: completedHeures,
+          idéal: 0
+        });
+      }
+
+      // Calculate velocity (completed story points)
+      const velocity = completedPoints;
+
       sprint.statut = 'Terminé';
+      sprint.story_points_planifiés = sprint.story_points_planifiés || totalStoryPoints;
+      sprint.story_points_complétés = completedPoints;
+      sprint.velocity = velocity;
+      sprint.burndown_data = burndownData;
       await sprint.save();
 
-      await logActivity(user, 'modification', 'sprint', sprint._id, `Fin sprint ${sprint.nom}`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/complete', httpStatus: 200 });
+      await logActivity(user, 'modification', 'sprint', sprint._id, `Fin sprint ${sprint.nom} (${completedPoints}/${totalStoryPoints} story points, vélocité: ${velocity})`, { request, httpMethod: 'PUT', endpoint: '/sprints/:id/complete', httpStatus: 200, relatedProjectId: sprint.projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint terminé avec succès',
@@ -4193,6 +4592,147 @@ export async function PUT(request) {
       }));
     }
 
+    // PUT /api/deliverables/:id - Modifier livrable
+    if (path.match(/^\/deliverables\/[^/]+\/?$/) && !path.includes('/status')) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const deliverableId = path.split('/')[2];
+      const deliverable = await Deliverable.findById(deliverableId).populate({
+        path: 'projet_id',
+        populate: { path: 'membres.project_role_id' }
+      });
+
+      if (!deliverable) {
+        return handleCORS(NextResponse.json({ error: 'Livrable non trouvé' }, { status: 404 }));
+      }
+
+      // Vérifier accès au projet
+      const project = deliverable.projet_id;
+      const isMember = project.chef_projet?.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+      if (!isMember && !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé au projet' }, { status: 403 }));
+      }
+
+      // Check permissions
+      const memberData = project.membres.find(m => m.user_id.toString() === user._id.toString());
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+      const canModify = merged.permissions.validerLivrable || merged.permissions.gererTaches;
+
+      if (!canModify) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de modifier ce livrable'
+        }, { status: 403 }));
+      }
+
+      const { nom, description, assigné_à, date_échéance, statut_global, type_id } = body;
+      const oldValues = {
+        nom: deliverable.nom,
+        description: deliverable.description,
+        statut_global: deliverable.statut_global,
+        assigné_à: deliverable.assigné_à,
+        date_échéance: deliverable.date_échéance
+      };
+
+      // Update fields
+      if (nom !== undefined) deliverable.nom = nom;
+      if (description !== undefined) deliverable.description = description;
+      if (assigné_à !== undefined) deliverable.assigné_à = assigné_à;
+      if (date_échéance !== undefined) deliverable.date_échéance = date_échéance;
+      if (statut_global !== undefined) deliverable.statut_global = statut_global;
+      if (type_id !== undefined) deliverable.type_id = type_id;
+
+      await deliverable.save();
+
+      await logActivity(user, 'modification', 'deliverable', deliverable._id, `Modification livrable ${deliverable.nom}`, {
+        request,
+        httpMethod: 'PUT',
+        endpoint: '/deliverables/:id',
+        httpStatus: 200,
+        relatedProjectId: project._id,
+        oldValue: oldValues,
+        newValue: { nom, description, statut_global, assigné_à, date_échéance }
+      });
+
+      return handleCORS(NextResponse.json({
+        message: 'Livrable modifié avec succès',
+        deliverable
+      }));
+    }
+
+    // PUT /api/deliverables/:id/status - Changer statut livrable (validation)
+    if (path.match(/^\/deliverables\/[^/]+\/status\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const deliverableId = path.split('/')[2];
+      const deliverable = await Deliverable.findById(deliverableId).populate({
+        path: 'projet_id',
+        populate: { path: 'membres.project_role_id' }
+      });
+
+      if (!deliverable) {
+        return handleCORS(NextResponse.json({ error: 'Livrable non trouvé' }, { status: 404 }));
+      }
+
+      const project = deliverable.projet_id;
+      const isMember = project.chef_projet?.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+      if (!isMember && !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const memberData = project.membres.find(m => m.user_id.toString() === user._id.toString());
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      if (!merged.permissions.validerLivrable) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de valider les livrables'
+        }, { status: 403 }));
+      }
+
+      const { statut_global, commentaire } = body;
+      const oldStatus = deliverable.statut_global;
+
+      if (!statut_global) {
+        return handleCORS(NextResponse.json({ error: 'Statut requis' }, { status: 400 }));
+      }
+
+      deliverable.statut_global = statut_global;
+      if (statut_global === 'Validé') {
+        deliverable.validé_par = user._id;
+        deliverable.date_validation = new Date();
+      }
+
+      await deliverable.save();
+
+      const action = statut_global === 'Validé' ? 'validation' : (statut_global === 'Refusé' ? 'refus' : 'changement_statut');
+      await logActivity(user, action, 'deliverable', deliverable._id, `${action === 'validation' ? 'Validation' : action === 'refus' ? 'Refus' : 'Changement statut'} livrable ${deliverable.nom}: ${oldStatus} → ${statut_global}`, {
+        request,
+        httpMethod: 'PUT',
+        endpoint: '/deliverables/:id/status',
+        httpStatus: 200,
+        relatedProjectId: project._id,
+        oldValue: { statut_global: oldStatus },
+        newValue: { statut_global, commentaire },
+        severity: action === 'validation' ? 'info' : (action === 'refus' ? 'warning' : 'info')
+      });
+
+      return handleCORS(NextResponse.json({
+        message: `Livrable ${statut_global === 'Validé' ? 'validé' : 'mis à jour'} avec succès`,
+        deliverable
+      }));
+    }
+
     // PUT /api/settings/maintenance - Activer/désactiver maintenance
     if (path === '/settings/maintenance' || path === '/settings/maintenance/') {
       try {
@@ -4201,7 +4741,7 @@ export async function PUT(request) {
           return handleCORS(APIResponse.forbidden());
         }
 
-        const { enabled, message } = body;
+        const { enabled } = body;
 
         // Sauvegarder dans la BD via appSettingsService
         await appSettingsService.setMaintenanceMode(enabled, user._id);
@@ -4410,7 +4950,7 @@ export async function DELETE(request) {
         $inc: { 'stats.total_tâches': -1 }
       });
 
-      await logActivity(user, 'suppression', 'tâche', task._id, `Suppression tâche ${task.titre}`, { request, httpMethod: 'DELETE', endpoint: '/tasks/:id', httpStatus: 200 });
+      await logActivity(user, 'suppression', 'tâche', task._id, `Suppression tâche ${task.titre}`, { request, httpMethod: 'DELETE', endpoint: '/tasks/:id', httpStatus: 200, relatedProjectId: task.projet_id?._id || task.projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Tâche supprimée avec succès'
@@ -4470,7 +5010,7 @@ export async function DELETE(request) {
 
       await Sprint.findByIdAndDelete(sprintId);
 
-      await logActivity(user, 'suppression', 'sprint', sprintId, `Suppression sprint ${sprint.nom}`, { request, httpMethod: 'DELETE', endpoint: '/sprints/:id', httpStatus: 200 });
+      await logActivity(user, 'suppression', 'sprint', sprintId, `Suppression sprint ${sprint.nom}`, { request, httpMethod: 'DELETE', endpoint: '/sprints/:id', httpStatus: 200, relatedProjectId: sprint.projet_id });
 
       return handleCORS(NextResponse.json({
         message: 'Sprint supprimé avec succès'
@@ -4506,7 +5046,7 @@ export async function DELETE(request) {
       project.membres = project.membres.filter(m => m._id.toString() !== memberId);
       await project.save();
 
-      await logActivity(user, 'modification', 'projet', project._id, `Suppression membre du projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id/members/:memberId', httpStatus: 200 });
+      await logActivity(user, 'modification', 'projet', project._id, `Suppression membre du projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id/members/:memberId', httpStatus: 200, relatedProjectId: project._id });
 
       return handleCORS(NextResponse.json({
         message: 'Membre supprimé avec succès'
@@ -4551,7 +5091,7 @@ export async function DELETE(request) {
       // Supprimer le projet
       await Project.findByIdAndDelete(projectId);
 
-      await logActivity(user, 'suppression', 'projet', projectId, `Suppression projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id', httpStatus: 200 });
+      await logActivity(user, 'suppression', 'projet', projectId, `Suppression projet ${project.nom}`, { request, httpMethod: 'DELETE', endpoint: '/projects/:id', httpStatus: 200, relatedProjectId: projectId });
 
       return handleCORS(NextResponse.json({
         message: 'Projet supprimé avec succès'
@@ -4614,6 +5154,60 @@ export async function DELETE(request) {
 
       return handleCORS(NextResponse.json({
         message: 'Dépense supprimée avec succès'
+      }));
+    }
+
+    // DELETE /api/deliverables/:id - Supprimer livrable
+    if (path.match(/^\/deliverables\/[^/]+\/?$/)) {
+      const user = await authenticate(request);
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
+      }
+
+      const deliverableId = path.split('/')[2];
+      const deliverable = await Deliverable.findById(deliverableId).populate({
+        path: 'projet_id',
+        populate: { path: 'membres.project_role_id' }
+      });
+
+      if (!deliverable) {
+        return handleCORS(NextResponse.json({ error: 'Livrable non trouvé' }, { status: 404 }));
+      }
+
+      const project = deliverable.projet_id;
+      const isMember = project.chef_projet?.toString() === user._id.toString() ||
+        project.product_owner?.toString() === user._id.toString() ||
+        project.membres.some(m => m.user_id.toString() === user._id.toString());
+
+      if (!isMember && !user.role_id?.permissions?.adminConfig) {
+        return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
+      }
+
+      const memberData = project.membres.find(m => m.user_id.toString() === user._id.toString());
+      const merged = getMergedPermissions(user, memberData?.project_role_id);
+
+      if (!merged.permissions.validerLivrable && !merged.permissions.gererTaches) {
+        return handleCORS(NextResponse.json({
+          error: 'Vous n\'avez pas la permission de supprimer les livrables'
+        }, { status: 403 }));
+      }
+
+      const deliverableName = deliverable.nom;
+      const projectId = project._id;
+
+      await Deliverable.findByIdAndDelete(deliverableId);
+
+      await logActivity(user, 'suppression', 'deliverable', deliverableId, `Suppression livrable ${deliverableName}`, {
+        request,
+        httpMethod: 'DELETE',
+        endpoint: '/deliverables/:id',
+        httpStatus: 200,
+        relatedProjectId: projectId,
+        severity: 'warning'
+      });
+
+      return handleCORS(NextResponse.json({
+        message: 'Livrable supprimé avec succès'
       }));
     }
 

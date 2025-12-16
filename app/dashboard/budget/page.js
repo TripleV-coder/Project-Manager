@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DollarSign, AlertTriangle, Plus, Edit2, Trash2, PieChart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
@@ -12,8 +12,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/StatusBadge';
 import { useConfirmation } from '@/hooks/useConfirmation';
@@ -57,14 +55,50 @@ export default function BudgetPage() {
     'Autre'
   ];
 
-  const handleStatusChange = (expenseId, newStatut) => {
-    setExpenses(expenses.map(e =>
+  const handleStatusChange = async (expenseId, newStatut) => {
+    // Optimistic update
+    const previousExpenses = [...expenses];
+    setExpenses(prev => prev.map(e =>
       e._id === expenseId ? { ...e, statut: newStatut } : e
     ));
+
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/expenses/${expenseId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ statut: newStatut }),
+        signal: AbortSignal.timeout(8000)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Revert on error
+        setExpenses(previousExpenses);
+        throw new Error(data.error || 'Erreur lors de la mise à jour du statut');
+      }
+
+      toast.success('Statut mis à jour');
+    } catch (error) {
+      // Revert on error
+      setExpenses(previousExpenses);
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        toast.error('La requête a expiré, veuillez réessayer');
+      } else {
+        console.error('Error updating status:', error);
+        toast.error(error.message || 'Erreur de connexion');
+      }
+      throw error; // Rethrow so StatusBadge knows it failed
+    }
   };
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -72,6 +106,7 @@ export default function BudgetPage() {
       loadProjectData();
       loadExpenses(selectedProject);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
 
   const loadData = async () => {
@@ -97,10 +132,12 @@ export default function BudgetPage() {
       }
 
       const data = await response.json();
-      setProjects(data.projects || []);
+      // API returns { success: true, data: [...] } or legacy format
+      const projectsList = data.data || data.projects || [];
+      setProjects(projectsList);
 
-      if (data.projects && data.projects.length > 0 && !selectedProject) {
-        setSelectedProject(data.projects[0]._id);
+      if (projectsList.length > 0 && !selectedProject) {
+        setSelectedProject(projectsList[0]._id);
       }
 
       try {
@@ -310,6 +347,9 @@ export default function BudgetPage() {
   const restant = budgetTotal - dépenses;
   const pourcentage = budgetTotal > 0 ? (dépenses / budgetTotal) * 100 : 0;
 
+  // RBAC: Vérifier les permissions budget
+  const canModifyBudget = userPermissions.modifierBudget || userPermissions.adminConfig;
+
   // Calcul par catégorie
   const expensesByCategory = expenses.reduce((acc, exp) => {
     acc[exp.catégorie] = (acc[exp.catégorie] || 0) + exp.montant;
@@ -355,11 +395,14 @@ export default function BudgetPage() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setEditBudgetDialogOpen(true)}>
+            <Card
+              className={canModifyBudget ? "cursor-pointer hover:shadow-lg transition-shadow" : ""}
+              onClick={() => canModifyBudget && setEditBudgetDialogOpen(true)}
+            >
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
                   Budget Total
-                  <Edit2 className="w-4 h-4 text-gray-400" />
+                  {canModifyBudget && <Edit2 className="w-4 h-4 text-gray-400" />}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -461,14 +504,16 @@ export default function BudgetPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Détail des dépenses</CardTitle>
-                <Button 
-                  size="sm" 
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                  onClick={() => setAddExpenseDialogOpen(true)}
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Ajouter une dépense
-                </Button>
+                {canModifyBudget && (
+                  <Button
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                    onClick={() => setAddExpenseDialogOpen(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Ajouter une dépense
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -476,10 +521,12 @@ export default function BudgetPage() {
                 <div className="text-center py-12">
                   <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-600 mb-4">Aucune dépense enregistrée</p>
-                  <Button onClick={() => setAddExpenseDialogOpen(true)}>
-                    <Plus className="w-4 h-4 mr-1" />
-                    Ajouter la première dépense
-                  </Button>
+                  {canModifyBudget && (
+                    <Button onClick={() => setAddExpenseDialogOpen(true)}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Ajouter la première dépense
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <Table>
@@ -516,14 +563,16 @@ export default function BudgetPage() {
                         />
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteExpense(expense._id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {canModifyBudget && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteExpense(expense._id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSocket } from '@/context/SocketContext';
 import { SOCKET_EVENTS } from '@/lib/socket-events';
 
 /**
  * Hook to synchronize comments in real-time
  * Listens for comment creation, updates, and deletions
- * 
+ *
  * @param {string} projectId - Project ID to sync comments for
  * @param {function} onCommentCreated - Callback when comment is created
  * @param {function} onCommentUpdated - Callback when comment is updated
@@ -14,11 +14,9 @@ import { SOCKET_EVENTS } from '@/lib/socket-events';
 export function useCommentSync(projectId, callbacks = {}) {
   const { on, off, joinProject } = useSocket();
 
-  const {
-    onCommentCreated,
-    onCommentUpdated,
-    onCommentDeleted
-  } = callbacks;
+  // Use refs to avoid re-subscribing when callbacks change
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
 
   // Join project on mount
   useEffect(() => {
@@ -32,15 +30,15 @@ export function useCommentSync(projectId, callbacks = {}) {
     if (!projectId) return;
 
     const handleCommentCreated = (data) => {
-      onCommentCreated?.(data);
+      callbacksRef.current.onCommentCreated?.(data);
     };
 
     const handleCommentUpdated = (data) => {
-      onCommentUpdated?.(data);
+      callbacksRef.current.onCommentUpdated?.(data);
     };
 
     const handleCommentDeleted = (data) => {
-      onCommentDeleted?.(data);
+      callbacksRef.current.onCommentDeleted?.(data);
     };
 
     on(SOCKET_EVENTS.COMMENT_CREATED, handleCommentCreated);
@@ -52,5 +50,5 @@ export function useCommentSync(projectId, callbacks = {}) {
       off(SOCKET_EVENTS.COMMENT_UPDATED, handleCommentUpdated);
       off(SOCKET_EVENTS.COMMENT_DELETED, handleCommentDeleted);
     };
-  }, [projectId, on, off, onCommentCreated, onCommentUpdated, onCommentDeleted]);
+  }, [projectId, on, off]);
 }

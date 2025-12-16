@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import Footer from '@/components/Footer';
 
 export default function FirstLogin() {
   const router = useRouter();
@@ -59,18 +60,18 @@ export default function FirstLogin() {
         return;
       }
 
-      const data = await response.json();
+      await response.json();
 
       // Succès, rediriger vers dashboard
       router.push('/dashboard');
-    } catch (err) {
+    } catch (_err) {
       setError('Erreur de connexion au serveur');
       setLoading(false);
     }
   };
 
   const passwordRequirements = [
-    { met: formData.new_password.length >= 8 && formData.new_password.length <= 12, text: '8-12 caractères' },
+    { met: formData.new_password.length >= 8 && formData.new_password.length <= 128, text: '8-128 caractères' },
     { met: /[A-Z]/.test(formData.new_password), text: 'Une majuscule' },
     { met: /[a-z]/.test(formData.new_password), text: 'Une minuscule' },
     { met: /[0-9]/.test(formData.new_password), text: 'Un chiffre' },
@@ -78,8 +79,9 @@ export default function FirstLogin() {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-      <motion.div
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
+      <div className="flex-1 flex items-center justify-center">
+        <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -205,7 +207,9 @@ export default function FirstLogin() {
             </CardFooter>
           </form>
         </Card>
-      </motion.div>
+        </motion.div>
+      </div>
+      <Footer />
     </div>
   );
 }

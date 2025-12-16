@@ -27,7 +27,8 @@ export default function MaintenancePage() {
       }
 
       const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
       });
 
       if (!response.ok) {
@@ -50,7 +51,8 @@ export default function MaintenancePage() {
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch('/api/admin/maintenance', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
       });
       const data = await response.json();
       

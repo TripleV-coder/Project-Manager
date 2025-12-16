@@ -3,16 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import {
-  ArrowLeft, Activity, AlertTriangle, Eye, Download, Calendar,
-  TrendingUp, Smartphone, Globe, Clock
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, Activity, AlertTriangle, Globe, Smartphone, Clock } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { toast } from 'sonner';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -22,14 +17,14 @@ export default function UserActivityPage() {
   const params = useParams();
   const userId = params.userId;
 
-  const [user, setUser] = useState(null);
+  const [_user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState([]);
   const [suspiciousActivities, setSuspiciousActivities] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [stats, setStats] = useState(null);
 
-  const [filters, setFilters] = useState({
+  const [filters] = useState({
     action: '',
     entityType: '',
     severity: '',

@@ -52,10 +52,19 @@ const projectRoleSchema = new mongoose.Schema({
     admin: { type: Boolean, default: false }
   },
   
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+  updated_at: { type: Date, default: Date.now }
+}, {
+  timestamps: {
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  }
 });
 
 // Ensure one role name per project (prevent duplicates)
 projectRoleSchema.index({ project_id: 1, nom: 1 }, { unique: true });
+// Index pour recherche rapide des rôles d'un projet
+projectRoleSchema.index({ project_id: 1, is_predefined: 1 });
+projectRoleSchema.index({ project_id: 1, is_custom: 1 });
 
 export default mongoose.models.ProjectRole || mongoose.model('ProjectRole', projectRoleSchema);

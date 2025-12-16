@@ -1,11 +1,21 @@
 import mongoose from 'mongoose';
 
 const roleSchema = new mongoose.Schema({
-  nom: { type: String, required: true, unique: true },
-  description: String,
+  nom: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    maxlength: [50, 'Le nom du rôle ne peut pas dépasser 50 caractères']
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [200, 'La description ne peut pas dépasser 200 caractères']
+  },
   is_custom: { type: Boolean, default: false },
   is_predefined: { type: Boolean, default: false },
-  
+
   // 23 permissions atomiques (camelCase)
   permissions: {
     voirTousProjets: { type: Boolean, default: false },
@@ -51,7 +61,17 @@ const roleSchema = new mongoose.Schema({
     admin: { type: Boolean, default: false }
   },
   
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+  updated_at: { type: Date, default: Date.now }
+}, {
+  timestamps: {
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  }
 });
+
+// Index pour recherche rapide par type de rôle
+roleSchema.index({ is_predefined: 1, is_custom: 1 });
+roleSchema.index({ nom: 'text', description: 'text' });
 
 export default mongoose.models.Role || mongoose.model('Role', roleSchema);

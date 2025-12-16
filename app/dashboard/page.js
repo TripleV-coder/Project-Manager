@@ -3,14 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { 
-  FolderKanban, 
-  ListTodo, 
-  CheckCircle2, 
-  AlertCircle, 
-  TrendingUp,
-  Users,
-  Clock,
+import {
+  FolderKanban,
+  ListTodo,
+  CheckCircle2,
+  AlertCircle,
   Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,6 +28,7 @@ export default function DashboardHome() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -43,8 +41,8 @@ export default function DashboardHome() {
       }
 
       const [projectsRes, tasksRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
 
       if (!projectsRes.ok || !tasksRes.ok) {
@@ -54,14 +52,18 @@ export default function DashboardHome() {
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
 
-      setProjects(projectsData.projects || []);
-      setTasks(tasksData.tasks || []);
+      // API returns { success: true, data: [...] } or legacy { projects/tasks: [...] }
+      const projectsList = projectsData.data || projectsData.projects || [];
+      const tasksList = tasksData.data || tasksData.tasks || [];
+
+      setProjects(projectsList);
+      setTasks(tasksList);
 
       setStats({
-        projectsCount: projectsData.projects?.length || 0,
-        tasksCount: tasksData.tasks?.length || 0,
-        completedTasks: tasksData.tasks?.filter(t => t.statut === 'Terminé').length || 0,
-        pendingTasks: tasksData.tasks?.filter(t => t.statut !== 'Terminé').length || 0
+        projectsCount: projectsList.length || 0,
+        tasksCount: tasksList.length || 0,
+        completedTasks: tasksList.filter(t => t.statut === 'Terminé').length || 0,
+        pendingTasks: tasksList.filter(t => t.statut !== 'Terminé').length || 0
       });
 
       setLoading(false);

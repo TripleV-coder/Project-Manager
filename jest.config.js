@@ -31,6 +31,10 @@ const customJestConfig = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/.next/',
+    '<rootDir>/.next/',
+  ],
+  modulePathIgnorePatterns: [
+    '<rootDir>/.next/',
   ],
   transformIgnorePatterns: [
     'node_modules/(?!(jose|uuid)/)',

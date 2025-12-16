@@ -1,68 +1,72 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ListTodo, ChevronDown, ChevronRight, Plus, Search, Filter,
-  Layers, BookOpen, CheckSquare, GripVertical, Edit2, Trash2,
-  Calendar, User, Clock, MoreVertical, ArrowUp, ArrowDown, Minus
+  ListTodo, ChevronDown, ChevronRight, Plus, Search,
+  Layers, BookOpen, CheckSquare, Edit2, Trash2,
+  Calendar, Clock, MoreVertical, ArrowUp, ArrowDown, Minus
 } from 'lucide-react';
 import { safeFetch } from '@/lib/fetch-with-timeout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
+import { useItemFormData } from '@/hooks/useItemFormData';
+import ItemFormDialog from '@/components/ItemFormDialog';
 
 export default function BacklogPage() {
   const { confirm } = useConfirmation();
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [sprints, setSprints] = useState([]);
-  const [users, setUsers] = useState([]);
   const [selectedProject, setSelectedProject] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedEpics, setExpandedEpics] = useState({});
+
+  // États du formulaire unifié
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createType, setCreateType] = useState('epic'); // epic, story, task
+  const [createType, setCreateType] = useState('Épic');
   const [parentItem, setParentItem] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({
-    titre: '',
-    description: '',
-    type: 'epic',
-    priorité: 'Moyenne',
-    estimation_points: '',
-    assigné_à: '',
-    sprint_id: '',
-    date_échéance: ''
+
+  // Hook pour charger les données du formulaire
+  const handleUnauthorized = useCallback(() => {
+    router.push('/login');
+  }, [router]);
+
+  const {
+    projects,
+    users,
+    sprints,
+    epics,
+    stories,
+    loading: formDataLoading,
+    dataReady,
+    errors: dataErrors,
+    refresh: refreshFormData,
+    reloadProjectData
+  } = useItemFormData({
+    projectId: selectedProject !== 'all' ? selectedProject : null,
+    loadProjects: true,
+    loadUsers: true,
+    loadSprints: true,
+    loadDeliverables: false,
+    onUnauthorized: handleUnauthorized
   });
 
-  const { hasPermission: canManageTasks } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+  const permissions = useRBACPermissions(user);
+  const canManageTasks = permissions.hasPermission;
 
-  useEffect(() => {
-    loadData();
-  }, [selectedProject]);
-
-  // Auto-select first project on initial load
-  useEffect(() => {
-    if (projects.length > 0 && selectedProject === 'all') {
-      setSelectedProject(projects[0]._id);
-    }
-  }, [projects]);
-
-  const loadData = async () => {
+  // Charger les tâches du projet sélectionné
+  const loadTasks = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('pm_token');
@@ -71,29 +75,31 @@ export default function BacklogPage() {
         return;
       }
 
+      // Charger l'utilisateur et les tâches
       const projectFilter = selectedProject !== 'all' ? `?projet_id=${selectedProject}` : '';
 
-      const [userData, projectsData, tasksData, sprintsData, usersData] = await Promise.all([
+      const [userData, tasksData] = await Promise.all([
         safeFetch('/api/auth/me', token),
-        safeFetch('/api/projects?limit=50&page=1', token),
-        safeFetch(`/api/tasks${projectFilter}&limit=100&page=1`, token),
-        safeFetch(`/api/sprints${projectFilter}`, token),
-        safeFetch('/api/users?limit=100&page=1', token)
+        safeFetch(`/api/tasks${projectFilter}&limit=100&page=1`, token)
       ]);
 
       setUser(userData);
-      setProjects(projectsData.projects || []);
-      setTasks(tasksData.tasks || []);
-      setSprints(sprintsData.sprints || []);
-      setUsers(usersData.users || []);
 
-      // Expand all epics by default
-      const epics = (tasksData.tasks || []).filter(t => t.type === 'epic');
-      const expanded = {};
-      epics.forEach(e => expanded[e._id] = true);
-      setExpandedEpics(expanded);
+      // Vérification du format de réponse API
+      const tasksList = tasksData?.data || tasksData?.tasks || [];
+      if (!Array.isArray(tasksList)) {
+        console.error('Format de réponse invalide pour les tâches:', tasksData);
+        toast.error('Format de données invalide');
+        setTasks([]);
+      } else {
+        setTasks(tasksList);
 
-      setLoading(false);
+        // Expand all epics by default
+        const epicsList = tasksList.filter(t => t.type === 'Épic');
+        const expanded = {};
+        epicsList.forEach(e => expanded[e._id] = true);
+        setExpandedEpics(expanded);
+      }
     } catch (error) {
       if (error.message === 'UNAUTHORIZED') {
         router.push('/login');
@@ -103,92 +109,30 @@ export default function BacklogPage() {
         console.error('Erreur:', error);
         toast.error('Erreur lors du chargement du backlog');
       }
+    } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProject, router]);
 
-  const handleCreate = async () => {
-    if (!formData.titre.trim()) {
-      toast.error('Le titre est requis');
-      return;
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  // Auto-select first project on initial load
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject === 'all') {
+      setSelectedProject(projects[0]._id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
-    if (selectedProject === 'all') {
-      toast.error('Veuillez sélectionner un projet');
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('pm_token');
-      await safeFetch('/api/tasks', token, {
-        method: 'POST',
-        body: JSON.stringify({
-          titre: formData.titre,
-          description: formData.description,
-          priorité: formData.priorité,
-          estimation_points: formData.estimation_points ? parseInt(formData.estimation_points) : null,
-          assigné_à: formData.assigné_à || null,
-          sprint_id: formData.sprint_id || null,
-          date_échéance: formData.date_échéance || null,
-          projet_id: selectedProject,
-          type: createType,
-          parent_id: parentItem?._id || null
-        })
-      });
-
-      toast.success(`${createType === 'epic' ? 'Épic' : createType === 'story' ? 'Story' : 'Tâche'} créé(e) avec succès`);
-      setCreateDialogOpen(false);
-      resetForm();
-      await loadData();
-    } catch (error) {
-      if (error.message === 'UNAUTHORIZED') {
-        router.push('/login');
-      } else if (error.message === 'TIMEOUT') {
-        toast.error('La requête a dépassé le délai');
-      } else {
-        console.error('Erreur:', error);
-        toast.error('Erreur lors de la création');
-      }
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!editingItem) return;
-
-    try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/tasks/${editingItem._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          titre: formData.titre,
-          description: formData.description,
-          priorité: formData.priorité,
-          estimation_points: formData.estimation_points ? parseInt(formData.estimation_points) : null,
-          assigné_à: formData.assigné_à || null,
-          sprint_id: formData.sprint_id || null,
-          date_échéance: formData.date_échéance || null
-        })
-      });
-
-      if (response.ok) {
-        toast.success('Mis à jour avec succès');
-        setEditingItem(null);
-        setCreateDialogOpen(false);
-        resetForm();
-        await loadData();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la mise à jour');
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
-    }
-  };
+  // Callback après création/modification réussie
+  const handleFormSuccess = useCallback(async () => {
+    await loadTasks();
+    refreshFormData();
+    setEditingItem(null);
+    setParentItem(null);
+  }, [loadTasks, refreshFormData]);
 
   const handleDelete = async (item) => {
     const confirmed = await confirm({
@@ -209,7 +153,7 @@ export default function BacklogPage() {
 
       if (response.ok) {
         toast.success('Supprimé avec succès');
-        await loadData();
+        await loadTasks();
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -231,7 +175,7 @@ export default function BacklogPage() {
 
       if (response.ok) {
         toast.success('Assigné au sprint');
-        await loadData();
+        await loadTasks();
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -239,23 +183,8 @@ export default function BacklogPage() {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      titre: '',
-      description: '',
-      type: 'epic',
-      priorité: 'Moyenne',
-      estimation_points: '',
-      assigné_à: '',
-      sprint_id: '',
-      date_échéance: ''
-    });
-    setParentItem(null);
-    setEditingItem(null);
-  };
-
   const openCreateDialog = (type, parent = null) => {
-    resetForm();
+    setEditingItem(null);
     setCreateType(type);
     setParentItem(parent);
     setCreateDialogOpen(true);
@@ -263,16 +192,8 @@ export default function BacklogPage() {
 
   const openEditDialog = (item) => {
     setEditingItem(item);
-    setFormData({
-      titre: item.titre || '',
-      description: item.description || '',
-      type: item.type || 'task',
-      priorité: item.priorité || 'Moyenne',
-      estimation_points: item.estimation_points?.toString() || '',
-      assigné_à: item.assigné_à?._id || item.assigné_à || '',
-      sprint_id: item.sprint_id || '',
-      date_échéance: item.date_échéance ? item.date_échéance.split('T')[0] : ''
-    });
+    setCreateType(item.type || 'Tâche');
+    setParentItem(null);
     setCreateDialogOpen(true);
   };
 
@@ -292,34 +213,21 @@ export default function BacklogPage() {
 
   const getTypeIcon = (type) => {
     switch (type) {
-      case 'epic': return <Layers className="w-4 h-4 text-purple-600" />;
-      case 'story': return <BookOpen className="w-4 h-4 text-blue-600" />;
+      case 'Épic': return <Layers className="w-4 h-4 text-purple-600" />;
+      case 'Story': return <BookOpen className="w-4 h-4 text-blue-600" />;
       default: return <CheckSquare className="w-4 h-4 text-green-600" />;
     }
   };
 
-  const getTypeBadge = (type) => {
-    switch (type) {
-      case 'epic': return <Badge className="bg-purple-100 text-purple-700">Epic</Badge>;
-      case 'story': return <Badge className="bg-blue-100 text-blue-700">Story</Badge>;
-      default: return <Badge className="bg-green-100 text-green-700">Tâche</Badge>;
-    }
-  };
-
-  // Organiser les tâches en hiérarchie
-  const epics = tasks.filter(t => t.type === 'epic');
-  const stories = tasks.filter(t => t.type === 'story');
-  const regularTasks = tasks.filter(t => t.type === 'task' || !t.type);
+  // Organiser les tâches en hiérarchie (pour l'affichage)
+  const displayEpics = tasks.filter(t => t.type === 'Épic');
+  const displayStories = tasks.filter(t => t.type === 'Story');
+  const regularTasks = tasks.filter(t => t.type === 'Tâche' || t.type === 'Bug' || !t.type);
   const backlogTasks = regularTasks.filter(t => !t.sprint_id);
 
   // Stats
-  const totalPoints = tasks.reduce((sum, t) => sum + (t.estimation_points || 0), 0);
-  const completedPoints = tasks.filter(t => t.statut === 'Terminé').reduce((sum, t) => sum + (t.estimation_points || 0), 0);
-
-  const filteredTasks = tasks.filter(t =>
-    t.titre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const completedPoints = tasks.filter(t => t.statut === 'Terminé').reduce((sum, t) => sum + (t.story_points || 0), 0);
 
   if (loading) {
     return (
@@ -358,15 +266,15 @@ export default function BacklogPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => openCreateDialog('epic')}>
+                <DropdownMenuItem onClick={() => openCreateDialog('Épic')}>
                   <Layers className="w-4 h-4 mr-2 text-purple-600" />
-                  Nouvel Epic
+                  Nouvel Épic
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openCreateDialog('story')}>
+                <DropdownMenuItem onClick={() => openCreateDialog('Story')}>
                   <BookOpen className="w-4 h-4 mr-2 text-blue-600" />
                   Nouvelle Story
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openCreateDialog('task')}>
+                <DropdownMenuItem onClick={() => openCreateDialog('Tâche')}>
                   <CheckSquare className="w-4 h-4 mr-2 text-green-600" />
                   Nouvelle Tâche
                 </DropdownMenuItem>
@@ -383,7 +291,7 @@ export default function BacklogPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Epics</p>
-                <p className="text-2xl font-bold text-purple-600">{epics.length}</p>
+                <p className="text-2xl font-bold text-purple-600">{displayEpics.length}</p>
               </div>
               <Layers className="w-8 h-8 text-purple-600" />
             </div>
@@ -394,7 +302,7 @@ export default function BacklogPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Stories</p>
-                <p className="text-2xl font-bold text-blue-600">{stories.length}</p>
+                <p className="text-2xl font-bold text-blue-600">{displayStories.length}</p>
               </div>
               <BookOpen className="w-8 h-8 text-blue-600" />
             </div>
@@ -441,16 +349,16 @@ export default function BacklogPage() {
 
       {/* Epics List */}
       <div className="space-y-4">
-        {epics.length === 0 && stories.length === 0 && backlogTasks.length === 0 ? (
+        {displayEpics.length === 0 && displayStories.length === 0 && backlogTasks.length === 0 ? (
           <Card className="p-12">
             <div className="text-center">
               <ListTodo className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Backlog vide</h3>
-              <p className="text-gray-600 mb-4">Commencez par créer votre premier Epic</p>
+              <p className="text-gray-600 mb-4">Commencez par créer votre premier Épic</p>
               {canManageTasks('gererTaches') && (
-                <Button onClick={() => openCreateDialog('epic')} className="bg-indigo-600 hover:bg-indigo-700">
+                <Button onClick={() => openCreateDialog('Épic')} className="bg-indigo-600 hover:bg-indigo-700">
                   <Plus className="w-4 h-4 mr-2" />
-                  Créer un Epic
+                  Créer un Épic
                 </Button>
               )}
             </div>
@@ -458,10 +366,10 @@ export default function BacklogPage() {
         ) : (
           <>
             {/* Epics avec leurs stories et tâches */}
-            {epics.filter(e => e.titre?.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm).map((epic) => {
-              const epicStories = stories.filter(s => s.parent_id === epic._id);
+            {displayEpics.filter(e => e.titre?.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm).map((epic) => {
+              const epicStories = displayStories.filter(s => s.parent_id === epic._id);
               const epicTasks = regularTasks.filter(t => t.parent_id === epic._id);
-              const epicPoints = [...epicStories, ...epicTasks].reduce((sum, t) => sum + (t.estimation_points || 0), 0);
+              const epicPoints = [...epicStories, ...epicTasks].reduce((sum, t) => sum + (t.story_points || 0), 0);
               
               return (
                 <Card key={epic._id} className="overflow-hidden">
@@ -497,23 +405,27 @@ export default function BacklogPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openCreateDialog('story', epic)}>
-                                  <Plus className="w-4 h-4 mr-2" />
-                                  Ajouter Story
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openCreateDialog('task', epic)}>
-                                  <Plus className="w-4 h-4 mr-2" />
-                                  Ajouter Tâche
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => openEditDialog(epic)}>
-                                  <Edit2 className="w-4 h-4 mr-2" />
-                                  Modifier
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDelete(epic)} className="text-red-600">
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Supprimer
-                                </DropdownMenuItem>
+                                {canManageTasks('gererTaches') && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => openCreateDialog('Story', epic)}>
+                                      <Plus className="w-4 h-4 mr-2" />
+                                      Ajouter Story
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => openCreateDialog('Tâche', epic)}>
+                                      <Plus className="w-4 h-4 mr-2" />
+                                      Ajouter Tâche
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => openEditDialog(epic)}>
+                                      <Edit2 className="w-4 h-4 mr-2" />
+                                      Modifier
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDelete(epic)} className="text-red-600">
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Supprimer
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -532,8 +444,8 @@ export default function BacklogPage() {
                                   <BookOpen className="w-4 h-4 text-blue-600" />
                                   <span className="font-medium">{story.titre}</span>
                                   {getPriorityIcon(story.priorité)}
-                                  {story.estimation_points && (
-                                    <Badge variant="outline">{story.estimation_points} pts</Badge>
+                                  {story.story_points && (
+                                    <Badge variant="outline">{story.story_points} pts</Badge>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -545,15 +457,17 @@ export default function BacklogPage() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => openCreateDialog('task', story)}>
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        Ajouter Tâche
-                                      </DropdownMenuItem>
-                                      {sprints.length > 0 && (
+                                      {canManageTasks('gererTaches') && (
+                                        <DropdownMenuItem onClick={() => openCreateDialog('Tâche', story)}>
+                                          <Plus className="w-4 h-4 mr-2" />
+                                          Ajouter Tâche
+                                        </DropdownMenuItem>
+                                      )}
+                                      {sprints.length > 0 && canManageTasks('gererTaches') && (
                                         <>
                                           <DropdownMenuSeparator />
                                           {sprints.map(sprint => (
-                                            <DropdownMenuItem 
+                                            <DropdownMenuItem
                                               key={sprint._id}
                                               onClick={() => handleAssignToSprint(story._id, sprint._id)}
                                             >
@@ -563,15 +477,19 @@ export default function BacklogPage() {
                                           ))}
                                         </>
                                       )}
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => openEditDialog(story)}>
-                                        <Edit2 className="w-4 h-4 mr-2" />
-                                        Modifier
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleDelete(story)} className="text-red-600">
-                                        <Trash2 className="w-4 h-4 mr-2" />
-                                        Supprimer
-                                      </DropdownMenuItem>
+                                      {canManageTasks('gererTaches') && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => openEditDialog(story)}>
+                                            <Edit2 className="w-4 h-4 mr-2" />
+                                            Modifier
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleDelete(story)} className="text-red-600">
+                                            <Trash2 className="w-4 h-4 mr-2" />
+                                            Supprimer
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>
@@ -601,8 +519,8 @@ export default function BacklogPage() {
                                 <CheckSquare className="w-4 h-4 text-green-600" />
                                 <span className="font-medium">{task.titre}</span>
                                 {getPriorityIcon(task.priorité)}
-                                {task.estimation_points && (
-                                  <Badge variant="outline">{task.estimation_points} pts</Badge>
+                                {task.story_points && (
+                                  <Badge variant="outline">{task.story_points} pts</Badge>
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
@@ -614,8 +532,8 @@ export default function BacklogPage() {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    {sprints.length > 0 && sprints.map(sprint => (
-                                      <DropdownMenuItem 
+                                    {canManageTasks('gererTaches') && sprints.length > 0 && sprints.map(sprint => (
+                                      <DropdownMenuItem
                                         key={sprint._id}
                                         onClick={() => handleAssignToSprint(task._id, sprint._id)}
                                       >
@@ -623,15 +541,19 @@ export default function BacklogPage() {
                                         Ajouter au {sprint.nom}
                                       </DropdownMenuItem>
                                     ))}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => openEditDialog(task)}>
-                                      <Edit2 className="w-4 h-4 mr-2" />
-                                      Modifier
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Supprimer
-                                    </DropdownMenuItem>
+                                    {canManageTasks('gererTaches') && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => openEditDialog(task)}>
+                                          <Edit2 className="w-4 h-4 mr-2" />
+                                          Modifier
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
+                                          <Trash2 className="w-4 h-4 mr-2" />
+                                          Supprimer
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </div>
@@ -644,7 +566,7 @@ export default function BacklogPage() {
                             <Button 
                               variant="link" 
                               className="mt-2"
-                              onClick={() => openCreateDialog('story', epic)}
+                              onClick={() => openCreateDialog('Story', epic)}
                             >
                               <Plus className="w-4 h-4 mr-1" />
                               Ajouter une Story
@@ -659,7 +581,7 @@ export default function BacklogPage() {
             })}
 
             {/* Orphan Stories (sans Epic) */}
-            {stories.filter(s => !s.parent_id && (s.titre?.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm)).length > 0 && (
+            {displayStories.filter(s => !s.parent_id && (s.titre?.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm)).length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-blue-600 flex items-center gap-2">
@@ -668,7 +590,7 @@ export default function BacklogPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {stories.filter(s => !s.parent_id).map((story) => (
+                  {displayStories.filter(s => !s.parent_id).map((story) => (
                     <div key={story._id} className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -689,13 +611,13 @@ export default function BacklogPage() {
               </Card>
             )}
 
-            {/* Orphan Tasks (sans parent) */}
+            {/* Orphan Tasks (sans parent Epic/Story, sans sprint) */}
             {backlogTasks.filter(t => !t.parent_id && (t.titre?.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm)).length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-green-600 flex items-center gap-2">
                     <CheckSquare className="w-5 h-5" />
-                    Tâches Backlog (non assignées)
+                    Tâches Backlog (sans sprint)
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -706,8 +628,13 @@ export default function BacklogPage() {
                           <CheckSquare className="w-4 h-4 text-green-600" />
                           <span className="font-medium">{task.titre}</span>
                           {getPriorityIcon(task.priorité)}
-                          {task.estimation_points && (
-                            <Badge variant="outline">{task.estimation_points} pts</Badge>
+                          {task.story_points && (
+                            <Badge variant="outline">{task.story_points} pts</Badge>
+                          )}
+                          {task.assigné_à && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {task.assigné_à.nom_complet || task.assigné_à.email || 'Assigné'}
+                            </Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -719,8 +646,8 @@ export default function BacklogPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {sprints.map(sprint => (
-                                <DropdownMenuItem 
+                              {canManageTasks('gererTaches') && sprints.map(sprint => (
+                                <DropdownMenuItem
                                   key={sprint._id}
                                   onClick={() => handleAssignToSprint(task._id, sprint._id)}
                                 >
@@ -728,15 +655,19 @@ export default function BacklogPage() {
                                   Ajouter au {sprint.nom}
                                 </DropdownMenuItem>
                               ))}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => openEditDialog(task)}>
-                                <Edit2 className="w-4 h-4 mr-2" />
-                                Modifier
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Supprimer
-                              </DropdownMenuItem>
+                              {canManageTasks('gererTaches') && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => openEditDialog(task)}>
+                                    <Edit2 className="w-4 h-4 mr-2" />
+                                    Modifier
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Supprimer
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -750,128 +681,28 @@ export default function BacklogPage() {
         )}
       </div>
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setCreateDialogOpen(false); } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {getTypeIcon(editingItem?.type || createType)}
-              {editingItem ? 'Modifier' : 'Créer'} {createType === 'epic' ? 'un Epic' : createType === 'story' ? 'une Story' : 'une Tâche'}
-            </DialogTitle>
-            {parentItem && (
-              <DialogDescription>
-                Dans: {parentItem.titre}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Titre *</Label>
-              <Input
-                value={formData.titre}
-                onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
-                placeholder={`Titre ${createType === 'epic' ? "de l'Epic" : createType === 'story' ? 'de la Story' : 'de la tâche'}`}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Description détaillée..."
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Priorité</Label>
-                <Select 
-                  value={formData.priorité} 
-                  onValueChange={(v) => setFormData({ ...formData, priorité: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Critique">Critique</SelectItem>
-                    <SelectItem value="Haute">Haute</SelectItem>
-                    <SelectItem value="Moyenne">Moyenne</SelectItem>
-                    <SelectItem value="Basse">Basse</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Estimation (points)</Label>
-                <Input
-                  type="number"
-                  value={formData.estimation_points}
-                  onChange={(e) => setFormData({ ...formData, estimation_points: e.target.value })}
-                  placeholder="Ex: 5"
-                />
-              </div>
-            </div>
-            {(createType === 'task' || createType === 'story' || editingItem?.type === 'task' || editingItem?.type === 'story') && (
-              <>
-                <div className="space-y-2">
-                  <Label>Assigné à</Label>
-                  <Select
-                    value={formData.assigné_à || 'none'}
-                    onValueChange={(v) => setFormData({ ...formData, assigné_à: v === 'none' ? '' : v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un utilisateur" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Non assigné</SelectItem>
-                      {users.map(u => (
-                        <SelectItem key={u._id} value={u._id}>{u.nom_complet}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {sprints.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Sprint</Label>
-                    <Select
-                      value={formData.sprint_id || 'backlog'}
-                      onValueChange={(v) => setFormData({ ...formData, sprint_id: v === 'backlog' ? '' : v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sélectionner un sprint" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="backlog">Backlog</SelectItem>
-                        {sprints.map(s => (
-                          <SelectItem key={s._id} value={s._id}>{s.nom}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label>Échéance</Label>
-                  <Input
-                    type="date"
-                    value={formData.date_échéance}
-                    onChange={(e) => setFormData({ ...formData, date_échéance: e.target.value })}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { resetForm(); setCreateDialogOpen(false); }}>
-              Annuler
-            </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
-              onClick={editingItem ? handleUpdate : handleCreate}
-            >
-              {editingItem ? 'Mettre à jour' : 'Créer'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Formulaire unifié de création/édition */}
+      <ItemFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        type={createType}
+        editingItem={editingItem}
+        parentItem={parentItem}
+        projectId={selectedProject}
+        projects={projects}
+        users={users}
+        sprints={sprints}
+        epics={epics}
+        stories={stories}
+        dataLoading={formDataLoading}
+        dataReady={dataReady}
+        dataErrors={dataErrors}
+        onSuccess={handleFormSuccess}
+        onUnauthorized={handleUnauthorized}
+        showProjectSelect={false}
+        showTypeSelect={false}
+        showParentSelect={true}
+      />
     </div>
   );
 }

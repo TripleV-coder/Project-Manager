@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import Footer from '@/components/Footer';
 
 export default function FirstAdmin() {
   const router = useRouter();
@@ -31,7 +32,8 @@ export default function FirstAdmin() {
       const response = await fetch('/api/auth/first-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
+        signal: AbortSignal.timeout(15000)
       });
 
       if (!response.ok) {
@@ -47,17 +49,17 @@ export default function FirstAdmin() {
         return;
       }
 
-      const data = await response.json();
+      await response.json();
 
       router.push('/login?firstAdmin=true');
-    } catch (err) {
+    } catch (_err) {
       setError('Erreur de connexion au serveur');
       setLoading(false);
     }
   };
 
   const passwordRequirements = [
-    { met: formData.password.length >= 8 && formData.password.length <= 12, text: '8-12 caractères' },
+    { met: formData.password.length >= 8 && formData.password.length <= 128, text: '8-128 caractères' },
     { met: /[A-Z]/.test(formData.password), text: 'Une majuscule' },
     { met: /[a-z]/.test(formData.password), text: 'Une minuscule' },
     { met: /[0-9]/.test(formData.password), text: 'Un chiffre' },
@@ -65,8 +67,9 @@ export default function FirstAdmin() {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-      <div className="w-full max-w-md">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
             <Shield className="w-10 h-10 text-white" />
@@ -191,7 +194,9 @@ export default function FirstAdmin() {
             </CardFooter>
           </form>
         </Card>
+        </div>
       </div>
+      <Footer />
     </div>
   );
 }

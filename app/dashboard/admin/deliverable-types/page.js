@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Layers, Plus, Edit2, Trash2, Settings, GripVertical,
-  Check, X, ChevronRight, Palette, FileText, AlertCircle
+  Layers, Plus, Edit2, Trash2, GripVertical,
+  X, ChevronRight, FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,8 @@ export default function DeliverableTypesPage() {
   });
   const [newEtape, setNewEtape] = useState('');
 
-  const { hasPermission: canManageDeliverableTypes } = user ? useRBACPermissions(user) : { hasPermission: () => false };
+  const permissions = useRBACPermissions(user);
+  const canManageDeliverableTypes = permissions.hasPermission;
 
   const loadTypes = useCallback(async () => {
     try {
@@ -59,7 +60,8 @@ export default function DeliverableTypesPage() {
 
       setUser(userData);
       if (typesData) {
-        setTypes(typesData.types || []);
+        // API returns { types: [...] } or { data: [...] }
+        setTypes(typesData.types || typesData.data || []);
       }
       setLoading(false);
     } catch (error) {
@@ -176,7 +178,9 @@ export default function DeliverableTypesPage() {
       nom: type.nom,
       description: type.description || '',
       couleur: type.couleur || '#6366f1',
-      workflow_étapes: type.workflow_étapes || ['Création', 'Validation']
+      workflow_étapes: type.workflow_étapes && type.workflow_étapes.length > 0
+        ? type.workflow_étapes
+        : ['Création', 'Revue', 'Validation', 'Approbation']
     });
     setCreateDialogOpen(true);
   };
@@ -250,31 +254,28 @@ export default function DeliverableTypesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {types.map((type) => (
-            <Card key={type._id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
+            <Card key={type._id} className="hover:shadow-lg transition-shadow border">
+              <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ backgroundColor: type.couleur + '20' }}
                     >
                       <FileText className="w-5 h-5" style={{ color: type.couleur }} />
                     </div>
                     <div>
-                      <CardTitle className="text-lg">{type.nom}</CardTitle>
-                      {type.description && (
-                        <CardDescription className="line-clamp-1">{type.description}</CardDescription>
-                      )}
+                      <CardTitle className="text-base font-semibold">{type.nom}</CardTitle>
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(type)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(type)}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                       onClick={() => handleDelete(type._id)}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -282,23 +283,42 @@ export default function DeliverableTypesPage() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm font-medium text-gray-700 mb-2">Workflow de validation :</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {(type.workflow_étapes || []).map((etape, idx) => (
-                    <div key={idx} className="flex items-center">
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs"
-                        style={{ borderColor: type.couleur, color: type.couleur }}
-                      >
-                        {idx + 1}. {etape}
-                      </Badge>
-                      {idx < (type.workflow_étapes?.length || 0) - 1 && (
-                        <ChevronRight className="w-4 h-4 text-gray-400 mx-1" />
-                      )}
-                    </div>
-                  ))}
+              <CardContent className="space-y-3">
+                {/* Description */}
+                <div>
+                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-1">Description</p>
+                  <p className="text-sm text-gray-600">
+                    {type.description || <span className="italic text-gray-400">Aucune description</span>}
+                  </p>
+                </div>
+
+                {/* Workflow de validation */}
+                <div>
+                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-2">Workflow de validation</p>
+                  {(() => {
+                    // Utiliser workflow_étapes s'il existe, sinon les étapes par défaut
+                    const etapes = type.workflow_étapes && type.workflow_étapes.length > 0
+                      ? type.workflow_étapes
+                      : ['Création', 'Revue', 'Validation', 'Approbation'];
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {etapes.map((etape, idx) => (
+                          <div key={idx} className="flex items-center">
+                            <Badge
+                              variant="outline"
+                              className="text-xs px-2 py-0.5"
+                              style={{ borderColor: type.couleur, color: type.couleur, backgroundColor: type.couleur + '10' }}
+                            >
+                              {idx + 1}. {etape}
+                            </Badge>
+                            {idx < etapes.length - 1 && (
+                              <ChevronRight className="w-3.5 h-3.5 text-gray-400 mx-0.5" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </CardContent>
             </Card>

@@ -2,10 +2,10 @@ import mongoose from 'mongoose';
 
 const commentSchema = new mongoose.Schema({
   // Contexte
-  entity_type: { 
-    type: String, 
-    enum: ['projet', 'tâche', 'task', 'livrable', 'sprint'],
-    required: true 
+  entity_type: {
+    type: String,
+    enum: ['projet', 'tâche', 'livrable', 'sprint'],
+    required: true
   },
   entity_id: { type: mongoose.Schema.Types.ObjectId, required: true },
   

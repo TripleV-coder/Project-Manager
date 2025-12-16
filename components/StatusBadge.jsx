@@ -1,8 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { toast } from 'sonner';
 import { ChevronDown } from 'lucide-react';
 import { getStatusConfig, getAvailableTransitions } from '@/lib/workflows';
 
@@ -30,42 +29,17 @@ export default function StatusBadge({
     return <Badge className="bg-gray-100 text-gray-800">Inconnu</Badge>;
   }
 
-  const handleStatusChange = async (newStatut) => {
+  // Handle status change - delegate to parent callback
+  const handleStatusChange = useCallback(async (newStatut) => {
+    if (!onStatusChange) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const endpoint = type === 'timesheet'
-        ? `/api/timesheets/${entityId}/status`
-        : `/api/expenses/${entityId}/status`;
-
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(endpoint, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ statut: newStatut })
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Erreur lors du changement de statut';
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch {
-          errorMessage = `Erreur ${response.status}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      toast.success('Statut mis à jour avec succès');
-      onStatusChange?.(newStatut);
-    } catch (error) {
-      toast.error(error.message);
+      await onStatusChange(newStatut);
     } finally {
       setLoading(false);
     }
-  };
+  }, [onStatusChange]);
 
   const canTransition = availableTransitions.length > 0 && canChange && !readOnly;
 

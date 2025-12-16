@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  MessageSquare, Send, Search, Filter, User, Calendar,
-  MoreVertical, Edit2, Trash2, Reply, AtSign, Paperclip,
-  ChevronDown, Clock, CheckCircle2
+import {
+  MessageSquare, Send, Search,
+  MoreVertical, Edit2, Trash2, Reply, AtSign,
+  Clock, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,16 +37,42 @@ export default function CommentsPage() {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
   const [activeTab, setActiveTab] = useState('comments');
+  const [userPermissions, setUserPermissions] = useState({});
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
+    loadUserPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, selectedTask]);
+
+  const loadUserPermissions = async () => {
+    try {
+      const token = localStorage.getItem('pm_token');
+      if (!token) return;
+      const response = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserPermissions(data.role?.permissions || {});
+        setCurrentUserId(data.id);
+      }
+    } catch (error) {
+      console.error('Erreur chargement permissions:', error);
+    }
+  };
+
+  // RBAC: Vérifier les permissions commentaires
+  const canComment = userPermissions.commenter || userPermissions.adminConfig;
 
   // Auto-select first project on initial load
   useEffect(() => {
     if (projects.length > 0 && selectedProject === 'all') {
       setSelectedProject(projects[0]._id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects]);
 
   const loadData = async () => {
@@ -70,11 +96,11 @@ export default function CommentsPage() {
       if (params.length > 0) commentsUrl += '?' + params.join('&');
 
       const [projectsRes, tasksRes, commentsRes, usersRes, activityRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(commentsUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/activity?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch(commentsUrl, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
+        fetch('/api/activity?limit=50', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
 
       const projectsData = await projectsRes.json();
@@ -83,11 +109,12 @@ export default function CommentsPage() {
       const usersData = await usersRes.json();
       const activityData = await activityRes.json();
 
-      setProjects(projectsData.projects || []);
-      setTasks(tasksData.tasks || []);
-      setComments(commentsData.comments || []);
-      setUsers(usersData.users || []);
-      setActivities(activityData.activities || []);
+      // API returns { success: true, data: [...] } or legacy format
+      setProjects(projectsData.data || projectsData.projects || []);
+      setTasks(tasksData.data || tasksData.tasks || []);
+      setComments(commentsData.comments || commentsData.data || []);
+      setUsers(usersData.data || usersData.users || []);
+      setActivities(activityData.activities || activityData.data || []);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -102,9 +129,15 @@ export default function CommentsPage() {
       return;
     }
 
+    if (!canComment) {
+      toast.error('Vous n\'avez pas la permission de commenter');
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const token = localStorage.getItem('pm_token');
-      
+
       // Extraire les mentions du texte
       const mentionRegex = /@(\w+)/g;
       const mentions = [];
@@ -143,6 +176,8 @@ export default function CommentsPage() {
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -358,14 +393,19 @@ export default function CommentsPage() {
                     <AtSign className="w-4 h-4" />
                   </Button>
                 </div>
-                <Button 
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                  onClick={handlePostComment}
-                  disabled={!newComment.trim() || (selectedProject === 'all' && selectedTask === 'all')}
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Publier
-                </Button>
+                {canComment && (
+                  <Button
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                    onClick={handlePostComment}
+                    disabled={submitting || !newComment.trim() || (selectedProject === 'all' && selectedTask === 'all')}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    {submitting ? 'Publication...' : 'Publier'}
+                  </Button>
+                )}
+                {!canComment && (
+                  <p className="text-sm text-gray-500 italic">Vous n'avez pas la permission de commenter</p>
+                )}
               </div>
               {selectedProject === 'all' && selectedTask === 'all' && (
                 <p className="text-xs text-orange-600 mt-2">
@@ -417,17 +457,21 @@ export default function CommentsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setReplyingTo(comment)}>
-                                <Reply className="w-4 h-4 mr-2" />
-                                Répondre
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleDeleteComment(comment._id)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Supprimer
-                              </DropdownMenuItem>
+                              {canComment && (
+                                <DropdownMenuItem onClick={() => setReplyingTo(comment)}>
+                                  <Reply className="w-4 h-4 mr-2" />
+                                  Répondre
+                                </DropdownMenuItem>
+                              )}
+                              {(comment.auteur?._id === currentUserId || userPermissions.adminConfig) && (
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteComment(comment._id)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Supprimer
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

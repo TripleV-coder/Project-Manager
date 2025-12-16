@@ -5,11 +5,11 @@ import { useConfirmation } from '@/hooks/useConfirmation';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, Edit2, Users, Calendar, Wallet, AlertCircle, Clock, User, Mail, FileText,
-  Trash2, Plus, X, BarChart3, CheckCircle2, Eye, EyeOff
+  ArrowLeft, Edit2, Wallet, AlertCircle, Clock,
+  Trash2, Plus, X, BarChart3, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -32,6 +32,9 @@ export default function ProjectDetailPage() {
   const [deletingProject, setDeletingProject] = useState(false);
   const [editData, setEditData] = useState({});
   const [addingMember, setAddingMember] = useState(false);
+  const [savingMember, setSavingMember] = useState(false);
+  const [savingChanges, setSavingChanges] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [projectRoles, setProjectRoles] = useState([]);
   const [newMember, setNewMember] = useState({ user_id: '', project_role_id: '' });
@@ -101,7 +104,6 @@ export default function ProjectDetailPage() {
   );
 
   const canViewBudget = hasPermission('voirBudget');
-  const canModifyBudget = hasPermission('modifierBudget');
   const canViewTimesheet = hasPermission('voirTempsPasses');
   const canViewReports = hasPermission('genererRapports');
   const canViewAudit = hasPermission('voirAudit');
@@ -145,14 +147,23 @@ export default function ProjectDetailPage() {
       }
 
       const projectData = await projectRes.json();
-      setProject(projectData.project);
+      // Extraction sécurisée du projet (peut être projectData.project, projectData.data ou directement projectData)
+      const projectInfo = projectData?.project || projectData?.data || projectData;
+
+      if (!projectInfo || !projectInfo._id) {
+        toast.error('Format de réponse invalide');
+        router.push('/dashboard/projects');
+        return;
+      }
+
+      setProject(projectInfo);
       setEditData({
-        nom: projectData.project.nom,
-        description: projectData.project.description,
-        statut: projectData.project.statut,
-        priorité: projectData.project.priorité,
-        date_début: projectData.project.date_début ? new Date(projectData.project.date_début).toISOString().split('T')[0] : '',
-        date_fin_prévue: projectData.project.date_fin_prévue ? new Date(projectData.project.date_fin_prévue).toISOString().split('T')[0] : ''
+        nom: projectInfo.nom || '',
+        description: projectInfo.description || '',
+        statut: projectInfo.statut || 'Planification',
+        priorité: projectInfo.priorité || 'Moyenne',
+        date_début: projectInfo.date_début ? new Date(projectInfo.date_début).toISOString().split('T')[0] : '',
+        date_fin_prévue: projectInfo.date_fin_prévue ? new Date(projectInfo.date_fin_prévue).toISOString().split('T')[0] : ''
       });
 
       // Charger utilisateurs disponibles
@@ -162,7 +173,8 @@ export default function ProjectDetailPage() {
 
       if (usersRes.ok) {
         const usersData = await usersRes.json();
-        setAvailableUsers(usersData.users || []);
+        // API returns { success: true, data: [...] } or legacy format
+        setAvailableUsers(usersData.data || usersData.users || []);
       }
 
       // Charger les rôles système (8 rôles prédéfinis)
@@ -188,6 +200,7 @@ export default function ProjectDetailPage() {
   }, [loadData]);
 
   const handleSaveChanges = async () => {
+    setSavingChanges(true);
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch(`/api/projects/${projectId}`, {
@@ -199,16 +212,46 @@ export default function ProjectDetailPage() {
         body: JSON.stringify(editData)
       });
 
+      const data = await response.json();
+
       if (response.ok) {
+        // Utiliser les données retournées par l'API si disponibles
+        const updatedProject = data.project || data.data || data;
+
+        // Mettre à jour l'état local avec les données du serveur
+        if (updatedProject && updatedProject._id) {
+          setProject(prev => ({
+            ...prev,
+            ...updatedProject
+          }));
+          // Mettre à jour editData aussi pour garder la cohérence
+          setEditData({
+            nom: updatedProject.nom || '',
+            description: updatedProject.description || '',
+            statut: updatedProject.statut || 'Planification',
+            priorité: updatedProject.priorité || 'Moyenne',
+            date_début: updatedProject.date_début ? new Date(updatedProject.date_début).toISOString().split('T')[0] : '',
+            date_fin_prévue: updatedProject.date_fin_prévue ? new Date(updatedProject.date_fin_prévue).toISOString().split('T')[0] : ''
+          });
+        } else {
+          // Fallback: mettre à jour avec editData si pas de données du serveur
+          setProject(prev => ({
+            ...prev,
+            ...editData
+          }));
+        }
+
         toast.success('Projet mis à jour avec succès');
         setEditMode(false);
-        await loadData();
       } else {
-        toast.error('Erreur lors de la mise à jour');
+        console.error('Erreur API:', data);
+        toast.error(data.error || 'Erreur lors de la mise à jour');
       }
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
+    } finally {
+      setSavingChanges(false);
     }
   };
 
@@ -223,6 +266,7 @@ export default function ProjectDetailPage() {
       return;
     }
 
+    setSavingMember(true);
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch(`/api/projects/${projectId}/members`, {
@@ -251,10 +295,13 @@ export default function ProjectDetailPage() {
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
+    } finally {
+      setSavingMember(false);
     }
   };
 
   const handleRemoveMember = async (memberId) => {
+    setRemovingMemberId(memberId);
     try {
       const token = localStorage.getItem('pm_token');
       const response = await fetch(`/api/projects/${projectId}/members/${memberId}`, {
@@ -271,6 +318,8 @@ export default function ProjectDetailPage() {
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur de connexion');
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -475,10 +524,10 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button onClick={handleSaveChanges} className="bg-indigo-600 hover:bg-indigo-700">
-                  Enregistrer les modifications
+                <Button onClick={handleSaveChanges} disabled={savingChanges} className="bg-indigo-600 hover:bg-indigo-700">
+                  {savingChanges ? 'Enregistrement...' : 'Enregistrer les modifications'}
                 </Button>
-                <Button variant="outline" onClick={() => setEditMode(false)}>
+                <Button variant="outline" onClick={() => setEditMode(false)} disabled={savingChanges}>
                   Annuler
                 </Button>
               </div>
@@ -688,11 +737,11 @@ export default function ProjectDetailPage() {
                         )}
                       </div>
                       <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddingMember(false)}>
+                        <Button variant="outline" onClick={() => setAddingMember(false)} disabled={savingMember}>
                           Annuler
                         </Button>
-                        <Button onClick={handleAddMember} className="bg-indigo-600">
-                          Ajouter le membre
+                        <Button onClick={handleAddMember} disabled={savingMember} className="bg-indigo-600">
+                          {savingMember ? 'Ajout en cours...' : 'Ajouter le membre'}
                         </Button>
                       </DialogFooter>
                     </DialogContent>
@@ -758,9 +807,14 @@ export default function ProjectDetailPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleRemoveMember(member._id)}
+                            disabled={removingMemberId === member._id}
                             className="text-red-600 hover:bg-red-50"
                           >
-                            <X className="w-4 h-4" />
+                            {removingMemberId === member._id ? (
+                              <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <X className="w-4 h-4" />
+                            )}
                           </Button>
                         )}
                       </div>
