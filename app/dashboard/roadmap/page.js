@@ -731,7 +731,7 @@ export default function RoadmapPage() {
                           {project?.nom || 'Sans projet'}
                         </p>
                         <p className="text-xs text-red-600 font-medium mt-1">
-                          ⚠️ Pas de date d'échéance
+                          [WARNING] Pas de date d'échéance
                         </p>
                       </div>
                       <div className="flex-1 relative py-2 flex items-center px-4">

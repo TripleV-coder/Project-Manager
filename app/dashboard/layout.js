@@ -66,7 +66,7 @@ export default function DashboardLayout({ children }) {
               ...userData,
               role: migrateData.user.role
             };
-            console.log('✅ Admin role migrated to Super Administrateur');
+            console.log('[OK] Admin role migrated to Super Administrateur');
           }
         } catch (e) {
           console.error('Migration failed:', e);

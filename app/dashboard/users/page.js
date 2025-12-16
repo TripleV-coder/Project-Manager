@@ -89,7 +89,8 @@ export default function UsersPage() {
       const usersData = await usersRes.json();
       const rolesData = await rolesRes.json();
 
-      if (!userData.role?.permissions?.adminConfig) {
+      const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
+      if (!userPerms.adminConfig && !userPerms.gererUtilisateurs) {
         router.push('/dashboard');
         return;
       }

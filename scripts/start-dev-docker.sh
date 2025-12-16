@@ -208,10 +208,20 @@ if [ ! -d "node_modules" ]; then
     echo -e "${GREEN}✓ Dependencies installed${NC}"
 fi
 
-# Clear Next.js cache
+# Clean Next.js cache only if corrupted (check for lock files or incomplete builds)
 if [ -d ".next" ]; then
-    echo -e "${YELLOW}🧹 Cleaning Next.js cache...${NC}"
-    rm -rf .next
+    # Check for signs of corruption: lock files, empty cache, or incomplete build
+    if [ -f ".next/.build-lock" ] || [ ! -f ".next/BUILD_ID" ] || [ -f ".next/cache/.corrupted" ]; then
+        echo -e "${YELLOW}🧹 Cleaning corrupted Next.js cache...${NC}"
+        rm -rf .next
+    else
+        echo -e "${GREEN}✓ Next.js cache intact${NC}"
+    fi
+fi
+
+# Clean node_modules cache if needed
+if [ -d "node_modules/.cache" ]; then
+    rm -rf node_modules/.cache
 fi
 
 # Display success message
@@ -224,21 +234,55 @@ echo -e "${YELLOW}🗄️  MongoDB:${NC}       ${CYAN}mongodb://localhost:${MONG
 echo -e "${YELLOW}📊 Username:${NC}       ${CYAN}admin${NC}"
 echo -e "${YELLOW}📊 Password:${NC}       ${CYAN}check .env file${NC}"
 echo ""
-# Cleanup function
+# Cleanup function with proper Next.js shutdown
 cleanup() {
-    echo -e "\n${YELLOW}Shutting down Docker services...${NC}"
+    echo -e "\n${YELLOW}Shutting down gracefully...${NC}"
+
+    # Kill Next.js process gracefully first
+    if [ ! -z "$NEXT_PID" ]; then
+        echo -e "${YELLOW}Stopping Next.js...${NC}"
+        kill -TERM $NEXT_PID 2>/dev/null
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $NEXT_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $NEXT_PID 2>/dev/null; then
+            echo -e "${RED}Force killing Next.js...${NC}"
+            kill -9 $NEXT_PID 2>/dev/null
+            # Mark cache as potentially corrupted
+            touch .next/cache/.corrupted 2>/dev/null
+        fi
+    fi
+
+    # Also kill any orphaned next processes
+    pkill -f "next dev" 2>/dev/null
+
+    echo -e "${YELLOW}Shutting down Docker services...${NC}"
     $COMPOSE_CMD down
+
+    echo -e "${GREEN}✓ Shutdown complete${NC}"
     exit 0
 }
 
 # Set trap before starting the app
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM QUIT HUP
 
 echo -e "${YELLOW}Starting application with Socket.io server...${NC}\n"
 
-# Start the application with Socket.io server
+# Start the application with Socket.io server and capture PID
 if command -v yarn &> /dev/null; then
-    yarn dev:socket
+    yarn dev:socket &
+    NEXT_PID=$!
 else
-    npm run dev:socket
+    npm run dev:socket &
+    NEXT_PID=$!
 fi
+
+# Wait for the process
+wait $NEXT_PID

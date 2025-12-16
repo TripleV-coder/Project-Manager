@@ -76,21 +76,60 @@ if [ ! -d "node_modules" ]; then
     echo -e "${GREEN}✓ Dependencies installed${NC}"
 fi
 
-# Clear Next.js cache
+# Clean Next.js cache only if corrupted (check for lock files or incomplete builds)
 if [ -d ".next" ]; then
-    echo -e "${YELLOW}🧹 Cleaning Next.js cache...${NC}"
-    rm -rf .next
+    # Check for signs of corruption: lock files, empty cache, or incomplete build
+    if [ -f ".next/.build-lock" ] || [ ! -f ".next/BUILD_ID" ] || [ -f ".next/cache/.corrupted" ]; then
+        echo -e "${YELLOW}🧹 Cleaning corrupted Next.js cache...${NC}"
+        rm -rf .next
+    else
+        echo -e "${GREEN}✓ Next.js cache intact${NC}"
+    fi
 fi
 
-# Cleanup function
+# Clean node_modules cache if needed
+if [ -d "node_modules/.cache" ]; then
+    rm -rf node_modules/.cache
+fi
+
+# Cleanup function with proper Next.js shutdown
 cleanup() {
-    echo -e "\n${YELLOW}Shutting down MongoDB...${NC}"
+    echo -e "\n${YELLOW}Shutting down gracefully...${NC}"
+
+    # Kill Next.js process gracefully first
+    if [ ! -z "$NEXT_PID" ]; then
+        echo -e "${YELLOW}Stopping Next.js...${NC}"
+        kill -TERM $NEXT_PID 2>/dev/null
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $NEXT_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $NEXT_PID 2>/dev/null; then
+            echo -e "${RED}Force killing Next.js...${NC}"
+            kill -9 $NEXT_PID 2>/dev/null
+            # Mark cache as potentially corrupted
+            touch .next/cache/.corrupted 2>/dev/null
+        fi
+    fi
+
+    # Also kill any orphaned next processes
+    pkill -f "next dev" 2>/dev/null
+
+    echo -e "${YELLOW}Shutting down MongoDB...${NC}"
     pkill -f "mongod.*$DATA_DIR" 2>/dev/null
+
+    echo -e "${GREEN}✓ Shutdown complete${NC}"
     exit 0
 }
 
 # Set trap before starting the app
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM QUIT HUP
 
 # Start the application
 echo -e "${BLUE}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -100,4 +139,9 @@ echo -e "${YELLOW}Starting application...${NC}"
 echo -e "${BLUE}📱 App URL: http://localhost:3000${NC}"
 echo -e "${BLUE}🗄️  MongoDB: mongodb://localhost:27017/project-manager${NC}\n"
 
-npm run dev
+# Start the application and capture PID
+npm run dev &
+NEXT_PID=$!
+
+# Wait for the process
+wait $NEXT_PID

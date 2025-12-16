@@ -48,6 +48,10 @@ const userSchema = new mongoose.Schema({
 
   // User profile
   avatar: String,
+  telephone: {
+    type: String,
+    trim: true
+  },
   poste_titre: String,
   département_équipe: String,
   compétences: [String],
@@ -58,7 +62,7 @@ const userSchema = new mongoose.Schema({
   taux_journalier: Number,
   fuseau_horaire: {
     type: String,
-    default: 'Europe/Paris'
+    default: 'Africa/Porto-Novo'
   },
   notifications_préférées: {
     email: { type: Boolean, default: true },

@@ -26,7 +26,7 @@ export default function SettingsPage() {
     appName: 'PM - Gestion de Projets',
     appDescription: 'Plateforme de gestion de projets Agile',
     langue: 'fr',
-    timezone: 'Africa/Douala',
+    timezone: 'Africa/Porto-Novo',
     devise: 'FCFA',
     formatDate: 'DD/MM/YYYY',
     // Notifications
@@ -209,9 +209,15 @@ export default function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Africa/Douala">Afrique/Douala (UTC+1)</SelectItem>
-                      <SelectItem value="Africa/Lagos">Afrique/Lagos (UTC+1)</SelectItem>
-                      <SelectItem value="Europe/Paris">Europe/Paris (UTC+1/+2)</SelectItem>
+                      <SelectItem value="Africa/Porto-Novo">Cotonou / Porto-Novo (UTC+1)</SelectItem>
+                      <SelectItem value="Africa/Abidjan">Abidjan (UTC+0)</SelectItem>
+                      <SelectItem value="Africa/Lagos">Lagos (UTC+1)</SelectItem>
+                      <SelectItem value="Africa/Douala">Douala (UTC+1)</SelectItem>
+                      <SelectItem value="Africa/Dakar">Dakar (UTC+0)</SelectItem>
+                      <SelectItem value="Europe/Paris">Paris (UTC+1/+2)</SelectItem>
+                      <SelectItem value="Europe/London">Londres (UTC+0/+1)</SelectItem>
+                      <SelectItem value="America/New_York">New York (UTC-5/-4)</SelectItem>
+                      <SelectItem value="America/Montreal">Montréal (UTC-5/-4)</SelectItem>
                       <SelectItem value="UTC">UTC</SelectItem>
                     </SelectContent>
                   </Select>

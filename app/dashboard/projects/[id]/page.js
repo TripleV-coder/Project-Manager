@@ -41,6 +41,7 @@ export default function ProjectDetailPage() {
   const [selectedUserRole, setSelectedUserRole] = useState(null);
   const [selectedProjectRole, setSelectedProjectRole] = useState(null);
   const [mergedPermissions, setMergedPermissions] = useState(null);
+  const [totalExpenses, setTotalExpenses] = useState(0);
 
   // Fonction pour calculer les permissions fusionnées (système + projet)
   const calculateMergedPermissions = useCallback(() => {
@@ -163,18 +164,31 @@ export default function ProjectDetailPage() {
         statut: projectInfo.statut || 'Planification',
         priorité: projectInfo.priorité || 'Moyenne',
         date_début: projectInfo.date_début ? new Date(projectInfo.date_début).toISOString().split('T')[0] : '',
-        date_fin_prévue: projectInfo.date_fin_prévue ? new Date(projectInfo.date_fin_prévue).toISOString().split('T')[0] : ''
+        date_fin_prévue: projectInfo.date_fin_prévue ? new Date(projectInfo.date_fin_prévue).toISOString().split('T')[0] : '',
+        budget_prévisionnel: projectInfo.budget?.prévisionnel || 0,
+        budget_devise: projectInfo.budget?.devise || 'FCFA'
       });
 
-      // Charger utilisateurs disponibles
-      const usersRes = await fetch('/api/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // Charger utilisateurs disponibles seulement si permission de gérer les membres
+      const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
+      const canLoadUsers = userPerms.gererUtilisateurs || userPerms.adminConfig || userPerms.gererMembresProjet;
+      if (canLoadUsers) {
+        try {
+          const usersRes = await fetch('/api/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
 
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        // API returns { success: true, data: [...] } or legacy format
-        setAvailableUsers(usersData.data || usersData.users || []);
+          if (usersRes.ok) {
+            const usersData = await usersRes.json();
+            // API returns { success: true, data: [...] } or legacy format
+            setAvailableUsers(usersData.data || usersData.users || []);
+          }
+        } catch {
+          console.warn('Impossible de charger les utilisateurs');
+          setAvailableUsers([]);
+        }
+      } else {
+        setAvailableUsers([]);
       }
 
       // Charger les rôles système (8 rôles prédéfinis)
@@ -185,6 +199,28 @@ export default function ProjectDetailPage() {
       if (systemRolesRes.ok) {
         const systemRolesData = await systemRolesRes.json();
         setProjectRoles(systemRolesData.roles || []);
+      }
+
+      // Charger les dépenses du projet pour calculer le budget consommé
+      const canViewBudgetPerm = userPerms.voirBudget || userPerms.adminConfig;
+      if (canViewBudgetPerm) {
+        try {
+          const expensesRes = await fetch(`/api/expenses?projet_id=${projectId}&limit=200`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (expensesRes.ok) {
+            const expensesData = await expensesRes.json();
+            const expenses = expensesData.expenses || expensesData.data || [];
+            // Calculer le total des dépenses validées ou payées
+            const total = expenses
+              .filter(e => e.statut === 'validé' || e.statut === 'payé')
+              .reduce((sum, e) => sum + (e.montant || 0), 0);
+            setTotalExpenses(total);
+          }
+        } catch {
+          console.warn('Impossible de charger les dépenses');
+          setTotalExpenses(0);
+        }
       }
 
       setLoading(false);
@@ -203,13 +239,28 @@ export default function ProjectDetailPage() {
     setSavingChanges(true);
     try {
       const token = localStorage.getItem('pm_token');
+
+      // Préparer les données avec le budget formaté correctement
+      const dataToSend = {
+        nom: editData.nom,
+        description: editData.description,
+        statut: editData.statut,
+        priorité: editData.priorité,
+        date_début: editData.date_début,
+        date_fin_prévue: editData.date_fin_prévue,
+        budget: {
+          prévisionnel: editData.budget_prévisionnel || 0,
+          devise: editData.budget_devise || 'FCFA'
+        }
+      };
+
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(editData)
+        body: JSON.stringify(dataToSend)
       });
 
       const data = await response.json();
@@ -231,13 +282,15 @@ export default function ProjectDetailPage() {
             statut: updatedProject.statut || 'Planification',
             priorité: updatedProject.priorité || 'Moyenne',
             date_début: updatedProject.date_début ? new Date(updatedProject.date_début).toISOString().split('T')[0] : '',
-            date_fin_prévue: updatedProject.date_fin_prévue ? new Date(updatedProject.date_fin_prévue).toISOString().split('T')[0] : ''
+            date_fin_prévue: updatedProject.date_fin_prévue ? new Date(updatedProject.date_fin_prévue).toISOString().split('T')[0] : '',
+            budget_prévisionnel: updatedProject.budget?.prévisionnel || 0,
+            budget_devise: updatedProject.budget?.devise || 'FCFA'
           });
         } else {
           // Fallback: mettre à jour avec editData si pas de données du serveur
           setProject(prev => ({
             ...prev,
-            ...editData
+            ...dataToSend
           }));
         }
 
@@ -523,6 +576,49 @@ export default function ProjectDetailPage() {
                   />
                 </div>
               </div>
+
+              {/* Budget Section */}
+              {canViewBudget && (
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Wallet className="w-4 h-4" />
+                    Budget du projet
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Budget prévisionnel</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={editData.budget_prévisionnel}
+                        onChange={(e) => setEditData({ ...editData, budget_prévisionnel: parseFloat(e.target.value) || 0 })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Devise</Label>
+                      <Select value={editData.budget_devise} onValueChange={(val) => setEditData({ ...editData, budget_devise: val })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="FCFA">FCFA</SelectItem>
+                          <SelectItem value="EUR">EUR</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                          <SelectItem value="GBP">GBP</SelectItem>
+                          <SelectItem value="CAD">CAD</SelectItem>
+                          <SelectItem value="CHF">CHF</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Le budget consommé est calculé automatiquement à partir des dépenses enregistrées.
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <Button onClick={handleSaveChanges} disabled={savingChanges} className="bg-indigo-600 hover:bg-indigo-700">
                   {savingChanges ? 'Enregistrement...' : 'Enregistrer les modifications'}
@@ -571,6 +667,55 @@ export default function ProjectDetailPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Budget Display */}
+              {canViewBudget && project.budget && (project.budget.prévisionnel > 0 || totalExpenses > 0) && (
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Wallet className="w-4 h-4 text-indigo-600" />
+                    <p className="text-sm font-semibold text-gray-700">Budget</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Budget prévisionnel</p>
+                      <p className="text-lg font-bold text-indigo-600">
+                        {(project.budget.prévisionnel || 0).toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Budget consommé</p>
+                      <p className={`text-lg font-bold ${totalExpenses > project.budget.prévisionnel ? 'text-red-600' : 'text-green-600'}`}>
+                        {totalExpenses.toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                      </p>
+                    </div>
+                  </div>
+                  {project.budget.prévisionnel > 0 && (
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-gray-600">Consommation du budget</span>
+                        <span className="text-xs font-medium">
+                          {Math.round((totalExpenses / project.budget.prévisionnel) * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            (totalExpenses / project.budget.prévisionnel) > 1
+                              ? 'bg-red-500'
+                              : (totalExpenses / project.budget.prévisionnel) > 0.8
+                                ? 'bg-yellow-500'
+                                : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min((totalExpenses / project.budget.prévisionnel) * 100, 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Reste: {(project.budget.prévisionnel - totalExpenses).toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 

@@ -43,9 +43,13 @@ export default function CommentsPage() {
 
   useEffect(() => {
     loadData();
-    loadUserPermissions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, selectedTask]);
+
+  // Charger les permissions une seule fois au montage
+  useEffect(() => {
+    loadUserPermissions();
+  }, []);
 
   const loadUserPermissions = async () => {
     try {
@@ -56,8 +60,25 @@ export default function CommentsPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setUserPermissions(data.role?.permissions || {});
+        const permissions = data.role?.permissions || {};
+        setUserPermissions(permissions);
         setCurrentUserId(data.id);
+
+        // Charger l'activité seulement si l'utilisateur a la permission voirAudit
+        if (permissions.voirAudit || permissions.adminConfig) {
+          try {
+            const activityRes = await fetch('/api/activity?limit=50', {
+              headers: { 'Authorization': `Bearer ${token}` },
+              signal: AbortSignal.timeout(10000)
+            });
+            if (activityRes.ok) {
+              const activityData = await activityRes.json();
+              setActivities(activityData.activities || activityData.data || []);
+            }
+          } catch {
+            // Silencieux en cas d'erreur
+          }
+        }
       }
     } catch (error) {
       console.error('Erreur chargement permissions:', error);
@@ -66,6 +87,7 @@ export default function CommentsPage() {
 
   // RBAC: Vérifier les permissions commentaires
   const canComment = userPermissions.commenter || userPermissions.adminConfig;
+  const canViewActivity = userPermissions.voirAudit || userPermissions.adminConfig;
 
   // Auto-select first project on initial load
   useEffect(() => {
@@ -95,26 +117,34 @@ export default function CommentsPage() {
       }
       if (params.length > 0) commentsUrl += '?' + params.join('&');
 
-      const [projectsRes, tasksRes, commentsRes, usersRes, activityRes] = await Promise.all([
+      // Charger les données de base (projets, tâches, commentaires)
+      const [projectsRes, tasksRes, commentsRes] = await Promise.all([
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
         fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch(commentsUrl, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/activity?limit=50', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
+        fetch(commentsUrl, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
       const commentsData = await commentsRes.json();
-      const usersData = await usersRes.json();
-      const activityData = await activityRes.json();
 
       // API returns { success: true, data: [...] } or legacy format
       setProjects(projectsData.data || projectsData.projects || []);
       setTasks(tasksData.data || tasksData.tasks || []);
       setComments(commentsData.comments || commentsData.data || []);
-      setUsers(usersData.data || usersData.users || []);
-      setActivities(activityData.activities || activityData.data || []);
+
+      // Extraire les auteurs des commentaires pour les mentions (fonctionne pour tous les rôles)
+      const commentAuthors = (commentsData.comments || commentsData.data || [])
+        .filter(c => c.auteur)
+        .map(c => c.auteur);
+      const uniqueAuthors = commentAuthors.filter((author, idx, self) =>
+        idx === self.findIndex(a => a._id === author._id)
+      );
+      setUsers(uniqueAuthors);
+
+      // L'activité n'est pas chargée pour les utilisateurs sans permission voirAudit
+      // On initialise à vide - seuls les admins pourront voir l'onglet Activité avec des données
+      setActivities([]);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -285,15 +315,17 @@ export default function CommentsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className={`grid w-full ${canViewActivity ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <TabsTrigger value="comments" className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
             Commentaires ({comments.length})
           </TabsTrigger>
-          <TabsTrigger value="activity" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            Activité ({activities.length})
-          </TabsTrigger>
+          {canViewActivity && (
+            <TabsTrigger value="activity" className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Activité ({activities.length})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="comments" className="space-y-6">
@@ -491,54 +523,56 @@ export default function CommentsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="activity" className="space-y-4">
-          {/* Liste activités */}
-          {activities.length === 0 ? (
-            <Card className="p-12">
-              <div className="text-center">
-                <Clock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucune activité</h3>
-                <p className="text-gray-600">L'historique des actions apparaîtra ici</p>
-              </div>
-            </Card>
-          ) : (
-            <div className="relative">
-              {/* Timeline line */}
-              <div className="absolute left-6 top-0 bottom-0 w-px bg-gray-200" />
-              
-              <div className="space-y-4">
-                {activities.map((activity, idx) => (
-                  <div key={activity._id || idx} className="relative flex gap-4">
-                    {/* Timeline dot */}
-                    <div className="relative z-10 w-12 h-12 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">
-                      {getActivityIcon(activity.action)}
-                    </div>
-                    {/* Content */}
-                    <Card className="flex-1">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {activity.utilisateur_nom || activity.utilisateur?.nom_complet || 'Système'}
-                            </p>
-                            <p className="text-sm text-gray-600">{activity.description}</p>
+        {canViewActivity && (
+          <TabsContent value="activity" className="space-y-4">
+            {/* Liste activités */}
+            {activities.length === 0 ? (
+              <Card className="p-12">
+                <div className="text-center">
+                  <Clock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucune activité</h3>
+                  <p className="text-gray-600">L'historique des actions apparaîtra ici</p>
+                </div>
+              </Card>
+            ) : (
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-6 top-0 bottom-0 w-px bg-gray-200" />
+
+                <div className="space-y-4">
+                  {activities.map((activity, idx) => (
+                    <div key={activity._id || idx} className="relative flex gap-4">
+                      {/* Timeline dot */}
+                      <div className="relative z-10 w-12 h-12 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">
+                        {getActivityIcon(activity.action)}
+                      </div>
+                      {/* Content */}
+                      <Card className="flex-1">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {activity.utilisateur_nom || activity.utilisateur?.nom_complet || 'Système'}
+                              </p>
+                              <p className="text-sm text-gray-600">{activity.description}</p>
+                            </div>
+                            <span className="text-xs text-gray-500 flex-shrink-0">
+                              {formatDate(activity.timestamp)}
+                            </span>
                           </div>
-                          <span className="text-xs text-gray-500 flex-shrink-0">
-                            {formatDate(activity.timestamp)}
-                          </span>
-                        </div>
-                        <div className="flex gap-2 mt-2">
-                          <Badge variant="outline">{activity.entity_type}</Badge>
-                          <Badge variant="secondary">{activity.action}</Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
+                          <div className="flex gap-2 mt-2">
+                            <Badge variant="outline">{activity.entity_type}</Badge>
+                            <Badge variant="secondary">{activity.action}</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </TabsContent>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

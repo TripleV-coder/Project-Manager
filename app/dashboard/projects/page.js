@@ -92,11 +92,11 @@ export default function ProjectsPage() {
         return;
       }
 
-      const [userData, projectsData, templatesData, usersData] = await Promise.all([
+      // Charger d'abord les données utilisateur, projets et templates
+      const [userData, projectsData, templatesData] = await Promise.all([
         safeFetch('/api/auth/me', token),
         safeFetch(`/api/projects?limit=${itemsPerPage}&page=${currentPage}`, token),
-        safeFetch('/api/project-templates', token),
-        safeFetch('/api/users?limit=200', token)
+        safeFetch('/api/project-templates', token)
       ]);
 
       setUser(userData);
@@ -135,9 +135,23 @@ export default function ProjectsPage() {
         setTemplates(templatesList);
       }
 
-      // Load users for user type fields
-      const usersList = extractApiData(usersData, ['data', 'users']);
-      setAllUsers(usersList);
+      // Charger les utilisateurs seulement si l'utilisateur a la permission (pour les champs de type utilisateur)
+      // Cela évite les erreurs 403 pour les rôles sans permission gererUtilisateurs
+      const canLoadUsers = userData?.role_id?.permissions?.gererUtilisateurs ||
+                           userData?.role_id?.permissions?.adminConfig;
+      if (canLoadUsers) {
+        try {
+          const usersData = await safeFetch('/api/users?limit=200', token);
+          const usersList = extractApiData(usersData, ['data', 'users']);
+          setAllUsers(usersList);
+        } catch (usersError) {
+          // Ignorer silencieusement les erreurs de chargement des utilisateurs
+          console.warn('Impossible de charger les utilisateurs:', usersError.message);
+          setAllUsers([]);
+        }
+      } else {
+        setAllUsers([]);
+      }
 
       setLoading(false);
     } catch (error) {

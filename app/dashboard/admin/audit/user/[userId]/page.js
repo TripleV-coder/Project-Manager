@@ -54,8 +54,9 @@ export default function UserActivityPage() {
 
         const userData = await userRes.json();
 
-        // Client-side guard: redirect if not admin
-        if (!userData.role?.permissions?.adminConfig) {
+        // Client-side guard: redirect if not admin (support both role_id and role)
+        const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
+        if (!userPerms.adminConfig) {
           router.push('/dashboard');
           return;
         }

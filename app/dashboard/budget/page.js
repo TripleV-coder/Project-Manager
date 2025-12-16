@@ -146,7 +146,7 @@ export default function BudgetPage() {
         });
         if (userResponse.ok) {
           const userData = await userResponse.json();
-          setUserPermissions(userData.role?.permissions || {});
+          setUserPermissions(userData.role_id?.permissions || userData.role?.permissions || {});
         }
       } catch (error) {
         console.error('Erreur lors du chargement des permissions:', error);

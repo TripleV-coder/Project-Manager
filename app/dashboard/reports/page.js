@@ -69,27 +69,42 @@ export default function ReportsPage() {
       const userData = await userRes.json();
       setUser(userData);
 
-      // Check if user has permission to view reports
-      const userPerms = userData.role?.permissions || {};
+      // Check if user has permission to view reports (support both role and role_id)
+      const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
       if (!userPerms.genererRapports && !userPerms.adminConfig) {
         setLoading(false);
         return; // Don't load data if no permission
       }
 
-      const [projectsRes, tasksRes, usersRes] = await Promise.all([
+      // Charger projets et tâches en parallèle
+      const [projectsRes, tasksRes] = await Promise.all([
         fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
       ]);
 
       const projectsData = await projectsRes.json();
       const tasksData = await tasksRes.json();
-      const usersData = await usersRes.json();
 
       // API returns { success: true, data: [...] } or legacy format
       setProjects(projectsData.data || projectsData.projects || []);
       setTasks(tasksData.data || tasksData.tasks || []);
-      setUsers(usersData.data || usersData.users || []);
+
+      // Charger les utilisateurs seulement si permission gererUtilisateurs ou adminConfig
+      const canLoadUsers = userPerms.gererUtilisateurs || userPerms.adminConfig;
+      if (canLoadUsers) {
+        try {
+          const usersRes = await fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
+          if (usersRes.ok) {
+            const usersData = await usersRes.json();
+            setUsers(usersData.data || usersData.users || []);
+          }
+        } catch {
+          console.warn('Impossible de charger les utilisateurs');
+          setUsers([]);
+        }
+      } else {
+        setUsers([]);
+      }
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);

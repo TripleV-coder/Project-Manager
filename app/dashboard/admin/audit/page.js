@@ -70,15 +70,17 @@ export default function AuditDashboard() {
         }
 
         const userData = await userRes.json();
-        if (!userData.role?.permissions?.adminConfig) {
+        // Support both role_id and role for permissions
+        const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
+        if (!userPerms.adminConfig) {
           router.push('/dashboard');
           return;
         }
         setUser(userData);
 
-        const [actionsRes, usersRes, projectsRes] = await Promise.all([
+        // Charger les actions d'audit et les projets en parallèle
+        const [actionsRes, projectsRes] = await Promise.all([
           fetch('/api/audit/actions', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/users?limit=100', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/projects?limit=200', { headers: { 'Authorization': `Bearer ${token}` } })
         ]);
 
@@ -88,14 +90,21 @@ export default function AuditDashboard() {
           setAvailableEntityTypes(data.entityTypes || []);
         }
 
-        if (usersRes.ok) {
-          const usersData = await usersRes.json();
-          setAvailableUsers(usersData.data || []);
-        }
-
         if (projectsRes.ok) {
           const projectsData = await projectsRes.json();
           setAvailableProjects(projectsData.data || []);
+        }
+
+        // Charger les utilisateurs seulement si permission (adminConfig a déjà été vérifié)
+        try {
+          const usersRes = await fetch('/api/users?limit=100', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (usersRes.ok) {
+            const usersData = await usersRes.json();
+            setAvailableUsers(usersData.data || []);
+          }
+        } catch {
+          console.warn('Impossible de charger les utilisateurs');
+          setAvailableUsers([]);
         }
       } catch (error) {
         console.error('Erreur:', error);

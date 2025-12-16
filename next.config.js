@@ -1,5 +1,5 @@
 const nextConfig = {
-  output: 'standalone',
+  // output: 'standalone', // Commenté pour le développement, décommenter pour production Docker
   images: {
     unoptimized: true,
   },

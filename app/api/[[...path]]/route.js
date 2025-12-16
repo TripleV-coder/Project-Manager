@@ -698,7 +698,7 @@ async function initializeRoles() {
     const existing = await Role.findOne({ nom: roleData.nom });
     if (!existing) {
       await Role.create(roleData);
-      console.log(`✅ Rôle créé: ${roleData.nom}`);
+      console.log(`[OK] Rôle créé: ${roleData.nom}`);
     }
   }
 }
@@ -1119,7 +1119,7 @@ export async function GET(request) {
           appName: 'PM - Gestion de Projets',
           appDescription: 'Plateforme de gestion de projets Agile',
           langue: 'fr',
-          timezone: 'Africa/Douala',
+          timezone: 'Africa/Porto-Novo',
           devise: 'FCFA',
           formatDate: 'DD/MM/YYYY',
           emailNotifications: true,
@@ -1309,6 +1309,30 @@ export async function GET(request) {
       const query = { supprimé: { $ne: true } }; // Exclure les commentaires supprimés
       if (entityType) query.entity_type = entityType;
       if (entityId) query.entity_id = entityId;
+
+      // SECURITY: Filtrer les commentaires par projets accessibles
+      // Si un entityId est spécifié et c'est un projet, vérifier l'accès
+      if (entityType === 'projet' && entityId) {
+        if (!user.role_id?.permissions?.voirTousProjets && !user.role_id?.permissions?.adminConfig) {
+          const hasAccess = await projectService.canUserAccessProject(user._id, entityId);
+          if (!hasAccess) {
+            return handleCORS(NextResponse.json({ comments: [], pagination: { page: 1, limit, total: 0, pages: 0 } }));
+          }
+        }
+      } else if (!entityId) {
+        // Si pas d'entityId spécifié, filtrer par projets accessibles
+        const accessibleProjectIds = await projectService.getAccessibleProjectIds(user._id, user.role_id);
+        if (accessibleProjectIds !== null) {
+          if (accessibleProjectIds.length === 0) {
+            return handleCORS(NextResponse.json({ comments: [], pagination: { page: 1, limit, total: 0, pages: 0 } }));
+          }
+          // Filtrer les commentaires liés aux projets accessibles
+          query.$or = [
+            { entity_type: 'projet', entity_id: { $in: accessibleProjectIds.map(id => id.toString()) } },
+            { entity_type: 'task', entity_id: { $in: await Task.find({ projet_id: { $in: accessibleProjectIds } }).distinct('_id') } }
+          ];
+        }
+      }
 
       const [comments, total] = await Promise.all([
         Comment.find(query)
@@ -2275,14 +2299,21 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Cet utilisateur est déjà membre du projet' }, { status: 400 }));
       }
 
-      // Ajouter le membre avec le rôle de projet
+      // Ajouter le membre avec le rôle de projet (utiliser l'ID du ProjectRole, pas du Role système)
       project.membres.push({
         user_id,
-        project_role_id,
+        project_role_id: projectRole._id,
         date_ajout: new Date()
       });
 
       await project.save();
+
+      // Invalider le cache du projet pour que les changements soient visibles immédiatement
+      const projectServiceModule = await import('@/lib/services/projectService');
+      const projectServiceInstance = projectServiceModule.default;
+      if (projectServiceInstance?.invalidateCache) {
+        projectServiceInstance.invalidateCache(projectId);
+      }
 
       // Créer notification
       await createNotification(
@@ -4221,7 +4252,15 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }));
       }
 
-      const { nom_complet, telephone, poste, poste_titre } = body;
+      const {
+        nom_complet,
+        telephone,
+        poste,
+        poste_titre,
+        département_équipe,
+        disponibilité_hebdo,
+        fuseau_horaire
+      } = body;
 
       const updateData = {};
       if (nom_complet) updateData.nom_complet = nom_complet;
@@ -4229,6 +4268,9 @@ export async function PUT(request) {
       // Support both field names for backwards compatibility
       if (poste_titre !== undefined) updateData.poste_titre = poste_titre;
       else if (poste !== undefined) updateData.poste_titre = poste;
+      if (département_équipe !== undefined) updateData.département_équipe = département_équipe;
+      if (disponibilité_hebdo !== undefined) updateData.disponibilité_hebdo = disponibilité_hebdo;
+      if (fuseau_horaire !== undefined) updateData.fuseau_horaire = fuseau_horaire;
 
       await User.findByIdAndUpdate(user._id, updateData);
 
