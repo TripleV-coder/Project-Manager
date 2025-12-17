@@ -179,10 +179,38 @@ async function updateSprintBurndown(sprintId) {
 }
 
 // Helper pour créer une notification
+// Vérifie les paramètres globaux ET les préférences utilisateur
 async function createNotification(destinataire, type, titre, message, entity_type, entity_id, entity_nom, expéditeur = null) {
   try {
     const user = await User.findById(destinataire);
     if (!user) return;
+
+    // Vérifier les paramètres globaux de notification
+    let globalSettings;
+    try {
+      globalSettings = await appSettingsService.getNotificationSettings();
+    } catch (e) {
+      globalSettings = { pushNotifications: true }; // Fallback
+    }
+
+    // Si les notifications push sont désactivées globalement, ne pas créer
+    if (globalSettings.pushNotifications === false) {
+      return;
+    }
+
+    // Vérifier les types d'événements configurés globalement
+    const typeMapping = {
+      'assignation_tâche': 'notifyTaskAssigned',
+      'tâche_terminée': 'notifyTaskCompleted',
+      'mention': 'notifyCommentMention',
+      'sprint_démarré': 'notifySprintStart',
+      'alerte_budget': 'notifyBudgetAlert'
+    };
+
+    const globalSettingKey = typeMapping[type];
+    if (globalSettingKey && globalSettings[globalSettingKey] === false) {
+      return; // Ce type de notification est désactivé globalement
+    }
 
     await Notification.create({
       destinataire,
@@ -195,8 +223,8 @@ async function createNotification(destinataire, type, titre, message, entity_typ
       expéditeur,
       canaux: {
         in_app: user.notifications_préférées?.in_app !== false,
-        email: user.notifications_préférées?.email === true,
-        push: user.notifications_préférées?.push === true
+        email: user.notifications_préférées?.email === true && globalSettings.emailNotifications !== false,
+        push: user.notifications_préférées?.push === true && globalSettings.pushNotifications !== false
       }
     });
   } catch (error) {
@@ -205,9 +233,37 @@ async function createNotification(destinataire, type, titre, message, entity_typ
 }
 
 // Helper pour créer plusieurs notifications en batch (optimisé pour éviter N+1)
+// Vérifie les paramètres globaux ET les préférences utilisateur
 async function createNotificationsBatch(destinataires, type, titre, message, entity_type, entity_id, entity_nom, expéditeur = null) {
   try {
     if (!destinataires || destinataires.length === 0) return;
+
+    // Vérifier les paramètres globaux de notification
+    let globalSettings;
+    try {
+      globalSettings = await appSettingsService.getNotificationSettings();
+    } catch (e) {
+      globalSettings = { pushNotifications: true }; // Fallback
+    }
+
+    // Si les notifications push sont désactivées globalement, ne pas créer
+    if (globalSettings.pushNotifications === false) {
+      return;
+    }
+
+    // Vérifier les types d'événements configurés globalement
+    const typeMapping = {
+      'assignation_tâche': 'notifyTaskAssigned',
+      'tâche_terminée': 'notifyTaskCompleted',
+      'mention': 'notifyCommentMention',
+      'sprint_démarré': 'notifySprintStart',
+      'alerte_budget': 'notifyBudgetAlert'
+    };
+
+    const globalSettingKey = typeMapping[type];
+    if (globalSettingKey && globalSettings[globalSettingKey] === false) {
+      return; // Ce type de notification est désactivé globalement
+    }
 
     // Charger tous les utilisateurs en une seule requête
     const users = await User.find({ _id: { $in: destinataires } });
@@ -230,8 +286,8 @@ async function createNotificationsBatch(destinataires, type, titre, message, ent
           expéditeur,
           canaux: {
             in_app: user.notifications_préférées?.in_app !== false,
-            email: user.notifications_préférées?.email === true,
-            push: user.notifications_préférées?.push === true
+            email: user.notifications_préférées?.email === true && globalSettings.emailNotifications !== false,
+            push: user.notifications_préférées?.push === true && globalSettings.pushNotifications !== false
           }
         };
       })
@@ -1827,7 +1883,16 @@ export async function POST(request) {
 
     // POST /api/auth/login - Connexion
     if (path === '/auth/login' || path === '/auth/login/') {
-      // Rate limiting: 5 attempts per 15 minutes per IP
+      // Charger les paramètres de sécurité
+      let securitySettings;
+      try {
+        securitySettings = await appSettingsService.getSecuritySettings();
+      } catch (e) {
+        // En cas d'erreur, utiliser les valeurs par défaut
+        securitySettings = { maxLoginAttempts: 5, lockoutDuration: 15, sessionTimeout: 30 };
+      }
+
+      // Rate limiting: attempts per IP
       const clientIP = getClientIP(request);
       const loginLimit = checkRateLimit(clientIP, RATE_LIMIT_CONFIG.login);
 
@@ -1901,8 +1966,9 @@ export async function POST(request) {
       console.log('[Login] Password valid:', isValidPassword);
       if (!isValidPassword) {
         console.log('[Login] Invalid password for user:', email.toLowerCase());
-        // Increment failed login attempts
-        await user.incLoginAttempts();
+        // Increment failed login attempts avec paramètres configurables
+        const { maxLoginAttempts, lockoutDuration } = securitySettings;
+        await user.incLoginAttempts(maxLoginAttempts, lockoutDuration);
         // Reload user to get updated lockUntil if account got locked
         user = await User.findOne({ email: email.toLowerCase() }).select('+password').populate('role_id');
         const failedAttempts = user.failedLoginAttempts;
@@ -1913,7 +1979,7 @@ export async function POST(request) {
           const minutesRemaining = Math.ceil((user.lockUntil - new Date()) / 60000);
           errorMessage = `Trop de tentatives échouées. Compte verrouillé pour ${minutesRemaining} minute(s).`;
         } else {
-          const remainingAttempts = Math.max(0, 5 - failedAttempts);
+          const remainingAttempts = Math.max(0, maxLoginAttempts - failedAttempts);
           if (remainingAttempts > 0 && remainingAttempts < 3) {
             errorMessage = `Email ou mot de passe incorrect. ${remainingAttempts} tentative(s) restante(s) avant verrouillage.`;
           }

@@ -141,7 +141,8 @@ userSchema.virtual('isLocked').get(function() {
 });
 
 // Method: Increment failed login attempts
-userSchema.methods.incLoginAttempts = function() {
+// maxAttempts et lockoutMinutes peuvent être passés depuis les paramètres système
+userSchema.methods.incLoginAttempts = function(maxAttempts = 5, lockoutMinutes = 15) {
   // Reset if lock expired
   if (this.lockUntil && this.lockUntil < Date.now()) {
     return this.updateOne({
@@ -152,9 +153,9 @@ userSchema.methods.incLoginAttempts = function() {
 
   const updates = { $inc: { failedLoginAttempts: 1 } };
 
-  // Lock after 5 failed attempts (15 minutes)
-  if (this.failedLoginAttempts + 1 >= 5) {
-    updates.$set = { lockUntil: new Date(Date.now() + 15 * 60 * 1000) };
+  // Lock after maxAttempts failed attempts
+  if (this.failedLoginAttempts + 1 >= maxAttempts) {
+    updates.$set = { lockUntil: new Date(Date.now() + lockoutMinutes * 60 * 1000) };
   }
 
   return this.updateOne(updates);
