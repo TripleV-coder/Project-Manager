@@ -195,12 +195,8 @@ fi
 # Install dependencies if node_modules doesn't exist
 if [ ! -d "node_modules" ]; then
     echo -e "${YELLOW}📦 Installing dependencies...${NC}"
-    if command -v yarn &> /dev/null; then
-        yarn install
-    else
-        npm install
-    fi
-    
+    npm install
+
     if [ $? -ne 0 ]; then
         echo -e "${RED}✗ Failed to install dependencies${NC}"
         exit 1
@@ -276,13 +272,8 @@ trap cleanup EXIT INT TERM QUIT HUP
 echo -e "${YELLOW}Starting application with Socket.io server...${NC}\n"
 
 # Start the application with Socket.io server and capture PID
-if command -v yarn &> /dev/null; then
-    yarn dev:socket &
-    NEXT_PID=$!
-else
-    npm run dev:socket &
-    NEXT_PID=$!
-fi
+npm run dev:socket &
+NEXT_PID=$!
 
 # Wait for the process
 wait $NEXT_PID
