@@ -12,7 +12,9 @@ const publicRoutes = [
   '/api/auth/login',
   '/api/auth/first-login-reset',
   '/api/health',
-  '/welcome'
+  '/api/settings/maintenance',
+  '/welcome',
+  '/maintenance'
 ];
 
 // Synchronous JWT verification for middleware (Edge Runtime compatible)

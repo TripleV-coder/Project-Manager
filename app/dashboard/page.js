@@ -59,8 +59,13 @@ export default function DashboardHome() {
       setProjects(projectsList);
       setTasks(tasksList);
 
+      // Projets actifs = tous sauf Terminé et Annulé
+      const activeProjects = projectsList.filter(p =>
+        p.statut !== 'Terminé' && p.statut !== 'Annulé'
+      );
+
       setStats({
-        projectsCount: projectsList.length || 0,
+        projectsCount: activeProjects.length || 0,
         tasksCount: tasksList.length || 0,
         completedTasks: tasksList.filter(t => t.statut === 'Terminé').length || 0,
         pendingTasks: tasksList.filter(t => t.statut !== 'Terminé').length || 0

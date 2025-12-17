@@ -19,10 +19,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { getAvailableMenus } from '@/lib/menuConfig';
+import { usePreferences } from '@/contexts/PreferencesContext';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { sidebarCompact } = usePreferences();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -30,6 +32,11 @@ export default function DashboardLayout({ children }) {
   const [adminOpen, setAdminOpen] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   useConfirmation(); // Initialize confirmation hook
+
+  // Synchroniser sidebarOpen avec la préférence sidebarCompact
+  useEffect(() => {
+    setSidebarOpen(!sidebarCompact);
+  }, [sidebarCompact]);
 
   const loadUser = useCallback(async () => {
     try {
@@ -52,6 +59,24 @@ export default function DashboardLayout({ children }) {
       }
 
       let userData = await userResponse.json();
+
+      // Vérifier le mode maintenance
+      try {
+        const maintenanceResponse = await fetch('/api/settings/maintenance', {
+          signal: AbortSignal.timeout(5000)
+        });
+        if (maintenanceResponse.ok) {
+          const maintenanceData = await maintenanceResponse.json();
+          if (maintenanceData.data?.enabled && !userData.role?.permissions?.adminConfig) {
+            // Mode maintenance actif et utilisateur non-admin
+            router.push('/maintenance');
+            return;
+          }
+        }
+      } catch (e) {
+        // En cas d'erreur, continuer normalement
+        console.error('Erreur vérification maintenance:', e);
+      }
 
       // Auto-migrate Administrateur to Super Administrateur if needed
       if (userData.role?.nom === 'Administrateur') {
@@ -143,17 +168,17 @@ export default function DashboardLayout({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Chargement...</p>
+          <p className="text-gray-600 dark:text-gray-400">Chargement...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Overlay mobile */}
       {mobileMenuOpen && (
         <div 
@@ -163,20 +188,20 @@ export default function DashboardLayout({ children }) {
       )}
 
       {/* Sidebar Mobile */}
-      <aside className={`fixed top-0 left-0 h-full w-72 bg-white shadow-2xl z-50 transform transition-transform duration-300 lg:hidden ${
+      <aside className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 lg:hidden ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="h-full flex flex-col">
           {/* Header Mobile */}
-          <div className="h-16 flex items-center justify-between px-4 border-b">
+          <div className="h-16 flex items-center justify-between px-4 border-b dark:border-gray-700">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
                 <FolderKanban className="w-6 h-6 text-white" />
               </div>
-              <span className="font-bold text-gray-900">PM Gestion</span>
+              <span className="font-bold text-gray-900 dark:text-white">PM Gestion</span>
             </div>
-            <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-              <X className="w-5 h-5" />
+            <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X className="w-5 h-5 dark:text-gray-300" />
             </button>
           </div>
 
@@ -189,7 +214,7 @@ export default function DashboardLayout({ children }) {
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   pathname === item.href
                     ? 'bg-indigo-600 text-white'
-                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 <item.icon className="w-5 h-5" />
@@ -204,7 +229,7 @@ export default function DashboardLayout({ children }) {
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   pathname === notificationsMenu.href
                     ? 'bg-indigo-600 text-white'
-                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 <div className="relative">
@@ -221,7 +246,7 @@ export default function DashboardLayout({ children }) {
 
             {/* Section Admin */}
             {adminMenuItems.length > 0 && (
-              <div className="pt-4 mt-4 border-t">
+              <div className="pt-4 mt-4 border-t dark:border-gray-700">
                 <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
                 {adminMenuItems.map((item) => (
                   <Link
@@ -230,7 +255,7 @@ export default function DashboardLayout({ children }) {
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                       pathname === item.href
                         ? 'bg-indigo-600 text-white'
-                        : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400'
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
@@ -242,19 +267,19 @@ export default function DashboardLayout({ children }) {
           </nav>
 
           {/* User Mobile */}
-          <div className="p-4 border-t">
+          <div className="p-4 border-t dark:border-gray-700">
             <div className="flex items-center gap-3 mb-4">
               <Avatar>
-                <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold">
+                <AvatarFallback className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold">
                   {user?.nom_complet?.charAt(0) || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <p className="font-medium text-sm">{user?.nom_complet}</p>
-                <p className="text-xs text-gray-500">{user?.role?.nom}</p>
+                <p className="font-medium text-sm dark:text-white">{user?.nom_complet}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role?.nom}</p>
               </div>
             </div>
-            <Button variant="outline" className="w-full text-red-600" onClick={handleLogout}>
+            <Button variant="outline" className="w-full text-red-600 dark:text-red-400 dark:border-gray-600" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               Déconnexion
             </Button>
@@ -263,20 +288,20 @@ export default function DashboardLayout({ children }) {
       </aside>
 
       {/* Sidebar Desktop */}
-      <aside className={`hidden lg:block fixed top-0 left-0 h-full bg-white border-r transition-all duration-300 z-30 ${
+      <aside className={`hidden lg:block fixed top-0 left-0 h-full bg-white dark:bg-gray-800 border-r dark:border-gray-700 transition-all duration-300 z-30 ${
         sidebarOpen ? 'w-64' : 'w-20'
       }`}>
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="h-16 flex items-center px-4 border-b">
+          <div className="h-16 flex items-center px-4 border-b dark:border-gray-700">
             {sidebarOpen ? (
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
                   <FolderKanban className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-gray-900">PM Gestion</h1>
-                  <p className="text-xs text-gray-500">Projets Agile</p>
+                  <h1 className="font-bold text-gray-900 dark:text-white">PM Gestion</h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Projets Agile</p>
                 </div>
               </div>
             ) : (
@@ -296,7 +321,7 @@ export default function DashboardLayout({ children }) {
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   pathname === item.href
                     ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -312,7 +337,7 @@ export default function DashboardLayout({ children }) {
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   pathname === notificationsMenu.href
                     ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400'
                 }`}
               >
                 <div className="relative flex-shrink-0">
@@ -329,7 +354,7 @@ export default function DashboardLayout({ children }) {
 
             {/* Section Admin */}
             {adminMenuItems.length > 0 && (
-              <div className="pt-4 mt-4 border-t">
+              <div className="pt-4 mt-4 border-t dark:border-gray-700">
                 {sidebarOpen && (
                   <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
                 )}
@@ -340,8 +365,8 @@ export default function DashboardLayout({ children }) {
                       onClick={() => setAdminOpen(!adminOpen)}
                       className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all ${
                         pathname.includes('/dashboard/admin') || pathname === '/dashboard/users'
-                          ? 'bg-indigo-100 text-indigo-700'
-                          : 'text-gray-700 hover:bg-indigo-50'
+                          ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-gray-700'
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -359,7 +384,7 @@ export default function DashboardLayout({ children }) {
                             className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-sm ${
                               pathname === item.href
                                 ? 'bg-indigo-600 text-white'
-                                : 'text-gray-600 hover:bg-gray-100'
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                             }`}
                           >
                             <item.icon className="w-4 h-4" />
@@ -379,7 +404,7 @@ export default function DashboardLayout({ children }) {
                         className={`flex items-center justify-center p-3 rounded-xl transition-all ${
                           pathname === item.href
                             ? 'bg-indigo-600 text-white'
-                            : 'text-gray-600 hover:bg-gray-100'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }`}
                       >
                         <item.icon className="w-5 h-5" />
@@ -392,26 +417,26 @@ export default function DashboardLayout({ children }) {
           </nav>
 
           {/* User Desktop */}
-          <div className="p-3 border-t">
+          <div className="p-3 border-t dark:border-gray-700">
             {sidebarOpen ? (
               <div className="space-y-3">
                 <Link
                   href="/dashboard/profile"
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition"
+                  className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition"
                 >
                   <Avatar>
-                    <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold">
+                    <AvatarFallback className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold">
                       {user?.nom_complet?.charAt(0) || 'U'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{user?.nom_complet}</p>
-                    <p className="text-xs text-gray-500 truncate">{user?.role?.nom}</p>
+                    <p className="font-medium text-sm truncate dark:text-white">{user?.nom_complet}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.role?.nom}</p>
                   </div>
                 </Link>
-                <Button 
-                  variant="outline" 
-                  className="w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:border-gray-600"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4 mr-2" />
@@ -422,17 +447,17 @@ export default function DashboardLayout({ children }) {
               <div className="space-y-2">
                 <Link
                   href="/dashboard/profile"
-                  className="flex justify-center p-2 rounded-lg hover:bg-gray-100"
+                  className="flex justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs font-bold">
+                    <AvatarFallback className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 text-xs font-bold">
                       {user?.nom_complet?.charAt(0) || 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full flex justify-center p-2 rounded-lg hover:bg-red-50 text-red-600"
+                  className="w-full flex justify-center p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
                 >
                   <LogOut className="w-5 h-5" />
                 </button>
@@ -447,25 +472,25 @@ export default function DashboardLayout({ children }) {
         sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
       }`}>
         {/* Header */}
-        <header className="h-16 bg-white border-b flex items-center justify-between px-4 sticky top-0 z-20">
+        <header className="h-16 bg-white dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between px-4 sticky top-0 z-20">
           <div className="flex items-center gap-3">
             {/* Mobile menu */}
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="p-2 hover:bg-gray-100 rounded-lg lg:hidden"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg lg:hidden"
             >
-              <Menu className="w-5 h-5 text-gray-600" />
+              <Menu className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
             {/* Desktop toggle */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="hidden lg:flex p-2 hover:bg-gray-100 rounded-lg"
+              className="hidden lg:flex p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
-              <Menu className="w-5 h-5 text-gray-600" />
+              <Menu className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
             {/* Breadcrumb */}
             <div className="hidden sm:block">
-              <h2 className="font-semibold text-gray-900">
+              <h2 className="font-semibold text-gray-900 dark:text-white">
                 {pathname === '/dashboard' ? 'Tableau de bord' :
                  pathname.includes('/admin/roles') ? 'Rôles & Permissions' :
                  pathname.includes('/admin/sharepoint') ? 'Configuration SharePoint' :
@@ -478,18 +503,18 @@ export default function DashboardLayout({ children }) {
           <div className="flex items-center gap-2">
             <Link
               href="/dashboard/notifications"
-              className="relative p-2 hover:bg-gray-100 rounded-lg"
+              className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
-              <Bell className="w-5 h-5 text-gray-600" />
+              <Bell className="w-5 h-5 text-gray-600 dark:text-gray-300" />
               {unreadNotifications > 0 && (
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
               )}
             </Link>
             <Link
               href="/dashboard/profile"
-              className="p-2 hover:bg-gray-100 rounded-lg hidden sm:flex"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg hidden sm:flex"
             >
-              <User className="w-5 h-5 text-gray-600" />
+              <User className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </Link>
           </div>
         </header>

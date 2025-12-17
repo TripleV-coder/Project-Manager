@@ -1486,11 +1486,15 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      // Pour l'instant, retourner des valeurs par défaut
-      return handleCORS(NextResponse.json({
-        enabled: false,
-        message: 'L\'application est actuellement en maintenance. Nous serons de retour bientôt.'
-      }));
+      try {
+        const enabled = await appSettingsService.getMaintenanceMode();
+        return handleCORS(NextResponse.json({
+          enabled,
+          message: enabled ? 'L\'application est actuellement en maintenance.' : ''
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /admin/maintenance'));
+      }
     }
 
     // GET /api/sharepoint/config - Configuration SharePoint
@@ -4177,13 +4181,23 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      // Pour l'instant, juste retourner OK
-      // Dans une vraie implémentation, on sauvegarderait dans la DB ou fichier config
-      return handleCORS(NextResponse.json({ 
-        message: 'Mode maintenance mis à jour',
-        enabled: body.enabled,
-        savedMessage: body.message
-      }));
+      try {
+        const { enabled } = body;
+        await appSettingsService.setMaintenanceMode(enabled, user._id);
+
+        await logActivity(user, 'modification', 'système', null,
+          enabled ? 'Activation mode maintenance' : 'Désactivation mode maintenance',
+          { request, httpMethod: 'PUT', endpoint: '/admin/maintenance', httpStatus: 200 }
+        );
+
+        return handleCORS(NextResponse.json({
+          success: true,
+          message: enabled ? 'Mode maintenance activé' : 'Mode maintenance désactivé',
+          enabled
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'PUT /admin/maintenance'));
+      }
     }
 
     // PUT /api/budget/projects/:id - Modifier budget projet

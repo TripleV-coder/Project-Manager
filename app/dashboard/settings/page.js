@@ -7,6 +7,8 @@ import {
   Save, RefreshCw,
   Moon, Sun, Monitor
 } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
+import { usePreferences } from '@/contexts/PreferencesContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +21,13 @@ import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { theme: currentTheme, setTheme: applyTheme } = useTheme();
+  const {
+    sidebarCompact: currentSidebarCompact,
+    setSidebarCompact: applySidebarCompact,
+    primaryColor: currentPrimaryColor,
+    setPrimaryColor: applyPrimaryColor
+  } = usePreferences();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -80,6 +89,16 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Synchroniser les préférences locales avec les contextes
+  useEffect(() => {
+    setSettings(prev => ({
+      ...prev,
+      theme: currentTheme || prev.theme,
+      sidebarCompact: currentSidebarCompact,
+      primaryColor: currentPrimaryColor || prev.primaryColor
+    }));
+  }, [currentTheme, currentSidebarCompact, currentPrimaryColor]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -431,20 +450,24 @@ export default function SettingsPage() {
                     { value: 'light', icon: Sun, label: 'Clair' },
                     { value: 'dark', icon: Moon, label: 'Sombre' },
                     { value: 'system', icon: Monitor, label: 'Système' }
-                  ].map((theme) => (
+                  ].map((themeOption) => (
                     <button
-                      key={theme.value}
-                      onClick={() => setSettings({ ...settings, theme: theme.value })}
+                      key={themeOption.value}
+                      onClick={() => {
+                        setSettings({ ...settings, theme: themeOption.value });
+                        applyTheme(themeOption.value);
+                        toast.success(`Thème ${themeOption.label.toLowerCase()} appliqué`);
+                      }}
                       className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                        settings.theme === theme.value
-                          ? 'border-indigo-600 bg-indigo-50'
-                          : 'border-gray-200 hover:border-gray-300'
+                        settings.theme === themeOption.value
+                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                       }`}
                     >
-                      <theme.icon className={`w-6 h-6 ${
-                        settings.theme === theme.value ? 'text-indigo-600' : 'text-gray-400'
+                      <themeOption.icon className={`w-6 h-6 ${
+                        settings.theme === themeOption.value ? 'text-indigo-600' : 'text-gray-400'
                       }`} />
-                      <span className="text-sm font-medium">{theme.label}</span>
+                      <span className="text-sm font-medium">{themeOption.label}</span>
                     </button>
                   ))}
                 </div>
@@ -454,25 +477,37 @@ export default function SettingsPage() {
 
               <div className="space-y-2">
                 <Label>Couleur principale</Label>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                   <input
                     type="color"
                     value={settings.primaryColor}
-                    onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
-                    className="w-12 h-12 rounded-lg cursor-pointer border-2 border-gray-200"
+                    onChange={(e) => {
+                      setSettings({ ...settings, primaryColor: e.target.value });
+                      applyPrimaryColor(e.target.value);
+                    }}
+                    className="w-12 h-12 rounded-lg cursor-pointer border-2 border-gray-200 dark:border-gray-600"
                   />
                   <Input
                     value={settings.primaryColor}
-                    onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
+                    onChange={(e) => {
+                      setSettings({ ...settings, primaryColor: e.target.value });
+                      if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                        applyPrimaryColor(e.target.value);
+                      }
+                    }}
                     className="w-32"
                   />
                   <div className="flex gap-2">
                     {['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'].map((color) => (
                       <button
                         key={color}
-                        onClick={() => setSettings({ ...settings, primaryColor: color })}
-                        className={`w-8 h-8 rounded-full border-2 ${
-                          settings.primaryColor === color ? 'border-gray-900' : 'border-transparent'
+                        onClick={() => {
+                          setSettings({ ...settings, primaryColor: color });
+                          applyPrimaryColor(color);
+                          toast.success('Couleur appliquée');
+                        }}
+                        className={`w-8 h-8 rounded-full border-2 transition-all ${
+                          settings.primaryColor === color ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent hover:scale-105'
                         }`}
                         style={{ backgroundColor: color }}
                       />
@@ -481,14 +516,18 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
                   <p className="font-medium">Sidebar compacte</p>
-                  <p className="text-sm text-gray-500">Réduire la taille de la barre latérale</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Réduire la taille de la barre latérale</p>
                 </div>
                 <Switch
                   checked={settings.sidebarCompact}
-                  onCheckedChange={(v) => setSettings({ ...settings, sidebarCompact: v })}
+                  onCheckedChange={(v) => {
+                    setSettings({ ...settings, sidebarCompact: v });
+                    applySidebarCompact(v);
+                    toast.success(v ? 'Sidebar compactée' : 'Sidebar étendue');
+                  }}
                 />
               </div>
             </CardContent>

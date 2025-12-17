@@ -139,3 +139,71 @@ code {
     @apply bg-background text-foreground;
     }
 }
+
+/* Couleur principale dynamique */
+:root {
+  --primary-color: #4f46e5;
+  --primary-h: 239;
+  --primary-s: 84%;
+  --primary-l: 67%;
+}
+
+/* Classes utilitaires pour la couleur principale */
+.bg-primary-dynamic {
+  background-color: var(--primary-color);
+}
+
+.text-primary-dynamic {
+  color: var(--primary-color);
+}
+
+.border-primary-dynamic {
+  border-color: var(--primary-color);
+}
+
+.hover\:bg-primary-dynamic:hover {
+  background-color: var(--primary-color);
+  filter: brightness(0.9);
+}
+
+/* Surcharge pour les boutons indigo par défaut */
+.bg-indigo-600 {
+  background-color: var(--primary-color, #4f46e5) !important;
+}
+
+.hover\:bg-indigo-700:hover {
+  background-color: var(--primary-color, #4338ca) !important;
+  filter: brightness(0.85);
+}
+
+.text-indigo-600 {
+  color: var(--primary-color, #4f46e5);
+}
+
+.hover\:text-indigo-600:hover {
+  color: var(--primary-color, #4f46e5);
+}
+
+.bg-indigo-100 {
+  background-color: color-mix(in srgb, var(--primary-color, #4f46e5) 15%, white);
+}
+
+.bg-indigo-50 {
+  background-color: color-mix(in srgb, var(--primary-color, #4f46e5) 8%, white);
+}
+
+.dark .bg-indigo-900 {
+  background-color: color-mix(in srgb, var(--primary-color, #4f46e5) 30%, black);
+}
+
+.dark .bg-indigo-950 {
+  background-color: color-mix(in srgb, var(--primary-color, #4f46e5) 20%, black);
+}
+
+.border-indigo-600 {
+  border-color: var(--primary-color, #4f46e5);
+}
+
+.ring-indigo-600 {
+  --tw-ring-color: var(--primary-color, #4f46e5);
+}
