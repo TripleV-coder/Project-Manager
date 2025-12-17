@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { useAppSettings, useTranslation } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +29,8 @@ export default function SettingsPage() {
     primaryColor: currentPrimaryColor,
     setPrimaryColor: applyPrimaryColor
   } = usePreferences();
+  const { updateSettings: updateAppSettings } = useAppSettings();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -114,13 +117,22 @@ export default function SettingsPage() {
       });
 
       if (response.ok) {
-        toast.success('Paramètres enregistrés avec succès');
+        // Mettre à jour le contexte global avec les paramètres généraux
+        updateAppSettings({
+          appName: settings.appName,
+          appDescription: settings.appDescription,
+          langue: settings.langue,
+          timezone: settings.timezone,
+          devise: settings.devise,
+          formatDate: settings.formatDate,
+        });
+        toast.success(t('settingsSaved'));
       } else {
-        toast.error('Erreur lors de l\'enregistrement');
+        toast.error(t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSaving(false);
     }
@@ -139,8 +151,8 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Paramètres</h1>
-          <p className="text-gray-600">Configuration globale de l'application</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">{t('settings')}</h1>
+          <p className="text-gray-600">{t('appDescription')}</p>
         </div>
         <Button 
           className="bg-indigo-600 hover:bg-indigo-700"
@@ -148,9 +160,9 @@ export default function SettingsPage() {
           disabled={saving}
         >
           {saving ? (
-            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Enregistrement...</>
+            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> {t('loading')}</>
           ) : (
-            <><Save className="w-4 h-4 mr-2" /> Enregistrer</>
+            <><Save className="w-4 h-4 mr-2" /> {t('save')}</>
           )}
         </Button>
       </div>
@@ -159,19 +171,19 @@ export default function SettingsPage() {
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Globe className="w-4 h-4" />
-            <span className="hidden sm:inline">Général</span>
+            <span className="hidden sm:inline">{t('general')}</span>
           </TabsTrigger>
           <TabsTrigger value="notifications" className="flex items-center gap-2">
             <Bell className="w-4 h-4" />
-            <span className="hidden sm:inline">Notifications</span>
+            <span className="hidden sm:inline">{t('notifications')}</span>
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline">Sécurité</span>
+            <span className="hidden sm:inline">{t('securitySettings')}</span>
           </TabsTrigger>
           <TabsTrigger value="appearance" className="flex items-center gap-2">
             <Palette className="w-4 h-4" />
-            <span className="hidden sm:inline">Apparence</span>
+            <span className="hidden sm:inline">{t('appearanceSettings')}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -179,20 +191,20 @@ export default function SettingsPage() {
         <TabsContent value="general">
           <Card>
             <CardHeader>
-              <CardTitle>Paramètres Généraux</CardTitle>
-              <CardDescription>Configuration de base de l'application</CardDescription>
+              <CardTitle>{t('generalSettings')}</CardTitle>
+              <CardDescription>{t('appDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Nom de l'application</Label>
+                  <Label>{t('appName')}</Label>
                   <Input
                     value={settings.appName}
                     onChange={(e) => setSettings({ ...settings, appName: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label>{t('description')}</Label>
                   <Input
                     value={settings.appDescription}
                     onChange={(e) => setSettings({ ...settings, appDescription: e.target.value })}
@@ -204,8 +216,8 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Langue</Label>
-                  <Select 
+                  <Label>{t('language')}</Label>
+                  <Select
                     value={settings.langue}
                     onValueChange={(v) => setSettings({ ...settings, langue: v })}
                   >
@@ -219,7 +231,7 @@ export default function SettingsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Fuseau horaire</Label>
+                  <Label>{t('timezone')}</Label>
                   <Select
                     value={settings.timezone}
                     onValueChange={(v) => setSettings({ ...settings, timezone: v })}
@@ -245,7 +257,7 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Devise</Label>
+                  <Label>{t('currency')}</Label>
                   <Select
                     value={settings.devise}
                     onValueChange={(v) => setSettings({ ...settings, devise: v })}
@@ -261,7 +273,7 @@ export default function SettingsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Format de date</Label>
+                  <Label>{t('dateFormat')}</Label>
                   <Select
                     value={settings.formatDate}
                     onValueChange={(v) => setSettings({ ...settings, formatDate: v })}
@@ -285,8 +297,8 @@ export default function SettingsPage() {
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
-              <CardTitle>Paramètres de Notifications</CardTitle>
-              <CardDescription>Configurez les alertes et notifications</CardDescription>
+              <CardTitle>{t('notificationSettings')}</CardTitle>
+              <CardDescription>{t('notifications')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
@@ -294,8 +306,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-3">
                     <Mail className="w-5 h-5 text-gray-600" />
                     <div>
-                      <p className="font-medium">Notifications par email</p>
-                      <p className="text-sm text-gray-500">Recevoir les notifications par email</p>
+                      <p className="font-medium">{t('emailNotifications')}</p>
+                      <p className="text-sm text-gray-500">{t('emailNotifications')}</p>
                     </div>
                   </div>
                   <Switch
@@ -308,8 +320,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-3">
                     <Bell className="w-5 h-5 text-gray-600" />
                     <div>
-                      <p className="font-medium">Notifications push</p>
-                      <p className="text-sm text-gray-500">Notifications dans l'application</p>
+                      <p className="font-medium">{t('pushNotifications')}</p>
+                      <p className="text-sm text-gray-500">{t('pushNotifications')}</p>
                     </div>
                   </div>
                   <Switch
@@ -320,20 +332,20 @@ export default function SettingsPage() {
               </div>
 
               <Separator />
-              <p className="text-sm font-medium text-gray-700">Événements déclencheurs</p>
+              <p className="text-sm font-medium text-gray-700">{t('triggerEvents')}</p>
 
               <div className="space-y-3">
                 {[
-                  { key: 'notifyTaskAssigned', label: 'Tâche assignée', desc: 'Quand une tâche vous est assignée' },
-                  { key: 'notifyTaskCompleted', label: 'Tâche terminée', desc: 'Quand une tâche de votre projet est terminée' },
-                  { key: 'notifyCommentMention', label: 'Mention dans un commentaire', desc: 'Quand vous êtes @mentionné' },
-                  { key: 'notifySprintStart', label: 'Début de sprint', desc: 'Quand un sprint démarre' },
-                  { key: 'notifyBudgetAlert', label: 'Alerte budget', desc: 'Quand le budget dépasse 80%' }
+                  { key: 'notifyTaskAssigned', labelKey: 'notifyTaskAssignedLabel', descKey: 'notifyTaskAssignedDesc' },
+                  { key: 'notifyTaskCompleted', labelKey: 'notifyTaskCompletedLabel', descKey: 'notifyTaskCompletedDesc' },
+                  { key: 'notifyCommentMention', labelKey: 'notifyCommentMentionLabel', descKey: 'notifyCommentMentionDesc' },
+                  { key: 'notifySprintStart', labelKey: 'notifySprintStartLabel', descKey: 'notifySprintStartDesc' },
+                  { key: 'notifyBudgetAlert', labelKey: 'notifyBudgetAlertLabel', descKey: 'notifyBudgetAlertDesc' }
                 ].map((item) => (
                   <div key={item.key} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
                     <div>
-                      <p className="font-medium text-sm">{item.label}</p>
-                      <p className="text-xs text-gray-500">{item.desc}</p>
+                      <p className="font-medium text-sm">{t(item.labelKey)}</p>
+                      <p className="text-xs text-gray-500">{t(item.descKey)}</p>
                     </div>
                     <Switch
                       checked={settings[item.key]}
@@ -350,34 +362,34 @@ export default function SettingsPage() {
         <TabsContent value="security">
           <Card>
             <CardHeader>
-              <CardTitle>Paramètres de Sécurité</CardTitle>
-              <CardDescription>Configuration de la sécurité et des accès</CardDescription>
+              <CardTitle>{t('securitySettings')}</CardTitle>
+              <CardDescription>{t('securitySettings')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Expiration de session (minutes)</Label>
+                  <Label>{t('sessionTimeout')} ({t('minutes')})</Label>
                   <Input
                     type="number"
                     value={settings.sessionTimeout}
                     onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) || 30 })}
                   />
-                  <p className="text-xs text-gray-500">Durée d'inactivité avant déconnexion automatique</p>
+                  <p className="text-xs text-gray-500">{t('sessionTimeout')}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Tentatives de connexion max</Label>
+                  <Label>{t('maxLoginAttempts')}</Label>
                   <Input
                     type="number"
                     value={settings.maxLoginAttempts}
                     onChange={(e) => setSettings({ ...settings, maxLoginAttempts: parseInt(e.target.value) || 5 })}
                   />
-                  <p className="text-xs text-gray-500">Nombre de tentatives avant blocage</p>
+                  <p className="text-xs text-gray-500">{t('maxLoginAttempts')}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Durée de blocage (minutes)</Label>
+                  <Label>{t('lockoutDuration')} ({t('minutes')})</Label>
                   <Input
                     type="number"
                     value={settings.lockoutDuration}
@@ -385,7 +397,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Longueur min. mot de passe</Label>
+                  <Label>{t('passwordMinLength')}</Label>
                   <Input
                     type="number"
                     value={settings.passwordMinLength}
@@ -399,8 +411,8 @@ export default function SettingsPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
-                    <p className="font-medium">Exiger des chiffres</p>
-                    <p className="text-sm text-gray-500">Le mot de passe doit contenir des chiffres</p>
+                    <p className="font-medium">{t('requireNumbers')}</p>
+                    <p className="text-sm text-gray-500">{t('requireNumbers')}</p>
                   </div>
                   <Switch
                     checked={settings.passwordRequireNumbers}
@@ -409,8 +421,8 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
-                    <p className="font-medium">Exiger des caractères spéciaux</p>
-                    <p className="text-sm text-gray-500">Le mot de passe doit contenir des symboles</p>
+                    <p className="font-medium">{t('requireSymbols')}</p>
+                    <p className="text-sm text-gray-500">{t('requireSymbols')}</p>
                   </div>
                   <Switch
                     checked={settings.passwordRequireSymbols}
@@ -421,8 +433,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-3">
                     <Shield className="w-5 h-5 text-yellow-600" />
                     <div>
-                      <p className="font-medium">Authentification à deux facteurs (2FA)</p>
-                      <p className="text-sm text-gray-500">Sécurité renforcée pour tous les utilisateurs</p>
+                      <p className="font-medium">{t('twoFactorAuth')}</p>
+                      <p className="text-sm text-gray-500">{t('twoFactorAuth')}</p>
                     </div>
                   </div>
                   <Switch
@@ -439,24 +451,24 @@ export default function SettingsPage() {
         <TabsContent value="appearance">
           <Card>
             <CardHeader>
-              <CardTitle>Apparence</CardTitle>
-              <CardDescription>Personnalisez l'interface de l'application</CardDescription>
+              <CardTitle>{t('appearanceSettings')}</CardTitle>
+              <CardDescription>{t('appearanceSettings')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label>Thème</Label>
+                <Label>{t('theme')}</Label>
                 <div className="grid grid-cols-3 gap-4">
                   {[
-                    { value: 'light', icon: Sun, label: 'Clair' },
-                    { value: 'dark', icon: Moon, label: 'Sombre' },
-                    { value: 'system', icon: Monitor, label: 'Système' }
+                    { value: 'light', icon: Sun, labelKey: 'light' },
+                    { value: 'dark', icon: Moon, labelKey: 'dark' },
+                    { value: 'system', icon: Monitor, labelKey: 'system' }
                   ].map((themeOption) => (
                     <button
                       key={themeOption.value}
                       onClick={() => {
                         setSettings({ ...settings, theme: themeOption.value });
                         applyTheme(themeOption.value);
-                        toast.success(`Thème ${themeOption.label.toLowerCase()} appliqué`);
+                        toast.success(t('settingsSaved'));
                       }}
                       className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
                         settings.theme === themeOption.value
@@ -467,7 +479,7 @@ export default function SettingsPage() {
                       <themeOption.icon className={`w-6 h-6 ${
                         settings.theme === themeOption.value ? 'text-indigo-600' : 'text-gray-400'
                       }`} />
-                      <span className="text-sm font-medium">{themeOption.label}</span>
+                      <span className="text-sm font-medium">{t(themeOption.labelKey)}</span>
                     </button>
                   ))}
                 </div>
@@ -476,7 +488,7 @@ export default function SettingsPage() {
               <Separator />
 
               <div className="space-y-2">
-                <Label>Couleur principale</Label>
+                <Label>{t('primaryColor')}</Label>
                 <div className="flex flex-wrap items-center gap-4">
                   <input
                     type="color"
@@ -504,7 +516,7 @@ export default function SettingsPage() {
                         onClick={() => {
                           setSettings({ ...settings, primaryColor: color });
                           applyPrimaryColor(color);
-                          toast.success('Couleur appliquée');
+                          toast.success(t('settingsSaved'));
                         }}
                         className={`w-8 h-8 rounded-full border-2 transition-all ${
                           settings.primaryColor === color ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent hover:scale-105'
@@ -518,15 +530,15 @@ export default function SettingsPage() {
 
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
-                  <p className="font-medium">Sidebar compacte</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Réduire la taille de la barre latérale</p>
+                  <p className="font-medium">{t('sidebarCompact')}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('sidebarCompact')}</p>
                 </div>
                 <Switch
                   checked={settings.sidebarCompact}
                   onCheckedChange={(v) => {
                     setSettings({ ...settings, sidebarCompact: v });
                     applySidebarCompact(v);
-                    toast.success(v ? 'Sidebar compactée' : 'Sidebar étendue');
+                    toast.success(t('settingsSaved'));
                   }}
                 />
               </div>

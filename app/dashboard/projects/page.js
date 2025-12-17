@@ -15,9 +15,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import TablePagination from '@/components/ui/table-pagination';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -105,7 +108,7 @@ export default function ProjectsPage() {
       const projectsList = extractApiData(projectsData, ['data', 'projects']);
       if (!Array.isArray(projectsList)) {
         console.error('Format de réponse invalide pour les projets:', projectsData);
-        toast.error('Erreur de format de données');
+        toast.error(t('errorOccurred'));
         setProjects([]);
         setTotalProjects(0);
       } else {
@@ -158,10 +161,10 @@ export default function ProjectsPage() {
       if (error.message === 'UNAUTHORIZED') {
         router.push('/login');
       } else if (error.message === 'TIMEOUT') {
-        toast.error('Chargement dépassé - Veuillez recharger');
+        toast.error(t('connectionError'));
       } else {
         console.error('Erreur chargement:', error);
-        toast.error('Erreur lors du chargement des projets');
+        toast.error(t('errorOccurred'));
       }
       setLoading(false);
     }
@@ -211,7 +214,7 @@ export default function ProjectsPage() {
       if (field.required) {
         const value = newProject.champs_personnalisés[field.id];
         if (!value || (Array.isArray(value) && value.length === 0)) {
-          toast.error(`Le champ "${field.label}" est requis`);
+          toast.error(`${field.label} - ${t('required')}`);
           return false;
         }
       }
@@ -220,11 +223,11 @@ export default function ProjectsPage() {
       if (field.type === 'nombre' && newProject.champs_personnalisés[field.id]) {
         const num = parseFloat(newProject.champs_personnalisés[field.id]);
         if (field.properties?.min !== undefined && num < field.properties.min) {
-          toast.error(`${field.label} doit être supérieur ou égal à ${field.properties.min}`);
+          toast.error(`${field.label} >= ${field.properties.min}`);
           return false;
         }
         if (field.properties?.max !== undefined && num > field.properties.max) {
-          toast.error(`${field.label} doit être inférieur ou égal à ${field.properties.max}`);
+          toast.error(`${field.label} <= ${field.properties.max}`);
           return false;
         }
       }
@@ -233,7 +236,7 @@ export default function ProjectsPage() {
         try {
           new URL(newProject.champs_personnalisés[field.id]);
         } catch {
-          toast.error(`${field.label} doit être une URL valide`);
+          toast.error(`${field.label} - ${t('error')}`);
           return false;
         }
       }
@@ -244,12 +247,12 @@ export default function ProjectsPage() {
 
   const handleCreateProject = async () => {
     if (!newProject.nom.trim()) {
-      toast.error('Le nom du projet est requis');
+      toast.error(t('required'));
       return;
     }
 
     if (!newProject.template_id) {
-      toast.error('Veuillez sélectionner un template');
+      toast.error(t('required'));
       return;
     }
 
@@ -272,22 +275,22 @@ export default function ProjectsPage() {
 
       setCreateDialogOpen(false);
       setNewProject({ nom: '', description: '', template_id: '', date_début: '', date_fin_prévue: '', champs_personnalisés: {} });
-      toast.success('Projet créé avec succès');
+      toast.success(t('projectCreated'));
       await loadData();
     } catch (error) {
       if (error.message === 'UNAUTHORIZED') {
         router.push('/login');
       } else if (error.message === 'TIMEOUT') {
-        toast.error('La requête a dépassé le délai d\'attente');
+        toast.error(t('connectionError'));
       } else if (error.data?.message) {
         // Afficher le message d'erreur de validation du serveur
         toast.error(error.data.message);
       } else if (error.message?.includes('400')) {
         console.error('Erreur création projet:', error, 'Données envoyées:', newProject);
-        toast.error('Données invalides. Vérifiez que le nom et le template sont bien renseignés.');
+        toast.error(t('errorOccurred'));
       } else {
         console.error('Erreur création projet:', error);
-        toast.error('Erreur lors de la création du projet');
+        toast.error(t('errorOccurred'));
       }
     } finally {
       setCreatingProject(false);
@@ -393,7 +396,7 @@ export default function ProjectsPage() {
         return (
           <Select value={value} onValueChange={(val) => handleCustomFieldChange(field.id, val)}>
             <SelectTrigger>
-              <SelectValue placeholder={field.placeholder || 'Sélectionnez...'} />
+              <SelectValue placeholder={field.placeholder || t('select')} />
             </SelectTrigger>
             <SelectContent>
               {(field.properties?.options || []).map((option) => (
@@ -414,7 +417,7 @@ export default function ProjectsPage() {
                 }
               }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Ajouter un utilisateur..." />
+                  <SelectValue placeholder={t('addMember')} />
                 </SelectTrigger>
                 <SelectContent>
                   {allUsers
@@ -449,7 +452,7 @@ export default function ProjectsPage() {
         return (
           <Select value={value} onValueChange={(val) => handleCustomFieldChange(field.id, val)}>
             <SelectTrigger>
-              <SelectValue placeholder={field.placeholder || 'Sélectionnez un utilisateur...'} />
+              <SelectValue placeholder={field.placeholder || t('select')} />
             </SelectTrigger>
             <SelectContent>
               {allUsers.map((user) => (
@@ -488,7 +491,7 @@ export default function ProjectsPage() {
       case 'fichier':
         return (
           <div className="text-xs text-gray-500 p-3 bg-gray-50 rounded border border-dashed">
-            L'upload de fichier sera disponible après la création du projet
+            {t('upload')}
           </div>
         );
 
@@ -539,8 +542,8 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Projets</h1>
-          <p className="text-xs text-gray-500">{totalProjects} projet(s) au total</p>
+          <h1 className="text-lg font-semibold text-gray-900">{t('projects')}</h1>
+          <p className="text-xs text-gray-500">{totalProjects} {t('projects').toLowerCase()}</p>
         </div>
         {user && rbacPermissions.canCreateProject && (
           <Dialog open={createDialogOpen} onOpenChange={(open) => {
@@ -552,13 +555,13 @@ export default function ProjectsPage() {
             <DialogTrigger asChild>
               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
                 <Plus className="w-4 h-4 mr-1" />
-                Nouveau projet
+                {t('newProject')}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Créer un nouveau projet</DialogTitle>
-                <DialogDescription>Remplissez les informations pour créer votre projet</DialogDescription>
+                <DialogTitle>{t('newProject')}</DialogTitle>
+                <DialogDescription>{t('description')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 {/* Standard fields */}
@@ -567,16 +570,16 @@ export default function ProjectsPage() {
                     <Label>Template *</Label>
                     <Select value={newProject.template_id} onValueChange={handleTemplateChange}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Sélectionnez un template" />
+                        <SelectValue placeholder={t('select')} />
                       </SelectTrigger>
                       <SelectContent>
-                        {templates.map(t => (
-                          <SelectItem key={t._id} value={t._id}>
+                        {templates.map(template => (
+                          <SelectItem key={template._id} value={template._id}>
                             <div className="flex items-center gap-2">
-                              <span>{t.nom}</span>
-                              {t.champs?.length > 0 && (
+                              <span>{template.nom}</span>
+                              {template.champs?.length > 0 && (
                                 <Badge variant="secondary" className="text-[10px]">
-                                  {t.champs.length} champ(s)
+                                  {template.champs.length} champ(s)
                                 </Badge>
                               )}
                             </div>
@@ -590,27 +593,27 @@ export default function ProjectsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Nom du projet *</Label>
+                    <Label>{t('projectName')} *</Label>
                     <Input
                       value={newProject.nom}
                       onChange={(e) => setNewProject({ ...newProject, nom: e.target.value })}
-                      placeholder="Ex: Refonte site web"
+                      placeholder={t('projectName')}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Description</Label>
+                    <Label>{t('description')}</Label>
                     <Textarea
                       value={newProject.description}
                       onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                      placeholder="Description du projet..."
+                      placeholder={t('description')}
                       rows={3}
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Date de début</Label>
+                      <Label>{t('startDate')}</Label>
                       <Input
                         type="date"
                         value={newProject.date_début}
@@ -618,7 +621,7 @@ export default function ProjectsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Date de fin prévue</Label>
+                      <Label>{t('endDate')}</Label>
                       <Input
                         type="date"
                         value={newProject.date_fin_prévue}
@@ -658,13 +661,13 @@ export default function ProjectsPage() {
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingProject}>Annuler</Button>
+                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingProject}>{t('cancel')}</Button>
                 <Button
                   onClick={handleCreateProject}
                   className="bg-indigo-600 hover:bg-indigo-700"
                   disabled={creatingProject || !newProject.nom.trim() || !newProject.template_id || templates.length === 0}
                 >
-                  {creatingProject ? 'Création...' : 'Créer le projet'}
+                  {creatingProject ? t('loading') : t('create')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -679,7 +682,7 @@ export default function ProjectsPage() {
           <Input
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-            placeholder="Rechercher..."
+            placeholder={t('searchPlaceholder')}
             className="pl-8 h-9 text-sm"
           />
         </div>
@@ -708,12 +711,12 @@ export default function ProjectsPage() {
         <Card className="p-8">
           <div className="text-center">
             <FolderKanban className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-gray-900 mb-1">Aucun projet</h3>
-            <p className="text-sm text-gray-600 mb-3">Commencez par créer votre premier projet</p>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">{t('noData')}</h3>
+            <p className="text-sm text-gray-600 mb-3">{t('newProject')}</p>
             {user && rbacPermissions.canCreateProject && (
               <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="bg-indigo-600 hover:bg-indigo-700">
                 <Plus className="w-4 h-4 mr-1" />
-                Créer un projet
+                {t('newProject')}
               </Button>
             )}
           </div>
@@ -743,7 +746,7 @@ export default function ProjectsPage() {
                     <div className="flex items-center gap-3 text-xs text-gray-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>{project.date_début ? new Date(project.date_début).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '-'}</span>
+                        <span>{project.date_début ? formatDate(project.date_début) : '-'}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Users className="w-3.5 h-3.5" />

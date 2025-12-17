@@ -207,3 +207,122 @@ code {
 .ring-indigo-600 {
   --tw-ring-color: var(--primary-color, #4f46e5);
 }
+
+/* ===== DARK MODE OVERRIDES ===== */
+/* Ces styles assurent la cohérence du thème sombre sur tous les composants */
+
+/* Fond gris clair -> gris foncé en mode sombre */
+.dark .bg-gray-50 {
+  background-color: rgb(31 41 55) !important; /* gray-800 */
+}
+
+.dark .bg-gray-100 {
+  background-color: rgb(55 65 81) !important; /* gray-700 */
+}
+
+/* Hover states en mode sombre */
+.dark .hover\:bg-gray-50:hover {
+  background-color: rgb(55 65 81) !important; /* gray-700 */
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: rgb(75 85 99) !important; /* gray-600 */
+}
+
+/* Textes */
+.dark .text-gray-900 {
+  color: rgb(243 244 246) !important; /* gray-100 */
+}
+
+.dark .text-gray-800 {
+  color: rgb(229 231 235) !important; /* gray-200 */
+}
+
+.dark .text-gray-700 {
+  color: rgb(209 213 219) !important; /* gray-300 */
+}
+
+.dark .text-gray-600 {
+  color: rgb(156 163 175) !important; /* gray-400 */
+}
+
+/* Bordures */
+.dark .border-gray-200 {
+  border-color: rgb(55 65 81) !important; /* gray-700 */
+}
+
+.dark .border-gray-300 {
+  border-color: rgb(75 85 99) !important; /* gray-600 */
+}
+
+.dark .border-gray-100 {
+  border-color: rgb(55 65 81) !important; /* gray-700 */
+}
+
+/* Dividers et borders dashed */
+.dark .border-dashed {
+  border-color: rgb(75 85 99) !important; /* gray-600 */
+}
+
+/* Tables */
+.dark thead.bg-gray-50,
+.dark .dark\:bg-gray-800 {
+  background-color: rgb(31 41 55) !important;
+}
+
+/* Alertes et badges */
+.dark .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.1) !important;
+}
+
+.dark .bg-yellow-50 {
+  background-color: rgba(234, 179, 8, 0.1) !important;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Fix pour les backgrounds avec opacité */
+.dark .bg-gray-50\/50 {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+}
+
+/* Card borders en mode sombre */
+.dark .shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* bg-white en mode sombre (pour les éléments qui n'ont pas de dark: variant) */
+.dark .bg-white:not(.dark\:bg-gray-800):not(.dark\:bg-gray-700):not(.dark\:bg-gray-900) {
+  background-color: rgb(31 41 55) !important; /* gray-800 */
+}
+
+/* Inputs et selects en mode sombre */
+.dark input.bg-white,
+.dark select.bg-white {
+  background-color: rgb(55 65 81) !important; /* gray-700 */
+  color: rgb(243 244 246) !important; /* gray-100 */
+  border-color: rgb(75 85 99) !important; /* gray-600 */
+}
+
+/* Placeholders en mode sombre */
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(156 163 175) !important; /* gray-400 */
+}
+
+/* Popovers et dropdowns */
+.dark .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Code blocks */
+.dark code {
+  background-color: rgb(55 65 81) !important; /* gray-700 */
+  color: rgb(243 244 246) !important; /* gray-100 */
+}

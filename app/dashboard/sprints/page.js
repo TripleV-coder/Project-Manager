@@ -19,10 +19,13 @@ import { useConfirmation } from '@/hooks/useConfirmation';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import BurndownChart from '@/components/charts/BurndownChart';
 import VelocityChart from '@/components/charts/VelocityChart';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function SprintsPage() {
   const router = useRouter();
   const { confirm } = useConfirmation();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [sprints, setSprints] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -174,7 +177,7 @@ export default function SprintsPage() {
       });
 
       if (!projectsRes.ok) {
-        toast.error('Erreur lors du chargement des projets');
+        toast.error(t('errorOccurred'));
       } else {
         const projectsData = await projectsRes.json();
         // Vérification sécurisée du format de réponse API
@@ -195,7 +198,7 @@ export default function SprintsPage() {
 
       let sprintsList = [];
       if (!sprintsRes.ok) {
-        toast.error('Erreur lors du chargement des sprints');
+        toast.error(t('errorOccurred'));
       } else {
         const sprintsData = await sprintsRes.json();
         // Vérification sécurisée du format de réponse API
@@ -237,7 +240,7 @@ export default function SprintsPage() {
     } catch (error) {
       console.error('Erreur:', error);
       if (error.name !== 'AbortError') {
-        toast.error('Erreur lors du chargement');
+        toast.error(t('errorOccurred'));
       }
       setLoading(false);
     }
@@ -272,17 +275,17 @@ export default function SprintsPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Sprint créé avec succès');
+        toast.success(t('sprintCreated'));
         setCreateDialogOpen(false);
         setNewSprint({ projet_id: '', nom: '', objectif: '', date_début: '', date_fin: '', capacité_équipe: '' });
         await loadData();
       } else {
-        toast.error(data.error || 'Erreur lors de la création');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Erreur:', error);
-        toast.error('Erreur de connexion');
+        toast.error(t('connectionError'));
       }
     } finally {
       setCreatingSprint(false);
@@ -294,7 +297,7 @@ export default function SprintsPage() {
     try {
       const token = localStorage.getItem('pm_token');
       if (!token) {
-        toast.error('Authentification requise');
+        toast.error(t('unauthorized'));
         setStartingSprintId(null);
         return;
       }
@@ -313,17 +316,17 @@ export default function SprintsPage() {
       console.log('Sprint start response:', { status: response.status, data });
 
       if (response.ok) {
-        toast.success('Sprint démarré avec succès');
+        toast.success(t('sprintStarted'));
         setSprints(prev => prev.map(s => s._id === sprintId ? { ...s, statut: 'Actif' } : s));
       } else {
-        const errorMessage = data.error || data.message || 'Erreur lors du démarrage du sprint';
+        const errorMessage = data.error || data.message || t('errorOccurred');
         console.error('Sprint start error:', errorMessage);
         toast.error(errorMessage);
       }
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Sprint start exception:', error);
-        toast.error(`Erreur: ${error.message || 'Erreur de connexion'}`);
+        toast.error(t('connectionError'));
       }
     } finally {
       setStartingSprintId(null);
@@ -332,10 +335,10 @@ export default function SprintsPage() {
 
   const handleCompleteSprint = useCallback(async (sprintId) => {
     const confirmed = await confirm({
-      title: 'Terminer le sprint',
-      description: 'Êtes-vous sûr de vouloir terminer ce sprint ?',
-      actionLabel: 'Terminer',
-      cancelLabel: 'Annuler'
+      title: t('endSprint'),
+      description: t('confirmAction'),
+      actionLabel: t('endSprint'),
+      cancelLabel: t('cancel')
     });
     if (!confirmed) return;
 
@@ -354,7 +357,7 @@ export default function SprintsPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Sprint terminé avec succès');
+        toast.success(t('sprintEnded'));
         setSprints(prev => prev.map(s => s._id === sprintId ? { ...s, statut: 'Terminé' } : s));
       } else {
         const errorMessage = data.error || data.message || 'Erreur lors de la terminaison';
@@ -363,7 +366,7 @@ export default function SprintsPage() {
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Erreur:', error);
-        toast.error('Erreur de connexion');
+        toast.error(t('connectionError'));
       }
     } finally {
       setCompletingSprintId(null);
@@ -422,14 +425,14 @@ export default function SprintsPage() {
         setAvailableTasks(prev => prev.map(t =>
           t._id === taskId ? { ...t, sprint_id: addToSprint ? selectedSprintForTasks._id : null } : t
         ));
-        toast.success(addToSprint ? 'Tâche ajoutée au sprint' : 'Tâche retirée du sprint');
+        toast.success(t('savedSuccessfully'));
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la modification');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setAssigningTask(null);
     }
@@ -437,10 +440,10 @@ export default function SprintsPage() {
 
   // Helper pour obtenir le nom du projet
   const getProjectName = useCallback((projectId) => {
-    if (!projectId) return 'Non assigné';
+    if (!projectId) return t('unassigned');
     const id = projectId?._id || projectId;
     const project = projects.find(p => compareIds(p._id, id));
-    return project?.nom || 'Projet inconnu';
+    return project?.nom || t('project');
   }, [projects, compareIds]);
 
   // Ouvrir le dialogue de modification
@@ -483,7 +486,7 @@ export default function SprintsPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Sprint modifié avec succès');
+        toast.success(t('sprintUpdated'));
         setSprints(prev => prev.map(s =>
           s._id === editingSprint._id
             ? { ...s, ...editingSprint }
@@ -492,11 +495,11 @@ export default function SprintsPage() {
         setEditDialogOpen(false);
         setEditingSprint(null);
       } else {
-        toast.error(data.error || 'Erreur lors de la modification');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSavingSprint(false);
     }
@@ -505,10 +508,10 @@ export default function SprintsPage() {
   // Supprimer un sprint
   const handleDeleteSprint = useCallback(async (sprintId, sprintName) => {
     const confirmed = await confirm({
-      title: 'Supprimer le sprint',
-      description: `Êtes-vous sûr de vouloir supprimer le sprint "${sprintName}" ? Cette action est irréversible.`,
-      actionLabel: 'Supprimer',
-      cancelLabel: 'Annuler',
+      title: t('delete'),
+      description: `${t('confirmDelete')} "${sprintName}" ? ${t('deleteWarning')}`,
+      actionLabel: t('delete'),
+      cancelLabel: t('cancel'),
       variant: 'destructive'
     });
 
@@ -526,15 +529,15 @@ export default function SprintsPage() {
       });
 
       if (response.ok) {
-        toast.success('Sprint supprimé avec succès');
+        toast.success(t('sprintDeleted'));
         setSprints(prev => prev.filter(s => s._id !== sprintId));
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la suppression');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setDeletingSprintId(null);
     }
@@ -563,7 +566,7 @@ export default function SprintsPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Sprints</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('sprintManagement')}</h1>
           <p className="text-gray-600">Planifiez et suivez vos sprints Agile</p>
         </div>
         {canManageSprints('gererSprints') && (
@@ -572,7 +575,7 @@ export default function SprintsPage() {
             onClick={() => setCreateDialogOpen(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
-            Nouveau sprint
+            {t('createSprint')}
           </Button>
         )}
       </div>
@@ -820,12 +823,12 @@ export default function SprintsPage() {
         <Card className="p-12">
           <div className="text-center">
             <Zap className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun sprint</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">{t('noSprints')}</h3>
             <p className="text-gray-600 mb-4">Créez votre premier sprint pour commencer</p>
             {canManageSprints('gererSprints') && (
               <Button onClick={() => setCreateDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
                 <Plus className="w-4 h-4 mr-2" />
-                Créer un sprint
+                {t('createSprint')}
               </Button>
             )}
           </div>
@@ -906,7 +909,7 @@ export default function SprintsPage() {
                       {/* Dates */}
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
-                        <span>{new Date(sprint.date_début).toLocaleDateString('fr-FR')} - {new Date(sprint.date_fin).toLocaleDateString('fr-FR')}</span>
+                        <span>{formatDate(sprint.date_début)} - {formatDate(sprint.date_fin)}</span>
                       </div>
 
                       {/* Progress bar */}
@@ -954,7 +957,7 @@ export default function SprintsPage() {
                               ) : (
                                 <>
                                   <Play className="w-4 h-4 mr-1" />
-                                  Démarrer
+                                  {t('startSprint')}
                                 </>
                               )}
                             </Button>
@@ -974,7 +977,7 @@ export default function SprintsPage() {
                               ) : (
                                 <>
                                   <CheckCircle className="w-4 h-4 mr-1" />
-                                  Terminer
+                                  {t('endSprint')}
                                 </>
                               )}
                             </Button>
@@ -983,7 +986,7 @@ export default function SprintsPage() {
                             <div className="flex-1 text-center py-2">
                               <span className="text-sm text-green-600 font-medium flex items-center justify-center gap-1">
                                 <CheckCircle className="w-4 h-4" />
-                                Terminé
+                                {t('completed')}
                               </span>
                             </div>
                           )}
@@ -1077,7 +1080,7 @@ export default function SprintsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingSprint}>Annuler</Button>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingSprint}>{t('cancel')}</Button>
             <Button onClick={handleCreateSprint} disabled={creatingSprint} className="bg-indigo-600 hover:bg-indigo-700">
               {creatingSprint ? 'Création...' : 'Créer le sprint'}
             </Button>
@@ -1225,7 +1228,7 @@ export default function SprintsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setManageTasksDialogOpen(false)}>
-              Fermer
+              {t('close')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1304,7 +1307,7 @@ export default function SprintsPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={savingSprint}>
-              Annuler
+              {t('cancel')}
             </Button>
             <Button onClick={handleSaveSprint} disabled={savingSprint || !editingSprint?.nom} className="bg-indigo-600 hover:bg-indigo-700">
               {savingSprint ? 'Enregistrement...' : 'Enregistrer les modifications'}

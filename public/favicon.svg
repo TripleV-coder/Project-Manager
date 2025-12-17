@@ -1,45 +1,7 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background circle -->
-  <rect width="256" height="256" rx="0" fill="#ffffff"/>
-  
-  <!-- Main gradient background -->
-  <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4f46e5;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  
-  <!-- Rounded square background -->
-  <rect x="20" y="20" width="216" height="216" rx="48" fill="url(#grad1)"/>
-  
-  <!-- Project grid/kanban board representation -->
-  <!-- Top left card -->
-  <rect x="50" y="60" width="35" height="50" rx="4" fill="rgba(255,255,255,0.95)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <circle cx="68" cy="75" r="3" fill="#4f46e5"/>
-  
-  <!-- Top middle card -->
-  <rect x="110" y="55" width="35" height="55" rx="4" fill="rgba(255,255,255,0.85)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <circle cx="128" cy="70" r="3" fill="#6366f1"/>
-  <line x1="115" y1="80" x2="140" y2="80" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>
-  
-  <!-- Top right card -->
-  <rect x="170" y="65" width="35" height="45" rx="4" fill="rgba(255,255,255,0.9)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <circle cx="188" cy="80" r="3" fill="#4f46e5"/>
-  
-  <!-- Bottom left card (progress) -->
-  <rect x="50" y="130" width="35" height="50" rx="4" fill="rgba(255,255,255,0.8)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <rect x="57" y="150" width="20" height="3" rx="1.5" fill="rgba(79, 70, 229, 0.6)"/>
-  
-  <!-- Bottom middle card -->
-  <rect x="110" y="125" width="35" height="55" rx="4" fill="rgba(255,255,255,0.92)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <circle cx="128" cy="140" r="3" fill="#6366f1"/>
-  <line x1="115" y1="150" x2="140" y2="150" stroke="rgba(79, 70, 229, 0.4)" stroke-width="1.5" stroke-linecap="round"/>
-  
-  <!-- Bottom right card (completion) -->
-  <rect x="170" y="135" width="35" height="45" rx="4" fill="rgba(255,255,255,0.87)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-  <g transform="translate(188, 153)">
-    <circle cx="0" cy="0" r="6" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.8"/>
-    <path d="M -2 1 L 1 4 L 4 -2" stroke="#10b981" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
-  </g>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fond violet vif -->
+  <rect width="64" height="64" rx="12" fill="#8b5cf6"/>
+
+  <!-- P stylisé en violet très clair - épais et visible -->
+  <path d="M16 10 L16 54 L26 54 L26 38 L38 38 C48 38 54 32 54 24 C54 16 48 10 38 10 Z M26 20 L36 20 C41 20 44 22 44 24 C44 26 41 28 36 28 L26 28 Z" fill="#ddd6fe"/>
 </svg>

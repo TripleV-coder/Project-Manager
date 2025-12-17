@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Edit2, Wallet, AlertCircle, Clock,
-  Trash2, Plus, X, BarChart3, CheckCircle2
+  Trash2, Plus, X, BarChart3, CheckCircle2, Settings2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,12 +18,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { useFormatters, useAppSettings } from '@/contexts/AppSettingsContext';
 
 export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams();
   const projectId = params.id;
   const { confirm } = useConfirmation();
+  const { formatCurrency, formatDate } = useFormatters();
+  const { settings: appSettings } = useAppSettings();
 
   const [project, setProject] = useState(null);
   const [user, setUser] = useState(null);
@@ -42,6 +45,11 @@ export default function ProjectDetailPage() {
   const [selectedProjectRole, setSelectedProjectRole] = useState(null);
   const [mergedPermissions, setMergedPermissions] = useState(null);
   const [totalExpenses, setTotalExpenses] = useState(0);
+
+  // États pour la modification de rôle d'un membre
+  const [editingMember, setEditingMember] = useState(null);
+  const [editingMemberRole, setEditingMemberRole] = useState('');
+  const [savingMemberRole, setSavingMemberRole] = useState(false);
 
   // Fonction pour calculer les permissions fusionnées (système + projet)
   const calculateMergedPermissions = useCallback(() => {
@@ -191,14 +199,42 @@ export default function ProjectDetailPage() {
         setAvailableUsers([]);
       }
 
-      // Charger les rôles système (8 rôles prédéfinis)
-      const systemRolesRes = await fetch('/api/roles', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // Charger les rôles : d'abord les rôles de projet, sinon les rôles système
+      try {
+        // Essayer de charger les rôles spécifiques au projet
+        const projectRolesRes = await fetch(`/api/projects/${projectId}/roles`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
 
-      if (systemRolesRes.ok) {
-        const systemRolesData = await systemRolesRes.json();
-        setProjectRoles(systemRolesData.roles || []);
+        if (projectRolesRes.ok) {
+          const projectRolesData = await projectRolesRes.json();
+          const roles = projectRolesData.roles || [];
+
+          if (roles.length > 0) {
+            setProjectRoles(roles);
+          } else {
+            // Fallback vers les rôles système si pas de rôles projet
+            const systemRolesRes = await fetch('/api/roles', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (systemRolesRes.ok) {
+              const systemRolesData = await systemRolesRes.json();
+              setProjectRoles(systemRolesData.roles || []);
+            }
+          }
+        } else {
+          // Fallback vers les rôles système
+          const systemRolesRes = await fetch('/api/roles', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (systemRolesRes.ok) {
+            const systemRolesData = await systemRolesRes.json();
+            setProjectRoles(systemRolesData.roles || []);
+          }
+        }
+      } catch {
+        console.warn('Impossible de charger les rôles');
+        setProjectRoles([]);
       }
 
       // Charger les dépenses du projet pour calculer le budget consommé
@@ -373,6 +409,50 @@ export default function ProjectDetailPage() {
       toast.error('Erreur de connexion');
     } finally {
       setRemovingMemberId(null);
+    }
+  };
+
+  // Ouvrir le dialog de modification de rôle
+  const handleEditMemberRole = (member) => {
+    setEditingMember(member);
+    setEditingMemberRole(member.project_role_id?._id || '');
+  };
+
+  // Sauvegarder le nouveau rôle du membre
+  const handleSaveMemberRole = async () => {
+    if (!editingMember || !editingMemberRole) {
+      toast.error('Sélectionnez un rôle');
+      return;
+    }
+
+    setSavingMemberRole(true);
+    try {
+      const token = localStorage.getItem('pm_token');
+      const response = await fetch(`/api/projects/${projectId}/members/${editingMember._id}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          project_role_id: editingMemberRole
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Rôle modifié avec succès');
+        setEditingMember(null);
+        setEditingMemberRole('');
+        await loadData();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Erreur lors de la modification du rôle');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur de connexion');
+    } finally {
+      setSavingMemberRole(false);
     }
   };
 
@@ -657,13 +737,13 @@ export default function ProjectDetailPage() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Date de début</p>
                   <p className="font-medium">
-                    {project.date_début ? new Date(project.date_début).toLocaleDateString('fr-FR') : 'Non défini'}
+                    {project.date_début ? formatDate(project.date_début) : 'Non défini'}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Date de fin prévue</p>
                   <p className="font-medium">
-                    {project.date_fin_prévue ? new Date(project.date_fin_prévue).toLocaleDateString('fr-FR') : 'Non défini'}
+                    {project.date_fin_prévue ? formatDate(project.date_fin_prévue) : 'Non défini'}
                   </p>
                 </div>
               </div>
@@ -679,13 +759,13 @@ export default function ProjectDetailPage() {
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Budget prévisionnel</p>
                       <p className="text-lg font-bold text-indigo-600">
-                        {(project.budget.prévisionnel || 0).toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                        {formatCurrency(project.budget.prévisionnel || 0)}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Budget consommé</p>
                       <p className={`text-lg font-bold ${totalExpenses > project.budget.prévisionnel ? 'text-red-600' : 'text-green-600'}`}>
-                        {totalExpenses.toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                        {formatCurrency(totalExpenses)}
                       </p>
                     </div>
                   </div>
@@ -710,7 +790,7 @@ export default function ProjectDetailPage() {
                         />
                       </div>
                       <p className="text-xs text-gray-500 mt-2">
-                        Reste: {(project.budget.prévisionnel - totalExpenses).toLocaleString('fr-FR')} {project.budget.devise || 'FCFA'}
+                        Reste: {formatCurrency(project.budget.prévisionnel - totalExpenses)}
                       </p>
                     </div>
                   )}
@@ -933,9 +1013,9 @@ export default function ProjectDetailPage() {
                 {/* Other Members */}
                 {membersList.length > 0 ? (
                   membersList.map((member) => {
-                    const memberRole = member.project_role_id?.nom || 'Rôle non défini';
+                    const memberRole = member.project_role_id?.nom || member.user_id?.role?.nom || 'Membre';
                     return (
-                      <div key={member._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div key={member._id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <div className="flex items-center gap-3">
                           <Avatar>
                             <AvatarFallback className="bg-gray-600 text-white">
@@ -943,30 +1023,44 @@ export default function ProjectDetailPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium text-gray-900">{member.user_id?.nom_complet}</p>
-                            <p className="text-xs text-gray-600">{memberRole}</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{member.user_id?.nom_complet}</p>
+                            <Badge variant="secondary" className="text-xs">
+                              {memberRole}
+                            </Badge>
                           </div>
                         </div>
                         {canManageMembers && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveMember(member._id)}
-                            disabled={removingMemberId === member._id}
-                            className="text-red-600 hover:bg-red-50"
-                          >
-                            {removingMemberId === member._id ? (
-                              <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <X className="w-4 h-4" />
-                            )}
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditMemberRole(member)}
+                              className="text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+                              title="Modifier le rôle"
+                            >
+                              <Settings2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveMember(member._id)}
+                              disabled={removingMemberId === member._id}
+                              className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              title="Retirer du projet"
+                            >
+                              {removingMemberId === member._id ? (
+                                <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <X className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </div>
                         )}
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-sm text-gray-600 py-4">Aucun membre ajouté pour le moment</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 py-4">Aucun membre ajouté pour le moment</p>
                 )}
               </div>
             </CardContent>
@@ -988,17 +1082,17 @@ export default function ProjectDetailPage() {
                 <div>
                   <p className="text-xs text-gray-600">Prévisionnel</p>
                   <p className="text-xl font-bold text-gray-900">
-                    {(project.budget?.prévisionnel || 0).toLocaleString('fr-FR')} {project.budget?.devise || 'FCFA'}
+                    {formatCurrency(project.budget?.prévisionnel || 0)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-600">Réel</p>
                   <p className="text-xl font-bold text-blue-600">
-                    {(project.budget?.réel || 0).toLocaleString('fr-FR')} {project.budget?.devise || 'FCFA'}
+                    {formatCurrency(project.budget?.réel || 0)}
                   </p>
                 </div>
                 <div className="p-2 bg-gray-100 rounded text-xs text-gray-600">
-                  <p>Restant: {((project.budget?.prévisionnel || 0) - (project.budget?.réel || 0)).toLocaleString('fr-FR')} {project.budget?.devise || 'FCFA'}</p>
+                  <p>Restant: {formatCurrency((project.budget?.prévisionnel || 0) - (project.budget?.réel || 0))}</p>
                 </div>
               </CardContent>
             </Card>
@@ -1086,6 +1180,84 @@ export default function ProjectDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Dialog de modification de rôle */}
+      <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifier le rôle du membre</DialogTitle>
+            <DialogDescription>
+              Changer le rôle de {editingMember?.user_id?.nom_complet} dans ce projet
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <Avatar>
+                <AvatarFallback className="bg-indigo-600 text-white">
+                  {editingMember?.user_id?.nom_complet?.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{editingMember?.user_id?.nom_complet}</p>
+                <p className="text-xs text-gray-500">{editingMember?.user_id?.email}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nouveau rôle</Label>
+              <Select value={editingMemberRole} onValueChange={setEditingMemberRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionnez un rôle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projectRoles.map(role => (
+                    <SelectItem key={role._id} value={role._id}>
+                      <div className="text-left">
+                        <div className="font-medium">{role.nom}</div>
+                        <div className="text-xs text-gray-500">{role.description}</div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editingMemberRole && (
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
+                <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-100 mb-2">
+                  Permissions du rôle sélectionné :
+                </p>
+                <div className="grid grid-cols-2 gap-1 text-xs text-indigo-800 dark:text-indigo-200">
+                  {(() => {
+                    const selectedRole = projectRoles.find(r => r._id === editingMemberRole);
+                    if (!selectedRole) return null;
+                    return (
+                      <>
+                        {selectedRole.permissions?.voirTousProjets && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Voir tous projets</div>}
+                        {selectedRole.permissions?.gererTaches && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Gérer tâches</div>}
+                        {selectedRole.permissions?.gererSprints && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Gérer sprints</div>}
+                        {selectedRole.permissions?.voirBudget && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Voir budget</div>}
+                        {selectedRole.permissions?.modifierBudget && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Modifier budget</div>}
+                        {selectedRole.permissions?.gererMembresProjet && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Gérer membres</div>}
+                        {selectedRole.permissions?.genererRapports && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Générer rapports</div>}
+                        {selectedRole.permissions?.voirAudit && <div className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Voir audit</div>}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingMember(null)} disabled={savingMemberRole}>
+              Annuler
+            </Button>
+            <Button onClick={handleSaveMemberRole} disabled={savingMemberRole || !editingMemberRole} className="bg-indigo-600">
+              {savingMemberRole ? 'Enregistrement...' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

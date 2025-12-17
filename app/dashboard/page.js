@@ -13,9 +13,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function DashboardHome() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [stats, setStats] = useState({
     projectsCount: 0,
     tasksCount: 0,
@@ -90,8 +92,8 @@ export default function DashboardHome() {
     <div className="p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">Vue d'ensemble de vos projets et tâches</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('dashboard')}</h1>
+        <p className="text-gray-600">{t('recentActivity')}</p>
       </div>
 
       {/* Stats Cards */}
@@ -99,12 +101,12 @@ export default function DashboardHome() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Projets actifs</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t('activeProjects')}</CardTitle>
               <FolderKanban className="w-4 h-4 text-indigo-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">{stats.projectsCount}</div>
-              <p className="text-xs text-gray-500 mt-1">Projets en cours</p>
+              <p className="text-xs text-gray-500 mt-1">{t('inProgress')}</p>
             </CardContent>
           </Card>
         </motion.div>
@@ -112,12 +114,12 @@ export default function DashboardHome() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Tâches totales</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t('tasks')}</CardTitle>
               <ListTodo className="w-4 h-4 text-blue-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">{stats.tasksCount}</div>
-              <p className="text-xs text-gray-500 mt-1">Toutes tâches</p>
+              <p className="text-xs text-gray-500 mt-1">{t('pendingTasks')}</p>
             </CardContent>
           </Card>
         </motion.div>
@@ -125,13 +127,13 @@ export default function DashboardHome() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Tâches terminées</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t('completed')}</CardTitle>
               <CheckCircle2 className="w-4 h-4 text-green-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">{stats.completedTasks}</div>
               <p className="text-xs text-gray-500 mt-1">
-                {stats.tasksCount > 0 ? Math.round((stats.completedTasks / stats.tasksCount) * 100) : 0}% de progression
+                {stats.tasksCount > 0 ? Math.round((stats.completedTasks / stats.tasksCount) * 100) : 0}% {t('progress')}
               </p>
             </CardContent>
           </Card>
@@ -140,12 +142,12 @@ export default function DashboardHome() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">En attente</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t('todo')}</CardTitle>
               <AlertCircle className="w-4 h-4 text-orange-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900">{stats.pendingTasks}</div>
-              <p className="text-xs text-gray-500 mt-1">Tâches à faire</p>
+              <p className="text-xs text-gray-500 mt-1">{t('pendingTasks')}</p>
             </CardContent>
           </Card>
         </motion.div>
@@ -157,16 +159,16 @@ export default function DashboardHome() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Projets récents</CardTitle>
-                <CardDescription>Vos derniers projets actifs</CardDescription>
+                <CardTitle>{t('recentProjects')}</CardTitle>
+                <CardDescription>{t('yourActiveProjects')}</CardDescription>
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 onClick={() => router.push('/dashboard/projects')}
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
                 <Plus className="w-4 h-4 mr-1" />
-                Nouveau
+                {t('newProject')}
               </Button>
             </div>
           </CardHeader>
@@ -174,13 +176,13 @@ export default function DashboardHome() {
             {projects.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <FolderKanban className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p>Aucun projet pour le moment</p>
-                <Button 
-                  className="mt-4" 
+                <p>{t('noProjects')}</p>
+                <Button
+                  className="mt-4"
                   size="sm"
                   onClick={() => router.push('/dashboard/projects')}
                 >
-                  Créer un projet
+                  {t('createProject')}
                 </Button>
               </div>
             ) : (
@@ -207,13 +209,13 @@ export default function DashboardHome() {
                   </button>
                 ))}
                 {projects.length > 5 && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="w-full"
                     onClick={() => router.push('/dashboard/projects')}
                   >
-                    Voir tous les projets ({projects.length})
+                    {t('viewAllProjects')} ({projects.length})
                   </Button>
                 )}
               </div>
@@ -223,14 +225,14 @@ export default function DashboardHome() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Mes tâches</CardTitle>
-            <CardDescription>Tâches qui vous sont assignées</CardDescription>
+            <CardTitle>{t('myTasks')}</CardTitle>
+            <CardDescription>{t('tasksAssignedToYou')}</CardDescription>
           </CardHeader>
           <CardContent>
             {tasks.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p>Aucune tâche assignée</p>
+                <p>{t('noTasksAssigned')}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -249,13 +251,13 @@ export default function DashboardHome() {
                   </div>
                 ))}
                 {tasks.length > 5 && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="w-full"
                     onClick={() => router.push('/dashboard/tasks')}
                   >
-                    Voir toutes les tâches ({tasks.length})
+                    {t('viewAllTasks')} ({tasks.length})
                   </Button>
                 )}
               </div>

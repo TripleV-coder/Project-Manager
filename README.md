@@ -4,7 +4,7 @@
 
 ![Logo](https://img.shields.io/badge/PM-Gestion_de_Projets-4f46e5?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0yMiAxOUgybS0yIDBoNGw0LTEwIDQgNSA0LTkgNiAxNHoiLz48L3N2Zz4=)
 
-![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.7-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-14.2.33-black.svg)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green.svg)
 ![React](https://img.shields.io/badge/React-18-61DAFB.svg)
@@ -29,6 +29,21 @@
 3. [Systeme RBAC Complet](#-système-rbac-complet)
 4. [Fonctionnement des Roles](#-fonctionnement-détaillé-des-rôles)
 5. [Fonctionnalites Completes](#-fonctionnalités-complètes)
+   - [Dashboard](#1-dashboard-dashboard)
+   - [Projets](#2-projets-dashboardprojects)
+   - [Kanban](#3-kanban-dashboardkanban)
+   - [Backlog](#4-backlog-dashboardbacklog)
+   - [Sprints](#5-sprints-dashboardsprints)
+   - [Tâches](#7-tâches-dashboardtasks)
+   - [Timesheets](#10-timesheets-dashboardtimesheets)
+   - [Budget](#11-budget-dashboardbudget)
+   - [Livrables](#15-livrables-dashboarddeliverables)
+   - [Profil Utilisateur](#16-profil-utilisateur-dashboardprofile)
+   - [Internationalisation](#17-internationalisation-i18n)
+   - [Thème et Personnalisation](#18-thème-et-personnalisation)
+   - [Intégration SharePoint](#19-intégration-sharepoint)
+   - [Dépendances Tâches](#20-dépendances-entre-tâches)
+   - [Templates Projets](#21-templates-de-projets)
 6. [Workflows et Transitions](#-workflows-et-transitions-de-statut)
 7. [Installation](#-installation)
 8. [Configuration](#-configuration)
@@ -38,6 +53,7 @@
 12. [Architecture Technique](#-architecture-technique)
 13. [Securite](#-sécurité)
 14. [Scripts Disponibles](#-scripts-disponibles)
+15. [Changelog](#-changelog)
 
 ---
 
@@ -890,6 +906,61 @@ BROUILLON ──────> SOUMIS ──────> VALIDÉ
 
 **Auto-soumission**: Les timesheets en brouillon sont automatiquement soumis 5 jours avant la fin du mois.
 
+#### Liaison Temps et Tâches
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CALCUL DU TEMPS DE TRAVAIL                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. SAISIE TIMESHEET                                            │
+│     └─> Utilisateur saisit ses heures sur une tâche             │
+│         ├─> Statut: "Brouillon"                                  │
+│         └─> Heures non comptabilisées dans temps_réel           │
+│                                                                  │
+│  2. SOUMISSION                                                   │
+│     └─> Utilisateur soumet son timesheet                         │
+│         ├─> Statut: "Soumis"                                     │
+│         └─> En attente de validation                             │
+│                                                                  │
+│  3. VALIDATION                                                   │
+│     └─> Manager valide le timesheet                              │
+│         ├─> Statut: "Validé"                                     │
+│         ├─> temps_réel de la tâche incrémenté (+heures)         │
+│         └─> Stats projet mises à jour automatiquement           │
+│                                                                  │
+│  4. PROPAGATION DES CALCULS                                      │
+│     ├─> Tâche: temps_réel = Σ timesheets validés                │
+│     ├─> Projet: stats.heures_réelles = Σ tâches.temps_réel      │
+│     └─> Sprint: burndown recalculé                               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Champs de Temps
+
+| Niveau | Champ | Description | Mise à jour |
+|--------|-------|-------------|-------------|
+| **Tâche** | `estimation_heures` | Heures estimées pour la tâche | Manuel |
+| **Tâche** | `temps_réel` | Heures réellement passées | Auto (validation timesheet) |
+| **Projet** | `stats.heures_estimées` | Somme estimations tâches | Auto (agrégation) |
+| **Projet** | `stats.heures_réelles` | Somme temps réels tâches | Auto (agrégation) |
+| **Sprint** | `capacité_équipe` | Heures disponibles équipe | Manuel |
+| **Sprint** | `burndown_data.heures_restantes` | Heures restantes jour J | Auto |
+
+#### Affichage des Statistiques
+
+**Dashboard Timesheets** :
+- **Heures mensuelles** : Total des heures saisies sur le mois
+- **Moyenne/jour** : Heures totales / nombre d'entrées
+
+**Page Projet** :
+- **Heures estimées** : Somme des `estimation_heures` de toutes les tâches
+- **Heures réelles** : Somme des `temps_réel` de toutes les tâches
+
+**Sprint Burndown** :
+- Affiche uniquement les heures réelles validées (pas de fallback sur estimations)
+
 ---
 
 ### 11. Budget (`/dashboard/budget`)
@@ -1058,12 +1129,12 @@ Types par défaut: Document, Code Source, Design, Rapport, Prototype
 
 **Accès**: `adminConfig`
 
-Configuration de l'intégration Microsoft SharePoint:
-- Tenant ID
-- Client ID
-- Client Secret
-- Site ID
-- Test de connexion
+Configuration de l'intégration Microsoft SharePoint (voir [Section 19](#19-intégration-sharepoint) pour les détails complets) :
+- Configuration des identifiants Azure AD (Tenant ID, Client ID, Client Secret, Site ID)
+- Test de connexion réel via Microsoft Graph API
+- Activation/désactivation de la synchronisation automatique
+- Synchronisation manuelle de tous les projets
+- Statistiques de synchronisation et historique des erreurs
 
 #### 14.7 Paramètres (`/dashboard/settings`)
 
@@ -1082,6 +1153,448 @@ Configuration de l'intégration Microsoft SharePoint:
 - Activer/désactiver le mode maintenance
 - Message personnalisé aux utilisateurs
 - Seuls les admins peuvent accéder pendant la maintenance
+
+---
+
+### 15. Livrables (`/dashboard/deliverables`)
+
+**Accès**: Utilisateurs avec `validerLivrable` ou accès projet
+
+#### Concept des Livrables
+
+Un livrable représente un élément concret à produire dans le cadre d'un projet : document, code source, design, rapport, prototype, etc.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CYCLE DE VIE LIVRABLE                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  À PRODUIRE ───> EN VALIDATION ───> VALIDÉ ───> ARCHIVÉ         │
+│       │               │                                          │
+│       │               └──> REFUSÉ ──────────────┐                │
+│       │                                          │                │
+│       └──────────────────────────────────────────┘                │
+│                    (retour pour correction)                      │
+│                                                                  │
+│  Workflow multi-étapes configurable:                             │
+│  ├── Création (par défaut)                                       │
+│  ├── Revue technique                                             │
+│  ├── Validation métier                                           │
+│  └── Approbation finale                                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Structure d'un Livrable
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `nom` | String | Nom du livrable |
+| `description` | Text | Description détaillée |
+| `type` | DeliverableType | Type (Document, Code, Design, etc.) |
+| `statut_global` | Enum | À produire, En validation, Validé, Refusé, Archivé |
+| `assigné_à` | User | Responsable de la production |
+| `date_échéance` | Date | Date limite de livraison |
+| `fichiers` | Array | Fichiers attachés avec versions |
+| `metadata` | Object | Métadonnées personnalisées selon le type |
+
+#### Types de Livrables Personnalisés
+
+L'administrateur peut créer des types de livrables avec :
+
+| Configuration | Description |
+|---------------|-------------|
+| **Étapes workflow** | Définir les étapes de validation (séquentiel ou parallèle) |
+| **Approbateurs** | Par rôle ou utilisateur spécifique |
+| **Délais** | Délai maximum par étape |
+| **Signature électronique** | Obligatoire ou optionnelle |
+| **Champs métadonnées** | Champs personnalisés (texte, nombre, date, liste) |
+| **Dépendances** | Livrables prérequis |
+
+#### Historique et Traçabilité
+
+Chaque action sur un livrable est tracée :
+- Étape actuelle et précédentes
+- Action (validé, refusé, demande_modification)
+- Utilisateur et date
+- Commentaires et fichiers joints
+- Signatures avec IP et timestamp
+
+---
+
+### 16. Profil Utilisateur (`/dashboard/profile`)
+
+**Accès**: Tous les utilisateurs connectés
+
+#### Informations Personnelles
+
+| Section | Champs modifiables |
+|---------|-------------------|
+| **Identité** | Nom complet, avatar |
+| **Contact** | Email (lecture seule), téléphone |
+| **Professionnel** | Poste, département/équipe |
+| **Compétences** | Liste de compétences (tags) |
+| **Disponibilité** | Heures hebdomadaires (défaut: 35h) |
+| **Localisation** | Fuseau horaire |
+| **Facturation** | Taux journalier (FCFA) |
+
+#### Statistiques Personnelles
+
+Le profil affiche vos métriques :
+- **Projets actifs** : Nombre de projets où vous êtes membre
+- **Tâches complétées** : Total des tâches terminées
+- **Tâches en cours** : Tâches actuellement assignées
+- **Heures travaillées** : Total des heures validées (timesheets)
+
+#### Sécurité du Compte
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SÉCURITÉ DU COMPTE                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  CHANGEMENT DE MOT DE PASSE                                      │
+│  ├── Mot de passe actuel requis                                  │
+│  ├── Nouveau mot de passe (min. 8 caractères)                   │
+│  ├── Confirmation du nouveau mot de passe                        │
+│  └── Historique: 5 derniers MDP interdits                       │
+│                                                                  │
+│  AUTHENTIFICATION À DEUX FACTEURS (2FA)                          │
+│  ├── Activation/Désactivation                                    │
+│  ├── QR Code pour application authenticateur                    │
+│  ├── Code manuel si scan impossible                              │
+│  ├── 10 codes de secours générés                                │
+│  └── Régénération des codes possible                            │
+│                                                                  │
+│  APPLICATIONS COMPATIBLES 2FA:                                   │
+│  ├── Google Authenticator                                        │
+│  ├── Microsoft Authenticator                                     │
+│  ├── Authy                                                       │
+│  └── Tout app TOTP standard                                      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Codes de Secours 2FA
+
+Lors de l'activation de la 2FA, 10 codes de secours sont générés :
+- Format : `XXXX-XXXX` (8 caractères alphanumériques)
+- Usage unique : chaque code ne peut être utilisé qu'une fois
+- À conserver en lieu sûr (hors de l'appareil principal)
+- Avertissement affiché si moins de 3 codes restants
+- Possibilité de régénérer tous les codes (invalide les anciens)
+
+---
+
+### 17. Internationalisation (i18n)
+
+**Langues supportées** : Français (FR), English (EN)
+
+#### Fonctionnement
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SYSTÈME DE TRADUCTION                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  CONFIGURATION                                                   │
+│  ├── Langue par défaut: Français (FR)                           │
+│  ├── Changement via: Paramètres > Langue                        │
+│  └── Persistance: localStorage + base de données                │
+│                                                                  │
+│  COUVERTURE                                                      │
+│  ├── Interface utilisateur complète                             │
+│  ├── Messages d'erreur et de succès                             │
+│  ├── Emails de notification                                     │
+│  ├── Exports PDF et Excel                                       │
+│  └── 400+ clés de traduction                                    │
+│                                                                  │
+│  ZONES TRADUITES                                                 │
+│  ├── Navigation et menus                                         │
+│  ├── Formulaires et labels                                       │
+│  ├── Messages toast                                              │
+│  ├── Boutons et actions                                          │
+│  ├── Statuts et états                                            │
+│  ├── Dates (format localisé)                                    │
+│  └── Montants (format devise)                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Formats Localisés
+
+| Élément | Français (FR) | English (EN) |
+|---------|---------------|--------------|
+| **Date** | 17/12/2025 | 12/17/2025 |
+| **Heure** | 14:30 | 2:30 PM |
+| **Nombre** | 1 234,56 | 1,234.56 |
+| **Devise** | 50 000 FCFA | 50,000 FCFA |
+
+#### Utilisation dans le Code
+
+```javascript
+// Récupérer la fonction de traduction
+const { t, language, setLanguage } = useAppSettings();
+
+// Utiliser une traduction
+<h1>{t('dashboard')}</h1>  // "Tableau de bord" ou "Dashboard"
+
+// Changer la langue
+setLanguage('en');  // Passe en anglais
+```
+
+---
+
+### 18. Thème et Personnalisation
+
+#### Modes de Thème
+
+| Mode | Description |
+|------|-------------|
+| **Clair (Light)** | Fond blanc, texte sombre |
+| **Sombre (Dark)** | Fond sombre, texte clair |
+| **Système (System)** | Suit les préférences OS |
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PERSONNALISATION UI                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  THÈME                                                           │
+│  ├── Clair / Sombre / Système                                   │
+│  ├── Transition fluide entre thèmes                             │
+│  └── Persistance localStorage (pm_theme)                        │
+│                                                                  │
+│  COULEUR PRINCIPALE                                              │
+│  ├── Indigo (défaut) - #6366f1                                  │
+│  ├── Sky (bleu ciel) - #0ea5e9                                  │
+│  ├── Emerald (vert) - #10b981                                   │
+│  ├── Amber (orange) - #f59e0b                                   │
+│  ├── Red (rouge) - #ef4444                                      │
+│  └── Violet - #8b5cf6                                           │
+│                                                                  │
+│  SIDEBAR                                                         │
+│  ├── Mode étendu: icônes + texte                                │
+│  └── Mode compact: icônes seules                                │
+│                                                                  │
+│  PERSISTANCE                                                     │
+│  ├── pm_theme: mode de thème                                    │
+│  ├── pm_primary_color: couleur principale                       │
+│  └── pm_sidebar_compact: état sidebar                           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Application du Thème
+
+Le thème s'applique via des variables CSS personnalisées :
+- Les composants shadcn/ui s'adaptent automatiquement
+- Les graphiques Recharts suivent le thème
+- Les exports PDF utilisent un style neutre professionnel
+
+---
+
+### 19. Intégration SharePoint
+
+**Accès**: `adminConfig`
+
+L'intégration SharePoint permet de synchroniser automatiquement les fichiers de vos projets avec Microsoft SharePoint via l'API Microsoft Graph.
+
+#### Fonctionnalités
+
+| Fonctionnalité | Description |
+|----------------|-------------|
+| **Configuration persistante** | Les identifiants sont stockés de manière sécurisée en base de données |
+| **Test de connexion réel** | Validation via Microsoft Graph API |
+| **Upload automatique** | Les fichiers uploadés sont automatiquement synchronisés vers SharePoint |
+| **Suppression synchronisée** | La suppression locale supprime aussi le fichier SharePoint |
+| **Synchronisation manuelle** | Bouton pour synchroniser tous les projets d'un coup |
+| **Statistiques de sync** | Suivi des fichiers synchronisés et des erreurs |
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INTÉGRATION SHAREPOINT                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  FLUX DE SYNCHRONISATION                                         │
+│  ════════════════════════                                       │
+│                                                                  │
+│  1. UPLOAD FICHIER                                               │
+│     └─> Fichier sauvegardé localement (MongoDB)                 │
+│         └─> Si SharePoint configuré ET projet spécifié          │
+│             └─> Upload automatique vers SharePoint               │
+│                 └─> Métadonnées SharePoint enregistrées          │
+│                                                                  │
+│  2. SUPPRESSION FICHIER                                          │
+│     └─> Si fichier synchronisé (sharepoint_id présent)          │
+│         └─> Suppression sur SharePoint                           │
+│     └─> Suppression locale (MongoDB)                             │
+│                                                                  │
+│  3. SYNCHRONISATION MANUELLE                                     │
+│     └─> Parcourt tous les projets actifs                        │
+│         └─> Pour chaque fichier non synchronisé                 │
+│             └─> Crée dossier projet sur SharePoint              │
+│             └─> Upload le fichier                                │
+│             └─> Met à jour les métadonnées                       │
+│                                                                  │
+│  STRUCTURE SHAREPOINT                                            │
+│  ════════════════════                                           │
+│  SharePoint Site/                                                │
+│  └── Projet_{id}_{nom}/                                         │
+│      ├── document1.pdf                                           │
+│      ├── image.png                                               │
+│      └── rapport.xlsx                                            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Configuration
+
+| Paramètre | Description | Format |
+|-----------|-------------|--------|
+| `Tenant ID` | Identifiant Azure AD de l'organisation | UUID |
+| `Client ID` | ID de l'application enregistrée | UUID |
+| `Client Secret` | Secret de l'application | String |
+| `Site ID` | Identifiant du site SharePoint | String |
+
+#### Guide de Configuration Azure AD
+
+1. **Créer une application** dans Azure Active Directory
+2. **Configurer les permissions** Microsoft Graph :
+   - `Sites.ReadWrite.All` (Application)
+   - `Files.ReadWrite.All` (Application)
+3. **Générer un Client Secret**
+4. **Récupérer le Site ID** avec le script utilitaire
+5. **Tester la connexion** via l'interface d'administration
+6. **Activer** l'intégration
+
+#### Script Utilitaire
+
+Pour récupérer le Site ID SharePoint :
+
+```bash
+node scripts/get-sharepoint-site-id.js [tenant-id] [client-id] [client-secret] [hostname] [site-path]
+
+# Exemple:
+node scripts/get-sharepoint-site-id.js \
+  "12345678-1234-1234-1234-123456789012" \
+  "abcdefgh-abcd-abcd-abcd-abcdefghijkl" \
+  "your-client-secret" \
+  "contoso.sharepoint.com" \
+  "/sites/MonSite"
+```
+
+#### Métadonnées Fichiers
+
+Chaque fichier synchronisé contient :
+
+| Champ | Description |
+|-------|-------------|
+| `sharepoint_id` | ID unique du fichier sur SharePoint |
+| `sharepoint_url` | URL directe vers le fichier |
+| `sharepoint_synced` | Statut de synchronisation (true/false) |
+| `last_sync_sharepoint` | Date de dernière synchronisation |
+
+#### Endpoints API
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| `GET` | `/api/sharepoint/config` | Récupérer la configuration |
+| `PUT` | `/api/sharepoint/config` | Sauvegarder la configuration |
+| `POST` | `/api/sharepoint/test` | Tester la connexion |
+| `POST` | `/api/sharepoint/sync` | Lancer une synchronisation manuelle |
+
+---
+
+### 20. Dépendances entre Tâches
+
+#### Types de Dépendances
+
+| Type | Signification |
+|------|---------------|
+| `bloque` | Cette tâche bloque une autre tâche |
+| `bloqué_par` | Cette tâche est bloquée par une autre |
+| `lié_à` | Relation simple sans blocage |
+
+#### Comportement
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GESTION DES DÉPENDANCES                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  TÂCHE A ─────bloque─────> TÂCHE B                              │
+│     │                          │                                 │
+│     │                          ├── Ne peut pas démarrer tant    │
+│     │                          │   que A n'est pas terminée     │
+│     │                          │                                 │
+│     └── Affiche badge "Bloque X tâches"                         │
+│                                                                  │
+│  VISUALISATION                                                   │
+│  ├── Liste des dépendances dans le détail tâche                │
+│  ├── Lignes de connexion dans la Roadmap                       │
+│  └── Alertes si dépendance non satisfaite                      │
+│                                                                  │
+│  RÈGLES                                                          │
+│  ├── Pas de dépendances circulaires                            │
+│  ├── Une tâche peut avoir plusieurs dépendances                │
+│  └── Les dépendances sont vérifiées lors des transitions       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 21. Templates de Projets
+
+**Accès**: `adminConfig`
+
+#### Création de Template
+
+| Élément | Description |
+|---------|-------------|
+| **Nom et description** | Identification du template |
+| **Catégorie** | Web, Mobile, Marketing, Infrastructure, etc. |
+| **Champs personnalisés** | Champs spécifiques au type de projet |
+| **Colonnes Kanban** | Configuration par défaut des colonnes |
+| **Rôles projet** | Rôles prédéfinis pour ce type |
+| **Livrables auto** | Livrables créés automatiquement |
+
+#### Types de Champs Dynamiques
+
+| Type | Usage | Options |
+|------|-------|---------|
+| `texte` | Texte libre | min/max length, pattern regex |
+| `nombre` | Valeur numérique | min, max, décimales |
+| `date` | Date | min/max date, format |
+| `sélecteur` | Liste déroulante | options prédéfinies |
+| `utilisateur` | Sélection user | filtres par rôle |
+| `fichier` | Upload fichier | types acceptés, taille max |
+| `budget` | Montant devise | devise, format |
+| `url` | Lien web | validation URL |
+| `checkbox` | Oui/Non | valeur par défaut |
+
+#### Champs Conditionnels
+
+```javascript
+// Exemple: Champ visible si type = "externe"
+{
+  "show_if": {
+    "field": "type_projet",
+    "operator": "equals",
+    "value": "externe"
+  }
+}
+
+// Exemple: Champ requis si budget > 1000000
+{
+  "require_if": {
+    "field": "budget_previsionnel",
+    "operator": "greater_than",
+    "value": 1000000
+  }
+}
+```
 
 ---
 
@@ -1746,20 +2259,46 @@ yarn socket           # Serveur Socket.io seul
 
 ## 📝 Changelog
 
-### Version 1.0.3 (Décembre 2024)
+### Version 1.0.7 (Décembre 2025)
+
+- ✅ Optimisation calculs temps de travail
+- ✅ Correction affichage "Heures mensuelles" (affiche total heures, pas le count)
+- ✅ Correction burndown sprint (temps réel uniquement, pas de fallback estimation)
+- ✅ Invalidation cache projet après validation timesheet
+- ✅ Incrémentation automatique temps_réel tâche à la validation
+- ✅ Documentation complète gestion du temps
+
+### Version 1.0.6 (Décembre 2025)
+
+- ✅ Paramètres système fonctionnels (langue, thème, maintenance)
+- ✅ Amélioration gestion rôles membres projet
+
+### Version 1.0.5 (Décembre 2025)
+
+- ✅ Mode maintenance avec message personnalisé
+- ✅ Thème sombre complet
+- ✅ Préférences UI utilisateur
+
+### Version 1.0.4 (Décembre 2025)
+
+- ✅ Page profil utilisateur complète
+- ✅ Gestion budget améliorée
+- ✅ Corrections permissions divers rôles
+
+### Version 1.0.3 (Décembre 2025)
 
 - ✅ Correction filtrage projets pour rôles lecture seule
 - ✅ APIs sprints/tasks/deliverables filtrés par projets accessibles
 - ✅ Compteur notifications temps réel corrigé
 - ✅ Documentation README exhaustive
 
-### Version 1.0.2 (Décembre 2024)
+### Version 1.0.2 (Décembre 2025)
 
 - ✅ Audit et correction des 10 rôles prédéfinis
 - ✅ Ajout composant Toaster pour notifications
 - ✅ Suppression fichiers inutiles (16 fichiers)
 
-### Version 1.0.1 (Décembre 2024)
+### Version 1.0.1 (Décembre 2025)
 
 - ✅ Mise à jour Next.js 14.2.33
 - ✅ Correction vulnérabilités sécurité

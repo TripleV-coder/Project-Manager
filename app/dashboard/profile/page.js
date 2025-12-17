@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, Mail, Phone, Briefcase, Calendar, Shield, Save, Building, Clock, Globe } from 'lucide-react';
+import { useTranslation } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -10,9 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import TwoFactorSetup from '@/components/TwoFactorSetup';
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,7 +59,7 @@ export default function ProfilePage() {
           router.push('/login');
           return;
         }
-        throw new Error('Erreur chargement profil');
+        throw new Error(t('loadError'));
       }
 
       const data = await response.json();
@@ -77,7 +80,7 @@ export default function ProfilePage() {
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      toast.error(t('loadError'));
       setLoading(false);
     }
   };
@@ -135,7 +138,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     if (!formData.nom_complet.trim()) {
-      toast.error('Le nom complet est requis');
+      toast.error(t('nameRequired'));
       return;
     }
 
@@ -152,17 +155,17 @@ export default function ProfilePage() {
       });
 
       if (response.ok) {
-        toast.success('Profil mis à jour avec succès');
+        toast.success(t('profileUpdated'));
         setEditing(false);
         // Mettre à jour l'état local
         setUser(prev => ({ ...prev, ...formData }));
       } else {
         const errorData = await response.json();
-        toast.error(errorData.error || 'Erreur lors de la mise à jour');
+        toast.error(errorData.error || t('updateError'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSaving(false);
     }
@@ -192,8 +195,8 @@ export default function ProfilePage() {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Mon Profil</h1>
-        <p className="text-gray-600">Gérez vos informations personnelles</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('myProfile')}</h1>
+        <p className="text-gray-600">{t('personalInfo')}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -253,12 +256,12 @@ export default function ProfilePage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Informations personnelles</CardTitle>
-                <CardDescription>Vos coordonnées et informations de contact</CardDescription>
+                <CardTitle>{t('personalInfo')}</CardTitle>
+                <CardDescription>{t('contactInfo')}</CardDescription>
               </div>
               {!editing && (
                 <Button onClick={() => setEditing(true)} variant="outline">
-                  Modifier
+                  {t('editProfile')}
                 </Button>
               )}
             </div>
@@ -267,7 +270,7 @@ export default function ProfilePage() {
             {editing ? (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Nom complet *</Label>
+                  <Label>{t('userName')} *</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
@@ -280,7 +283,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Email</Label>
+                  <Label>{t('email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
@@ -290,13 +293,13 @@ export default function ProfilePage() {
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    L'email ne peut pas être modifié. Contactez un administrateur.
+                    {t('emailNotEditable')}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Téléphone</Label>
+                    <Label>{t('userPhone')}</Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -309,7 +312,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Poste / Fonction</Label>
+                    <Label>{t('userPosition')}</Label>
                     <div className="relative">
                       <Briefcase className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -324,7 +327,7 @@ export default function ProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Département / Équipe</Label>
+                    <Label>{t('userDepartment')}</Label>
                     <div className="relative">
                       <Building className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -337,7 +340,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Disponibilité hebdomadaire (heures)</Label>
+                    <Label>{t('weeklyAvailability')} ({t('hours')})</Label>
                     <div className="relative">
                       <Clock className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -353,7 +356,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Fuseau horaire</Label>
+                  <Label>{t('timezone')}</Label>
                   <div className="relative">
                     <Globe className="absolute left-3 top-3 w-4 h-4 text-gray-400 z-10" />
                     <Select
@@ -387,17 +390,17 @@ export default function ProfilePage() {
                     {saving ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        Enregistrement...
+                        {t('saving')}...
                       </>
                     ) : (
                       <>
                         <Save className="w-4 h-4 mr-2" />
-                        Enregistrer
+                        {t('save')}
                       </>
                     )}
                   </Button>
                   <Button onClick={handleCancel} variant="outline" className="flex-1" disabled={saving}>
-                    Annuler
+                    {t('cancel')}
                   </Button>
                 </div>
               </div>
@@ -406,7 +409,7 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <User className="w-5 h-5 text-gray-400" />
                   <div>
-                    <p className="text-sm text-gray-500">Nom complet</p>
+                    <p className="text-sm text-gray-500">{t('userName')}</p>
                     <p className="font-medium">{user?.nom_complet}</p>
                   </div>
                 </div>
@@ -414,7 +417,7 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <Mail className="w-5 h-5 text-gray-400" />
                   <div>
-                    <p className="text-sm text-gray-500">Email</p>
+                    <p className="text-sm text-gray-500">{t('email')}</p>
                     <p className="font-medium">{user?.email}</p>
                   </div>
                 </div>
@@ -423,16 +426,16 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Phone className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">Téléphone</p>
-                      <p className="font-medium">{user?.telephone || 'Non renseigné'}</p>
+                      <p className="text-sm text-gray-500">{t('userPhone')}</p>
+                      <p className="font-medium">{user?.telephone || t('notProvided')}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Briefcase className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">Poste / Fonction</p>
-                      <p className="font-medium">{user?.poste_titre || 'Non renseigné'}</p>
+                      <p className="text-sm text-gray-500">{t('userPosition')}</p>
+                      <p className="font-medium">{user?.poste_titre || t('notProvided')}</p>
                     </div>
                   </div>
                 </div>
@@ -441,16 +444,16 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Building className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">Département / Équipe</p>
-                      <p className="font-medium">{user?.département_équipe || 'Non renseigné'}</p>
+                      <p className="text-sm text-gray-500">{t('userDepartment')}</p>
+                      <p className="font-medium">{user?.département_équipe || t('notProvided')}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Clock className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">Disponibilité hebdo</p>
-                      <p className="font-medium">{user?.disponibilité_hebdo || 35}h / semaine</p>
+                      <p className="text-sm text-gray-500">{t('weeklyAvailability')}</p>
+                      <p className="font-medium">{user?.disponibilité_hebdo || 35}{t('hours')}</p>
                     </div>
                   </div>
                 </div>
@@ -458,7 +461,7 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <Globe className="w-5 h-5 text-gray-400" />
                   <div>
-                    <p className="text-sm text-gray-500">Fuseau horaire</p>
+                    <p className="text-sm text-gray-500">{t('timezone')}</p>
                     <p className="font-medium">{user?.fuseau_horaire || 'Africa/Porto-Novo'}</p>
                   </div>
                 </div>
@@ -466,6 +469,14 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Sécurité - 2FA */}
+      <div className="mt-6">
+        <TwoFactorSetup
+          isEnabled={user?.twoFactorEnabled || false}
+          onStatusChange={(enabled) => setUser(prev => ({ ...prev, twoFactorEnabled: enabled }))}
+        />
       </div>
 
       {/* Statistiques */}

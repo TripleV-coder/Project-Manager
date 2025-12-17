@@ -20,11 +20,14 @@ import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { getAvailableMenus } from '@/lib/menuConfig';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { useAppSettings, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const { sidebarCompact } = usePreferences();
+  const { settings: appSettings } = useAppSettings();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -149,7 +152,7 @@ export default function DashboardLayout({ children }) {
   const handleLogout = () => {
     localStorage.removeItem('pm_token');
     localStorage.removeItem('pm_user');
-    toast.success('Déconnexion réussie');
+    toast.success(t('logoutSuccess'));
     router.push('/login');
   };
 
@@ -171,7 +174,7 @@ export default function DashboardLayout({ children }) {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Chargement...</p>
+          <p className="text-gray-600 dark:text-gray-400">{t('loading')}</p>
         </div>
       </div>
     );
@@ -198,7 +201,7 @@ export default function DashboardLayout({ children }) {
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
                 <FolderKanban className="w-6 h-6 text-white" />
               </div>
-              <span className="font-bold text-gray-900 dark:text-white">PM Gestion</span>
+              <span className="font-bold text-gray-900 dark:text-white">{appSettings.appName?.split(' - ')[0] || 'PM'}</span>
             </div>
             <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <X className="w-5 h-5 dark:text-gray-300" />
@@ -218,7 +221,7 @@ export default function DashboardLayout({ children }) {
                 }`}
               >
                 <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
+                <span className="font-medium">{t(item.labelKey)}</span>
               </Link>
             ))}
 
@@ -240,14 +243,14 @@ export default function DashboardLayout({ children }) {
                     </span>
                   )}
                 </div>
-                <span className="font-medium">{notificationsMenu.label}</span>
+                <span className="font-medium">{t(notificationsMenu.labelKey)}</span>
               </Link>
             )}
 
             {/* Section Admin */}
             {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t dark:border-gray-700">
-                <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
+                <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">{t('administration')}</p>
                 {adminMenuItems.map((item) => (
                   <Link
                     key={item.href}
@@ -259,7 +262,7 @@ export default function DashboardLayout({ children }) {
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
-                    <span className="font-medium">{item.label}</span>
+                    <span className="font-medium">{t(item.labelKey)}</span>
                   </Link>
                 ))}
               </div>
@@ -281,7 +284,7 @@ export default function DashboardLayout({ children }) {
             </div>
             <Button variant="outline" className="w-full text-red-600 dark:text-red-400 dark:border-gray-600" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
-              Déconnexion
+              {t('logout')}
             </Button>
           </div>
         </div>
@@ -300,8 +303,8 @@ export default function DashboardLayout({ children }) {
                   <FolderKanban className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-gray-900 dark:text-white">PM Gestion</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Projets Agile</p>
+                  <h1 className="font-bold text-gray-900 dark:text-white">{appSettings.appName?.split(' - ')[0] || 'PM'}</h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{appSettings.appDescription?.slice(0, 20) || 'Projets Agile'}</p>
                 </div>
               </div>
             ) : (
@@ -325,7 +328,7 @@ export default function DashboardLayout({ children }) {
                 }`}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                {sidebarOpen && <span className="font-medium text-sm">{item.label}</span>}
+                {sidebarOpen && <span className="font-medium text-sm">{t(item.labelKey)}</span>}
               </Link>
             ))}
 
@@ -333,7 +336,7 @@ export default function DashboardLayout({ children }) {
             {notificationsMenu && (
               <Link
                 href={notificationsMenu.href}
-                title={notificationsMenu.label}
+                title={t(notificationsMenu.labelKey)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   pathname === notificationsMenu.href
                     ? 'bg-indigo-600 text-white shadow-lg'
@@ -348,7 +351,7 @@ export default function DashboardLayout({ children }) {
                     </span>
                   )}
                 </div>
-                {sidebarOpen && <span className="font-medium text-sm">{notificationsMenu.label}</span>}
+                {sidebarOpen && <span className="font-medium text-sm">{t(notificationsMenu.labelKey)}</span>}
               </Link>
             )}
 
@@ -356,7 +359,7 @@ export default function DashboardLayout({ children }) {
             {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t dark:border-gray-700">
                 {sidebarOpen && (
-                  <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Administration</p>
+                  <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">{t('administration')}</p>
                 )}
 
                 {sidebarOpen ? (
@@ -388,7 +391,7 @@ export default function DashboardLayout({ children }) {
                             }`}
                           >
                             <item.icon className="w-4 h-4" />
-                            <span>{item.label}</span>
+                            <span>{t(item.labelKey)}</span>
                           </Link>
                         ))}
                       </div>
@@ -400,7 +403,7 @@ export default function DashboardLayout({ children }) {
                       <Link
                         key={item.href}
                         href={item.href}
-                        title={item.label}
+                        title={t(item.labelKey)}
                         className={`flex items-center justify-center p-3 rounded-xl transition-all ${
                           pathname === item.href
                             ? 'bg-indigo-600 text-white'
@@ -440,7 +443,7 @@ export default function DashboardLayout({ children }) {
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4 mr-2" />
-                  Déconnexion
+                  {t('logout')}
                 </Button>
               </div>
             ) : (
@@ -491,11 +494,20 @@ export default function DashboardLayout({ children }) {
             {/* Breadcrumb */}
             <div className="hidden sm:block">
               <h2 className="font-semibold text-gray-900 dark:text-white">
-                {pathname === '/dashboard' ? 'Tableau de bord' :
-                 pathname.includes('/admin/roles') ? 'Rôles & Permissions' :
-                 pathname.includes('/admin/sharepoint') ? 'Configuration SharePoint' :
-                 pathname.includes('/admin/templates') ? 'Templates Projets' :
-                 pathname.split('/').pop()?.charAt(0).toUpperCase() + pathname.split('/').pop()?.slice(1) || 'Dashboard'}
+                {pathname === '/dashboard' ? t('dashboard') :
+                 pathname.includes('/admin/roles') ? t('rolesPermissions') :
+                 pathname.includes('/admin/sharepoint') ? t('sharepoint') :
+                 pathname.includes('/admin/templates') ? t('projectTemplates') :
+                 pathname.includes('/settings') ? t('settings') :
+                 pathname.includes('/users') ? t('users') :
+                 pathname.includes('/projects') ? t('projects') :
+                 pathname.includes('/tasks') ? t('tasks') :
+                 pathname.includes('/sprints') ? t('sprints') :
+                 pathname.includes('/timesheets') ? t('timesheets') :
+                 pathname.includes('/budget') ? t('budget') :
+                 pathname.includes('/notifications') ? t('notifications') :
+                 pathname.includes('/profile') ? t('profile') :
+                 t('dashboard')}
               </h2>
             </div>
           </div>

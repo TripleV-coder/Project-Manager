@@ -104,6 +104,24 @@ const userSchema = new mongoose.Schema({
     default: null
   },
 
+  // Two-Factor Authentication (2FA)
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false // Never return in queries
+  },
+  twoFactorBackupCodes: {
+    type: [String],
+    select: false
+  },
+  twoFactorPendingSecret: {
+    type: String,
+    select: false // Temporary secret during setup
+  },
+
   // Audit trail
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

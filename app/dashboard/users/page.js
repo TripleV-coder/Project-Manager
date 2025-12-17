@@ -16,9 +16,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from 'sonner';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import TablePagination from '@/components/ui/table-pagination';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function UsersPage() {
   const router = useRouter();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -234,27 +237,27 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Utilisateurs</h1>
-          <p className="text-xs text-gray-500">{totalUsers} utilisateur(s) au total</p>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{t('userManagement')}</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{totalUsers} {t('users').toLowerCase()}</p>
         </div>
         {canManageUsers('adminConfig') && (
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
                 <Plus className="w-4 h-4 mr-1" />
-                Nouvel utilisateur
+                {t('createUser')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Créer un utilisateur</DialogTitle>
+                <DialogTitle>{t('createUser')}</DialogTitle>
                 <DialogDescription>
-                  Le mot de passe temporaire sera 00000000. L'utilisateur devra le changer à la première connexion.
+                  {t('welcomeFirstLogin')}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>Nom complet</Label>
+                  <Label>{t('userName')}</Label>
                   <Input
                     value={newUser.nom_complet}
                     onChange={(e) => setNewUser({ ...newUser, nom_complet: e.target.value })}
@@ -262,7 +265,7 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Email</Label>
+                  <Label>{t('email')}</Label>
                   <Input
                     type="email"
                     value={newUser.email}
@@ -271,10 +274,10 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Rôle</Label>
+                  <Label>{t('role')}</Label>
                   <Select value={newUser.role_id} onValueChange={(val) => setNewUser({ ...newUser, role_id: val })}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez un rôle" />
+                      <SelectValue placeholder={t('select')} />
                     </SelectTrigger>
                     <SelectContent>
                       {roles.map(r => (
@@ -286,22 +289,22 @@ export default function UsersPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Statut</Label>
+                  <Label>{t('status')}</Label>
                   <Select value={newUser.status} onValueChange={(val) => setNewUser({ ...newUser, status: val })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Actif">Actif</SelectItem>
-                      <SelectItem value="Désactivé">Désactivé</SelectItem>
+                      <SelectItem value="Actif">{t('active')}</SelectItem>
+                      <SelectItem value="Désactivé">{t('disabled')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingUser}>Annuler</Button>
+                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingUser}>{t('cancel')}</Button>
                 <Button onClick={handleCreateUser} disabled={creatingUser} className="bg-indigo-600 hover:bg-indigo-700">
-                  {creatingUser ? 'Création...' : 'Créer l\'utilisateur'}
+                  {creatingUser ? t('loading') : t('create')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -315,7 +318,7 @@ export default function UsersPage() {
         <Input
           value={searchTerm}
           onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-          placeholder="Rechercher..."
+          placeholder={t('searchPlaceholder')}
           className="pl-8 h-9 text-sm"
         />
       </div>
@@ -325,12 +328,12 @@ export default function UsersPage() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
-                <TableHead className="text-xs font-medium">Utilisateur</TableHead>
-                <TableHead className="text-xs font-medium">Email</TableHead>
-                <TableHead className="text-xs font-medium">Rôle</TableHead>
-                <TableHead className="text-xs font-medium">Statut</TableHead>
-                <TableHead className="text-xs font-medium hidden md:table-cell">Dernière connexion</TableHead>
+              <TableRow className="bg-gray-50 dark:bg-gray-800">
+                <TableHead className="text-xs font-medium">{t('user')}</TableHead>
+                <TableHead className="text-xs font-medium">{t('email')}</TableHead>
+                <TableHead className="text-xs font-medium">{t('role')}</TableHead>
+                <TableHead className="text-xs font-medium">{t('status')}</TableHead>
+                <TableHead className="text-xs font-medium hidden md:table-cell">{t('updatedAt')}</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -339,12 +342,12 @@ export default function UsersPage() {
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8">
                     <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">Aucun utilisateur trouvé</p>
+                    <p className="text-sm text-gray-500">{t('noUsers')}</p>
                   </TableCell>
                 </TableRow>
               ) : (
                 displayedUsers.map((u) => (
-                  <TableRow key={u._id} className="hover:bg-gray-50">
+                  <TableRow key={u._id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                     <TableCell className="py-2">
                       <div className="flex items-center gap-2">
                         <Avatar className="w-7 h-7">
@@ -356,7 +359,7 @@ export default function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="py-2">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
                         <Mail className="w-3.5 h-3.5" />
                         {u.email}
                       </div>
@@ -370,16 +373,16 @@ export default function UsersPage() {
                     <TableCell className="py-2">
                       <Badge variant={u.status === 'Actif' ? 'default' : 'secondary'} className="text-[10px]">
                         {u.status === 'Actif' ? (
-                          <><UserCheck className="w-3 h-3 mr-1" /> Actif</>
+                          <><UserCheck className="w-3 h-3 mr-1" /> {t('active')}</>
                         ) : (
-                          <><UserX className="w-3 h-3 mr-1" /> Désactivé</>
+                          <><UserX className="w-3 h-3 mr-1" /> {t('disabled')}</>
                         )}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2 text-xs text-gray-500 hidden md:table-cell">
                       {u.dernière_connexion
-                        ? new Date(u.dernière_connexion).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-                        : 'Jamais'
+                        ? formatDate(u.dernière_connexion, { includeTime: true })
+                        : '-'
                       }
                     </TableCell>
                     <TableCell className="py-2">
@@ -397,7 +400,7 @@ export default function UsersPage() {
                               }}
                             >
                               <Key className="w-4 h-4 mr-2" />
-                              Réinitialiser le mot de passe
+                              {t('resetPassword')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -431,22 +434,22 @@ export default function UsersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+            <DialogTitle>{t('resetPassword')}</DialogTitle>
             <DialogDescription>
-              Êtes-vous sûr de vouloir réinitialiser le mot de passe de {selectedUserForReset?.nom_complet} ?
+              {t('confirmAction')} - {selectedUserForReset?.nom_complet}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
-              <p className="text-sm font-medium text-amber-900">Mot de passe temporaire</p>
-              <p className="text-sm text-amber-700">Mot de passe: <code className="bg-white px-2 py-0.5 rounded font-mono">00000000</code></p>
+              <p className="text-sm font-medium text-amber-900">{t('newPassword')}</p>
+              <p className="text-sm text-amber-700">{t('password')}: <code className="bg-white px-2 py-0.5 rounded font-mono">00000000</code></p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>Annuler</Button>
+            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>{t('cancel')}</Button>
             <Button onClick={handleResetPassword} disabled={resettingPassword} className="bg-amber-600 hover:bg-amber-700">
-              {resettingPassword ? 'Réinitialisation...' : 'Réinitialiser'}
+              {resettingPassword ? t('loading') : t('reset')}
             </Button>
           </DialogFooter>
         </DialogContent>

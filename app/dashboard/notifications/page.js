@@ -9,9 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import TablePagination from '@/components/ui/table-pagination';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -40,7 +43,7 @@ export default function NotificationsPage() {
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement');
+      toast.error(t('loadingError'));
       setLoading(false);
     }
   };
@@ -57,7 +60,7 @@ export default function NotificationsPage() {
         n._id === notificationId ? { ...n, lu: true } : n
       );
       setNotifications(updatedNotifications);
-      toast.success('Notification marquée comme lue');
+      toast.success(t('notificationMarkedAsRead'));
 
       // Émettre un événement pour mettre à jour le compteur dans le layout
       const newUnreadCount = updatedNotifications.filter(n => !n.lu).length;
@@ -76,7 +79,7 @@ export default function NotificationsPage() {
       });
 
       setNotifications(notifications.map(n => ({ ...n, lu: true })));
-      toast.success('Toutes les notifications marquées comme lues');
+      toast.success(t('allNotificationsMarkedAsRead'));
 
       // Émettre un événement pour mettre à jour le compteur dans le layout
       window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: 0 } }));
@@ -96,7 +99,7 @@ export default function NotificationsPage() {
       const deletedNotification = notifications.find(n => n._id === notificationId);
       const updatedNotifications = notifications.filter(n => n._id !== notificationId);
       setNotifications(updatedNotifications);
-      toast.success('Notification supprimée');
+      toast.success(t('notificationDeleted'));
 
       // Si la notification supprimée était non lue, mettre à jour le compteur
       if (deletedNotification && !deletedNotification.lu) {
@@ -144,15 +147,15 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Notifications</h1>
+          <h1 className="text-lg font-semibold text-gray-900">{t('notifications')}</h1>
           <p className="text-xs text-gray-500">
-            {unreadCount > 0 ? `${unreadCount} non lue(s)` : 'Aucune nouvelle notification'}
+            {unreadCount > 0 ? `${unreadCount} ${t('unreadNotifications').toLowerCase()}` : t('noNewNotifications')}
           </p>
         </div>
         {unreadCount > 0 && (
           <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
             <Check className="w-4 h-4 mr-1" />
-            Tout marquer comme lu
+            {t('markAllAsRead')}
           </Button>
         )}
       </div>
@@ -161,9 +164,9 @@ export default function NotificationsPage() {
         <CardHeader className="p-3 border-b bg-gray-50/50">
           <Tabs value={filter} onValueChange={(val) => { setFilter(val); setCurrentPage(1); }}>
             <TabsList className="h-8">
-              <TabsTrigger value="all" className="text-xs h-7 px-3">Toutes ({notifications.length})</TabsTrigger>
-              <TabsTrigger value="unread" className="text-xs h-7 px-3">Non lues ({unreadCount})</TabsTrigger>
-              <TabsTrigger value="read" className="text-xs h-7 px-3">Lues ({notifications.length - unreadCount})</TabsTrigger>
+              <TabsTrigger value="all" className="text-xs h-7 px-3">{t('allNotifications')} ({notifications.length})</TabsTrigger>
+              <TabsTrigger value="unread" className="text-xs h-7 px-3">{t('unreadNotifications')} ({unreadCount})</TabsTrigger>
+              <TabsTrigger value="read" className="text-xs h-7 px-3">{t('readNotifications')} ({notifications.length - unreadCount})</TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>
@@ -171,8 +174,8 @@ export default function NotificationsPage() {
           {paginatedNotifications.length === 0 ? (
             <div className="text-center py-10">
               <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-sm font-medium text-gray-900 mb-1">Aucune notification</h3>
-              <p className="text-xs text-gray-500">Vous êtes à jour</p>
+              <h3 className="text-sm font-medium text-gray-900 mb-1">{t('noNotifications')}</h3>
+              <p className="text-xs text-gray-500">{t('youAreUpToDate')}</p>
             </div>
           ) : (
             <div className="divide-y">
@@ -191,17 +194,12 @@ export default function NotificationsPage() {
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-sm font-medium text-gray-900">{notification.titre}</span>
                         {!notification.lu && (
-                          <Badge className="bg-indigo-600 text-white text-[10px] px-1.5 py-0">Nouveau</Badge>
+                          <Badge className="bg-indigo-600 text-white text-[10px] px-1.5 py-0">{t('new')}</Badge>
                         )}
                       </div>
                       <p className="text-xs text-gray-600 line-clamp-2">{notification.message}</p>
                       <p className="text-[10px] text-gray-400 mt-1">
-                        {new Date(notification.created_at).toLocaleDateString('fr-FR', {
-                          day: 'numeric',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                        {formatDate(notification.created_at, { includeTime: true })}
                       </p>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
@@ -211,6 +209,7 @@ export default function NotificationsPage() {
                           size="sm"
                           className="h-7 w-7 p-0"
                           onClick={() => handleMarkAsRead(notification._id)}
+                          title={t('markAsRead')}
                         >
                           <Check className="w-3.5 h-3.5" />
                         </Button>
@@ -220,6 +219,7 @@ export default function NotificationsPage() {
                         size="sm"
                         className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                         onClick={() => handleDelete(notification._id)}
+                        title={t('delete')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>

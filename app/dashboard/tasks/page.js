@@ -17,10 +17,13 @@ import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import { useItemFormData } from '@/hooks/useItemFormData';
 import TablePagination from '@/components/ui/table-pagination';
 import ItemFormDialog from '@/components/ItemFormDialog';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function TasksPage() {
   const router = useRouter();
   const { confirm } = useConfirmation();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,10 +142,10 @@ export default function TasksPage() {
 
   const handleDeleteTask = async (taskId, taskTitle) => {
     const confirmed = await confirm({
-      title: 'Supprimer la tâche',
-      description: `Êtes-vous sûr de vouloir supprimer la tâche "${taskTitle}" ?`,
-      actionLabel: 'Supprimer',
-      cancelLabel: 'Annuler',
+      title: t('deleteTask'),
+      description: `${t('deleteTaskConfirm')} "${taskTitle}" ?`,
+      actionLabel: t('delete'),
+      cancelLabel: t('cancel'),
       isDangerous: true
     });
     if (!confirmed) return;
@@ -156,15 +159,15 @@ export default function TasksPage() {
       });
 
       if (response.ok) {
-        toast.success('Tâche supprimée avec succès');
+        toast.success(t('taskDeleted'));
         await loadTasks();
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la suppression');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setDeletingTaskId(null);
     }
@@ -221,13 +224,13 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Gestion des Tâches</h1>
-          <p className="text-xs text-gray-500">{totalTasks} tâche(s) au total</p>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{t('taskManagement')}</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{totalTasks} {t('tasks').toLowerCase()}</p>
         </div>
         {canManageTasks('gererTaches') && (
           <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={openCreateDialog}>
             <Plus className="w-4 h-4 mr-1" />
-            Nouvelle tâche
+            {t('newTask')}
           </Button>
         )}
       </div>
@@ -239,16 +242,16 @@ export default function TasksPage() {
           <Input
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-            placeholder="Rechercher..."
+            placeholder={t('searchPlaceholder')}
             className="pl-8 h-9 text-sm"
           />
         </div>
         <Select value={selectedProject} onValueChange={(val) => { setSelectedProject(val); setCurrentPage(1); }}>
           <SelectTrigger className="w-48 h-9 text-sm">
-            <SelectValue placeholder="Projet" />
+            <SelectValue placeholder={t('project')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les projets</SelectItem>
+            <SelectItem value="all">{t('allProjects')}</SelectItem>
             {projects.map(p => (
               <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
             ))}
@@ -256,15 +259,15 @@ export default function TasksPage() {
         </Select>
         <Select value={selectedStatus} onValueChange={(val) => { setSelectedStatus(val); setCurrentPage(1); }}>
           <SelectTrigger className="w-36 h-9 text-sm">
-            <SelectValue placeholder="Statut" />
+            <SelectValue placeholder={t('status')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous</SelectItem>
+            <SelectItem value="all">{t('all')}</SelectItem>
             <SelectItem value="Backlog">Backlog</SelectItem>
-            <SelectItem value="À faire">À faire</SelectItem>
-            <SelectItem value="En cours">En cours</SelectItem>
-            <SelectItem value="Review">Review</SelectItem>
-            <SelectItem value="Terminé">Terminé</SelectItem>
+            <SelectItem value="À faire">{t('todo')}</SelectItem>
+            <SelectItem value="En cours">{t('inProgress')}</SelectItem>
+            <SelectItem value="Review">{t('review')}</SelectItem>
+            <SelectItem value="Terminé">{t('completed')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -274,13 +277,13 @@ export default function TasksPage() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
-                <TableHead className="text-xs font-medium">Tâche</TableHead>
-                <TableHead className="text-xs font-medium hidden md:table-cell">Projet</TableHead>
-                <TableHead className="text-xs font-medium hidden lg:table-cell">Assigné à</TableHead>
-                <TableHead className="text-xs font-medium">Priorité</TableHead>
-                <TableHead className="text-xs font-medium">Statut</TableHead>
-                <TableHead className="text-xs font-medium hidden sm:table-cell">Échéance</TableHead>
+              <TableRow className="bg-gray-50 dark:bg-gray-800">
+                <TableHead className="text-xs font-medium">{t('task')}</TableHead>
+                <TableHead className="text-xs font-medium hidden md:table-cell">{t('project')}</TableHead>
+                <TableHead className="text-xs font-medium hidden lg:table-cell">{t('assignedTo')}</TableHead>
+                <TableHead className="text-xs font-medium">{t('priority')}</TableHead>
+                <TableHead className="text-xs font-medium">{t('status')}</TableHead>
+                <TableHead className="text-xs font-medium hidden sm:table-cell">{t('dueDate')}</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -289,7 +292,7 @@ export default function TasksPage() {
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8">
                     <CheckSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">Aucune tâche trouvée</p>
+                    <p className="text-sm text-gray-500">{t('noTasks')}</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -317,7 +320,7 @@ export default function TasksPage() {
                           <span className="text-xs">{task.assigné_à.nom_complet || '-'}</span>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400">Non assigné</span>
+                        <span className="text-xs text-gray-400">{t('unassigned')}</span>
                       )}
                     </TableCell>
                     <TableCell className="py-2">
@@ -334,7 +337,7 @@ export default function TasksPage() {
                       {task.date_échéance ? (
                         <div className="flex items-center gap-1 text-xs text-gray-600">
                           <Calendar className="w-3.5 h-3.5" />
-                          {new Date(task.date_échéance).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                          {formatDate(task.date_échéance)}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">-</span>
@@ -355,7 +358,7 @@ export default function TasksPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEditDialog(task)}>
                               <Edit2 className="w-4 h-4 mr-2" />
-                              Modifier
+                              {t('edit')}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDeleteTask(task._id, task.titre)}
@@ -363,7 +366,7 @@ export default function TasksPage() {
                               disabled={deletingTaskId === task._id}
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
-                              Supprimer
+                              {t('delete')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

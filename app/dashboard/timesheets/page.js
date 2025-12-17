@@ -13,9 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/StatusBadge';
+import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function TimesheetsPage() {
   const router = useRouter();
+  const { formatDate } = useFormatters();
+  const { t } = useTranslation();
   const [timesheets, setTimesheets] = useState([]);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -53,16 +56,16 @@ export default function TimesheetsPage() {
         // Revert on error
         setTimesheets(previousTimesheets);
         const error = await response.json();
-        toast.error(error.error || 'Erreur lors de la mise à jour du statut');
+        toast.error(error.error || t('errorOccurred'));
       } else {
-        toast.success('Statut mis à jour');
+        toast.success(t('savedSuccessfully'));
       }
     } catch (error) {
       // Revert on error
       setTimesheets(previousTimesheets);
       if (error.name !== 'AbortError') {
         console.error('Error updating timesheet status:', error);
-        toast.error('Erreur de connexion');
+        toast.error(t('connectionError'));
       }
     }
   };
@@ -120,12 +123,12 @@ export default function TimesheetsPage() {
       setLoading(false);
     } catch (error) {
       if (error.name === 'AbortError') {
-        toast.error('La requête a dépassé le délai d\'attente - Veuillez vérifier votre connexion');
+        toast.error(t('connectionError'));
       } else if (error.message.includes('Erreur serveur 401')) {
         router.push('/login');
       } else {
         console.error('Erreur lors du chargement:', error);
-        toast.error('Erreur lors du chargement - Veuillez recharger la page');
+        toast.error(t('errorOccurred'));
       }
       setLoading(false);
       setProjects([]);
@@ -137,7 +140,7 @@ export default function TimesheetsPage() {
   const handleCreateEntry = async () => {
     try {
       if (!newEntry.projet_id || !newEntry.date || !newEntry.heures) {
-        toast.error('Veuillez remplir tous les champs obligatoires');
+        toast.error(t('required'));
         return;
       }
 
@@ -155,16 +158,16 @@ export default function TimesheetsPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Temps enregistré avec succès');
+        toast.success(t('timeEntryAdded'));
         setCreateDialogOpen(false);
         setNewEntry({ projet_id: '', tâche_id: '', date: new Date().toISOString().split('T')[0], heures: '', description: '' });
         await loadData();
       } else {
-        toast.error(data.error || 'Erreur lors de l\'enregistrement');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSubmitting(false);
     }
@@ -184,22 +187,22 @@ export default function TimesheetsPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Feuilles de Temps</h1>
-          <p className="text-gray-600">Saisissez et suivez votre temps de travail</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('timesheetManagement')}</h1>
+          <p className="text-gray-600">{t('logTime')}</p>
         </div>
         <Button 
           className="bg-indigo-600 hover:bg-indigo-700"
           onClick={() => setCreateDialogOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
-          Saisir du temps
+          {t('logTime')}
         </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-gray-600">Total cette semaine</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">{t('weeklyHours')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-indigo-600">{totalHeures}h</div>
@@ -207,15 +210,15 @@ export default function TimesheetsPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-gray-600">Entrées ce mois</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">{t('monthlyHours')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{timesheets.length}</div>
+            <div className="text-3xl font-bold text-gray-900">{totalHeures.toFixed(1)}h</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-gray-600">Moyenne par jour</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">{t('average')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-gray-900">{timesheets.length > 0 ? (totalHeures / timesheets.length).toFixed(1) : 0}h</div>
@@ -225,23 +228,23 @@ export default function TimesheetsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historique</CardTitle>
+          <CardTitle>{t('recentActivity')}</CardTitle>
         </CardHeader>
         <CardContent>
           {timesheets.length === 0 ? (
             <div className="text-center py-12">
               <Clock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">Aucune entrée pour le moment</p>
+              <p className="text-gray-600">{t('noTimeEntries')}</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Projet</TableHead>
-                  <TableHead>Tâche</TableHead>
-                  <TableHead>Heures</TableHead>
-                  <TableHead>Statut</TableHead>
+                  <TableHead>{t('date')}</TableHead>
+                  <TableHead>{t('project')}</TableHead>
+                  <TableHead>{t('task')}</TableHead>
+                  <TableHead>{t('hoursWorked')}</TableHead>
+                  <TableHead>{t('status')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -250,7 +253,7 @@ export default function TimesheetsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        {new Date(entry.date).toLocaleDateString('fr-FR')}
+                        {formatDate(entry.date)}
                       </div>
                     </TableCell>
                     <TableCell>{projects.find(p => p._id === entry.projet_id)?.nom || 'N/A'}</TableCell>
@@ -277,15 +280,15 @@ export default function TimesheetsPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Saisir du temps</DialogTitle>
-            <DialogDescription>Enregistrez votre temps de travail</DialogDescription>
+            <DialogTitle>{t('logTime')}</DialogTitle>
+            <DialogDescription>{t('timeEntry')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Projet *</Label>
+              <Label>{t('project')} *</Label>
               <Select value={newEntry.projet_id} onValueChange={(val) => setNewEntry({ ...newEntry, projet_id: val })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez un projet" />
+                  <SelectValue placeholder={t('select')} />
                 </SelectTrigger>
                 <SelectContent>
                   {projects.map(p => (
@@ -295,22 +298,22 @@ export default function TimesheetsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Tâche (optionnel)</Label>
+              <Label>{t('task')} ({t('optional')})</Label>
               <Select value={newEntry.tâche_id} onValueChange={(val) => setNewEntry({ ...newEntry, tâche_id: val })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Aucune" />
+                  <SelectValue placeholder={t('none')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Aucune</SelectItem>
-                  {tasks.filter(t => t.projet_id === newEntry.projet_id).map(t => (
-                    <SelectItem key={t._id} value={t._id}>{t.titre}</SelectItem>
+                  <SelectItem value="all">{t('none')}</SelectItem>
+                  {tasks.filter(task => task.projet_id === newEntry.projet_id).map(task => (
+                    <SelectItem key={task._id} value={task._id}>{task.titre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Date *</Label>
+                <Label>{t('date')} *</Label>
                 <Input
                   type="date"
                   value={newEntry.date}
@@ -318,7 +321,7 @@ export default function TimesheetsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Heures *</Label>
+                <Label>{t('hours')} *</Label>
                 <Input
                   type="number"
                   step="0.5"
@@ -329,18 +332,18 @@ export default function TimesheetsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Description</Label>
+              <Label>{t('description')}</Label>
               <Input
                 value={newEntry.description}
                 onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
-                placeholder="Description du travail effectué..."
+                placeholder={t('description')}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={submitting}>Annuler</Button>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={submitting}>{t('cancel')}</Button>
             <Button onClick={handleCreateEntry} className="bg-indigo-600 hover:bg-indigo-700" disabled={submitting}>
-              {submitting ? 'Enregistrement...' : 'Enregistrer'}
+              {submitting ? t('loading') : t('save')}
             </Button>
           </DialogFooter>
         </DialogContent>

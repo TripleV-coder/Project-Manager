@@ -15,10 +15,14 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/StatusBadge';
 import { useConfirmation } from '@/hooks/useConfirmation';
+import { useFormatters, useAppSettings, useTranslation } from '@/contexts/AppSettingsContext';
 
 export default function BudgetPage() {
   const router = useRouter();
   const { confirm } = useConfirmation();
+  const { formatCurrency, formatDate } = useFormatters();
+  const { settings: appSettings } = useAppSettings();
+  const { t } = useTranslation();
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [loading, setLoading] = useState(true);
@@ -37,22 +41,23 @@ export default function BudgetPage() {
 
   const [expenseForm, setExpenseForm] = useState({
     description: '',
-    catégorie: 'Ressources humaines',
+    catégorie: 'humanResources',
     montant: 0,
     date_dépense: new Date().toISOString().split('T')[0],
     type: 'externe'
   });
 
-  const catégories = [
-    'Ressources humaines',
-    'Matériel',
-    'Logiciels & Licences',
-    'Sous-traitance',
-    'Formation',
-    'Déplacements',
-    'Infrastructure',
-    'Marketing',
-    'Autre'
+  // Clés de catégories pour la traduction
+  const categoryKeys = [
+    'humanResources',
+    'equipment',
+    'softwareLicenses',
+    'subcontracting',
+    'training',
+    'travel',
+    'infrastructure',
+    'marketing',
+    'other'
   ];
 
   const handleStatusChange = async (expenseId, newStatut) => {
@@ -79,18 +84,18 @@ export default function BudgetPage() {
       if (!response.ok) {
         // Revert on error
         setExpenses(previousExpenses);
-        throw new Error(data.error || 'Erreur lors de la mise à jour du statut');
+        throw new Error(data.error || t('errorOccurred'));
       }
 
-      toast.success('Statut mis à jour');
+      toast.success(t('savedSuccessfully'));
     } catch (error) {
       // Revert on error
       setExpenses(previousExpenses);
       if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-        toast.error('La requête a expiré, veuillez réessayer');
+        toast.error(t('connectionError'));
       } else {
         console.error('Error updating status:', error);
-        toast.error(error.message || 'Erreur de connexion');
+        toast.error(error.message || t('connectionError'));
       }
       throw error; // Rethrow so StatusBadge knows it failed
     }
@@ -155,7 +160,7 @@ export default function BudgetPage() {
       setLoading(false);
     } catch (error) {
       console.error('Erreur lors du chargement des projets:', error);
-      toast.error('Erreur lors du chargement des projets');
+      toast.error(t('errorOccurred'));
       setLoading(false);
       setProjects([]);
     }
@@ -245,16 +250,16 @@ export default function BudgetPage() {
       });
 
       if (response.ok) {
-        toast.success('Budget mis à jour avec succès');
+        toast.success(t('savedSuccessfully'));
         setEditBudgetDialogOpen(false);
         loadProjectData();
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la mise à jour');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSaving(false);
     }
@@ -262,7 +267,7 @@ export default function BudgetPage() {
 
   const handleAddExpense = async () => {
     if (!expenseForm.description || !expenseForm.montant) {
-      toast.error('Veuillez remplir tous les champs obligatoires');
+      toast.error(t('required'));
       return;
     }
 
@@ -288,22 +293,22 @@ export default function BudgetPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Dépense ajoutée avec succès');
+        toast.success(t('expenseAdded'));
         setAddExpenseDialogOpen(false);
         setExpenseForm({
           description: '',
-          catégorie: 'Ressources humaines',
+          catégorie: 'humanResources',
           montant: 0,
           date_dépense: new Date().toISOString().split('T')[0],
           type: 'externe'
         });
         loadExpenses(selectedProject);
       } else {
-        toast.error(data.error || 'Erreur lors de l\'ajout');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     } finally {
       setSubmitting(false);
     }
@@ -311,10 +316,10 @@ export default function BudgetPage() {
 
   const handleDeleteExpense = async (expenseId) => {
     const confirmed = await confirm({
-      title: 'Supprimer la dépense',
-      description: 'Êtes-vous sûr de vouloir supprimer cette dépense ?',
-      actionLabel: 'Supprimer',
-      cancelLabel: 'Annuler',
+      title: t('delete'),
+      description: t('deleteWarning'),
+      actionLabel: t('delete'),
+      cancelLabel: t('cancel'),
       isDangerous: true
     });
     if (!confirmed) return;
@@ -329,15 +334,15 @@ export default function BudgetPage() {
       });
 
       if (response.ok) {
-        toast.success('Dépense supprimée');
+        toast.success(t('expenseDeleted'));
         loadExpenses(selectedProject);
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la suppression');
+        toast.error(data.error || t('errorOccurred'));
       }
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur de connexion');
+      toast.error(t('connectionError'));
     }
   };
 
@@ -368,12 +373,12 @@ export default function BudgetPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion du Budget</h1>
-          <p className="text-gray-600">Suivez vos budgets et dépenses par projet (en FCFA)</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('budgetManagement')}</h1>
+          <p className="text-gray-600">{t('expenses')} ({appSettings.devise || 'FCFA'})</p>
         </div>
         <Select value={selectedProject} onValueChange={setSelectedProject}>
           <SelectTrigger className="w-64">
-            <SelectValue placeholder="Sélectionner un projet" />
+            <SelectValue placeholder={t('project')} />
           </SelectTrigger>
           <SelectContent>
             {projects.map(p => (
@@ -387,8 +392,8 @@ export default function BudgetPage() {
         <Card className="p-12">
           <div className="text-center">
             <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Sélectionnez un projet</h3>
-            <p className="text-gray-600">Choisissez un projet pour voir et gérer son budget</p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">{t('project')}</h3>
+            <p className="text-gray-600">{t('select')}</p>
           </div>
         </Card>
       ) : (
@@ -401,44 +406,41 @@ export default function BudgetPage() {
             >
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
-                  Budget Total
+                  {t('budgetTotal')}
                   {canModifyBudget && <Edit2 className="w-4 h-4 text-gray-400" />}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-gray-900">{budgetTotal.toLocaleString('fr-FR')}</div>
-                <p className="text-sm text-gray-500">FCFA</p>
+                <div className="text-3xl font-bold text-gray-900">{formatCurrency(budgetTotal)}</div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Dépensé</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">{t('budgetSpent')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-red-600">{dépenses.toLocaleString('fr-FR')}</div>
-                <p className="text-sm text-gray-500">FCFA</p>
+                <div className="text-3xl font-bold text-red-600">{formatCurrency(dépenses)}</div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Restant</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">{t('budgetRemaining')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className={`text-3xl font-bold ${restant >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {restant.toLocaleString('fr-FR')}
+                  {formatCurrency(restant)}
                 </div>
-                <p className="text-sm text-gray-500">FCFA</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Consommation</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">{t('progress')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className={`text-3xl font-bold ${pourcentage > 100 ? 'text-red-600' : pourcentage > 80 ? 'text-orange-600' : 'text-indigo-600'}`}>
                   {pourcentage.toFixed(0)}%
                 </div>
-                <p className="text-sm text-gray-500">du budget</p>
+                <p className="text-sm text-gray-500">{t('ofBudget')}</p>
               </CardContent>
             </Card>
           </div>
@@ -447,25 +449,25 @@ export default function BudgetPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Progression du budget</CardTitle>
+                <CardTitle>{t('progress')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <Progress value={Math.min(pourcentage, 100)} className="h-4" />
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>{dépenses.toLocaleString('fr-FR')} FCFA dépensés</span>
-                    <span>{budgetTotal.toLocaleString('fr-FR')} FCFA budget total</span>
+                    <span>{formatCurrency(dépenses)} {t('spent')}</span>
+                    <span>{formatCurrency(budgetTotal)} {t('budgetTotal').toLowerCase()}</span>
                   </div>
                   {pourcentage > 80 && pourcentage <= 100 && (
                     <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-lg">
                       <AlertTriangle className="w-5 h-5 text-orange-600" />
-                      <span className="text-sm text-orange-800">Attention : Budget consommé à plus de 80%</span>
+                      <span className="text-sm text-orange-800">{t('budgetWarning')}</span>
                     </div>
                   )}
                   {pourcentage > 100 && (
                     <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
                       <AlertTriangle className="w-5 h-5 text-red-600" />
-                      <span className="text-sm text-red-800">Alerte : Budget dépassé de {(pourcentage - 100).toFixed(0)}%</span>
+                      <span className="text-sm text-red-800">{t('budgetExceeded')} ({(pourcentage - 100).toFixed(0)}%)</span>
                     </div>
                   )}
                 </div>
@@ -480,17 +482,17 @@ export default function BudgetPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <PieChart className="w-5 h-5" />
-                  Répartition par catégorie
+                  {t('category')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {Object.entries(expensesByCategory).map(([cat, montant]) => (
                     <div key={cat} className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 truncate">{cat}</p>
-                      <p className="text-lg font-bold text-gray-900">{montant.toLocaleString('fr-FR')} FCFA</p>
+                      <p className="text-sm text-gray-600 truncate">{t(cat) || cat}</p>
+                      <p className="text-lg font-bold text-gray-900">{formatCurrency(montant)}</p>
                       <p className="text-xs text-gray-500">
-                        {dépenses > 0 ? ((montant / dépenses) * 100).toFixed(1) : 0}% des dépenses
+                        {dépenses > 0 ? ((montant / dépenses) * 100).toFixed(1) : 0}% {t('expenses').toLowerCase()}
                       </p>
                     </div>
                   ))}
@@ -503,7 +505,7 @@ export default function BudgetPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Détail des dépenses</CardTitle>
+                <CardTitle>{t('expenses')}</CardTitle>
                 {canModifyBudget && (
                   <Button
                     size="sm"
@@ -511,7 +513,7 @@ export default function BudgetPage() {
                     onClick={() => setAddExpenseDialogOpen(true)}
                   >
                     <Plus className="w-4 h-4 mr-1" />
-                    Ajouter une dépense
+                    {t('add')}
                   </Button>
                 )}
               </div>
@@ -520,11 +522,11 @@ export default function BudgetPage() {
               {expenses.length === 0 ? (
                 <div className="text-center py-12">
                   <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">Aucune dépense enregistrée</p>
+                  <p className="text-gray-600 mb-4">{t('noExpenses')}</p>
                   {canModifyBudget && (
                     <Button onClick={() => setAddExpenseDialogOpen(true)}>
                       <Plus className="w-4 h-4 mr-1" />
-                      Ajouter la première dépense
+                      {t('add')}
                     </Button>
                   )}
                 </div>
@@ -532,11 +534,11 @@ export default function BudgetPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Catégorie</TableHead>
-                      <TableHead className="text-right">Montant</TableHead>
-                      <TableHead>Statut</TableHead>
+                      <TableHead>{t('date')}</TableHead>
+                      <TableHead>{t('description')}</TableHead>
+                      <TableHead>{t('category')}</TableHead>
+                      <TableHead className="text-right">{t('amount')}</TableHead>
+                      <TableHead>{t('status')}</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -544,14 +546,14 @@ export default function BudgetPage() {
                     {expenses.map((expense) => (
                       <TableRow key={expense._id}>
                         <TableCell className="text-gray-600">
-                          {new Date(expense.date_dépense).toLocaleDateString('fr-FR')}
+                          {formatDate(expense.date_dépense)}
                         </TableCell>
                         <TableCell className="font-medium">{expense.description}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{expense.catégorie}</Badge>
+                          <Badge variant="outline">{t(expense.catégorie) || expense.catégorie}</Badge>
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {expense.montant.toLocaleString('fr-FR')} FCFA
+                          {formatCurrency(expense.montant)}
                         </TableCell>
                         <TableCell>
                           <StatusBadge
@@ -588,14 +590,14 @@ export default function BudgetPage() {
       <Dialog open={editBudgetDialogOpen} onOpenChange={setEditBudgetDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier le budget</DialogTitle>
+            <DialogTitle>{t('edit')} {t('budget')}</DialogTitle>
             <DialogDescription>
-              Définissez le budget total et la réserve de contingence
+              {t('budgetTotal')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Budget prévisionnel (FCFA)</Label>
+              <Label>{t('budget')} ({appSettings.devise || 'FCFA'})</Label>
               <Input
                 type="number"
                 value={budgetForm.prévisionnel}
@@ -604,7 +606,7 @@ export default function BudgetPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Budget réel (FCFA)</Label>
+              <Label>{t('budgetSpent')} ({appSettings.devise || 'FCFA'})</Label>
               <Input
                 type="number"
                 value={budgetForm.réel}
@@ -615,14 +617,14 @@ export default function BudgetPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditBudgetDialogOpen(false)}>
-              Annuler
+              {t('cancel')}
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700"
               onClick={handleSaveBudget}
               disabled={saving}
             >
-              {saving ? 'Enregistrement...' : 'Enregistrer'}
+              {saving ? t('loading') : t('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -632,14 +634,14 @@ export default function BudgetPage() {
       <Dialog open={addExpenseDialogOpen} onOpenChange={setAddExpenseDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter une dépense</DialogTitle>
+            <DialogTitle>{t('addExpense')}</DialogTitle>
             <DialogDescription>
-              Enregistrez une nouvelle dépense pour ce projet
+              {t('expenses')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Description *</Label>
+              <Label>{t('description')} *</Label>
               <Input
                 value={expenseForm.description}
                 onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
@@ -647,23 +649,23 @@ export default function BudgetPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Catégorie</Label>
-              <Select 
-                value={expenseForm.catégorie} 
+              <Label>{t('category')}</Label>
+              <Select
+                value={expenseForm.catégorie}
                 onValueChange={(val) => setExpenseForm({ ...expenseForm, catégorie: val })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {catégories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  {categoryKeys.map(catKey => (
+                    <SelectItem key={catKey} value={catKey}>{t(catKey)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Montant (FCFA) *</Label>
+              <Label>{t('amount')} ({appSettings.devise || 'FCFA'}) *</Label>
               <Input
                 type="number"
                 value={expenseForm.montant}
@@ -672,7 +674,7 @@ export default function BudgetPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Date de dépense *</Label>
+              <Label>{t('date')} *</Label>
               <Input
                 type="date"
                 value={expenseForm.date_dépense}
@@ -680,7 +682,7 @@ export default function BudgetPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label>{t('type')}</Label>
               <Select
                 value={expenseForm.type}
                 onValueChange={(val) => setExpenseForm({ ...expenseForm, type: val })}
@@ -700,14 +702,14 @@ export default function BudgetPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddExpenseDialogOpen(false)} disabled={submitting}>
-              Annuler
+              {t('cancel')}
             </Button>
             <Button
               className="bg-indigo-600 hover:bg-indigo-700"
               onClick={handleAddExpense}
               disabled={submitting || !expenseForm.description || !expenseForm.montant}
             >
-              {submitting ? 'Ajout...' : 'Ajouter'}
+              {submitting ? t('loading') : t('add')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,6 +11,7 @@ import { checkRateLimit, getClientIP, getRateLimitHeaders, RATE_LIMIT_CONFIG } f
 import { createAuthCookieHeader } from '@/lib/authCookie';
 import { APIResponse, handleError } from '@/lib/apiResponse';
 import appSettingsService from '@/lib/appSettingsService';
+import { generateTwoFactorSecret, verifyTwoFactorToken, generateBackupCodes, verifyBackupCode } from '@/lib/twoFactorAuth';
 import projectService from '@/lib/services/projectService';
 import userService from '@/lib/services/userService';
 import taskService from '@/lib/services/taskService';
@@ -840,8 +841,25 @@ export async function GET(request) {
         compétences: user.compétences,
         status: user.status,
         first_login: user.first_login,
-        projets_assignés: user.projets_assignés
+        projets_assignés: user.projets_assignés,
+        twoFactorEnabled: user.twoFactorEnabled || false
       }));
+    }
+
+    // GET /api/auth/2fa/status - Get 2FA status for current user
+    if (path === '/auth/2fa/status' || path === '/auth/2fa/status/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        return handleCORS(APIResponse.success({
+          enabled: user.twoFactorEnabled || false
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /auth/2fa/status'));
+      }
     }
 
     // GET /api/users - Liste utilisateurs (admin uniquement, OPTIMIZED)
@@ -1560,26 +1578,37 @@ export async function GET(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      // Récupérer la config SharePoint depuis les settings globaux (ou retourner défaut)
-      // Pour l'instant, on simule avec des valeurs par défaut
-      // Dans une vraie implémentation, stocker dans une collection Settings
-      return handleCORS(NextResponse.json({
-        enabled: process.env.SHAREPOINT_ENABLED === 'true' || false,
-        config: {
-          tenant_id: process.env.SHAREPOINT_TENANT_ID || '',
-          site_id: process.env.SHAREPOINT_SITE_ID || '',
-          client_id: process.env.SHAREPOINT_CLIENT_ID || '',
-          client_secret: process.env.SHAREPOINT_CLIENT_SECRET ? '********' : '',
-          auto_sync: true,
-          sync_interval: 15
-        },
-        status: {
-          connected: false,
-          last_sync: null,
-          files_synced: 0,
-          errors: 0
-        }
-      }));
+      try {
+        const SharePointConfig = (await import('@/models/SharePointConfig')).default;
+        const config = await SharePointConfig.getConfig();
+
+        return handleCORS(NextResponse.json({
+          enabled: config.enabled || false,
+          config: {
+            tenant_id: config.tenant_id || '',
+            site_id: config.site_id || '',
+            client_id: config.client_id || '',
+            client_secret: config.client_secret ? '********' : '',
+            auto_sync: config.sync_enabled || false,
+            sync_interval: config.sync_interval || 60
+          },
+          status: {
+            connected: config.connection_status?.connected || false,
+            last_test: config.connection_status?.last_test || null,
+            site_name: config.connection_status?.site_name || null,
+            site_url: config.connection_status?.site_url || null,
+            last_error: config.connection_status?.last_error || null
+          },
+          sync_stats: {
+            last_sync: config.sync_stats?.last_sync || null,
+            files_synced: config.sync_stats?.files_synced || 0,
+            files_failed: config.sync_stats?.files_failed || 0,
+            errors: config.sync_stats?.errors?.slice(0, 10) || []
+          }
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'GET /sharepoint/config'));
+      }
     }
 
     // GET /api/sprints - Liste sprints
@@ -1832,15 +1861,23 @@ export async function POST(request) {
       }
 
       if (password !== password_confirm) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Les mots de passe ne correspondent pas' 
+        return handleCORS(NextResponse.json({
+          error: 'Les mots de passe ne correspondent pas'
         }, { status: 400 }));
       }
 
-      const passwordValidation = validatePassword(password);
+      // Charger les paramètres de sécurité pour la validation du mot de passe
+      let securitySettings = {};
+      try {
+        securitySettings = await appSettingsService.getSecuritySettings();
+      } catch (_e) {
+        // Utiliser les valeurs par défaut en cas d'erreur
+      }
+
+      const passwordValidation = validatePassword(password, securitySettings);
       if (!passwordValidation.valid) {
-        return handleCORS(NextResponse.json({ 
-          error: passwordValidation.message 
+        return handleCORS(NextResponse.json({
+          error: passwordValidation.message
         }, { status: 400 }));
       }
 
@@ -1996,6 +2033,21 @@ export async function POST(request) {
         return handleCORS(response);
       }
 
+      // Check if 2FA is enabled for this user
+      if (user.twoFactorEnabled) {
+        console.log('[Login] 2FA enabled for user:', email.toLowerCase());
+        // Don't generate token yet - require 2FA verification
+        const response = NextResponse.json({
+          requires2FA: true,
+          email: user.email,
+          message: 'Authentification à deux facteurs requise'
+        }, { status: 200 });
+        Object.entries(getRateLimitHeaders(loginLimit)).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return handleCORS(response);
+      }
+
       const token = await signToken({
         userId: user._id.toString(),
         email: user.email,
@@ -2055,15 +2107,23 @@ export async function POST(request) {
       }
 
       if (new_password !== new_password_confirm) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Les mots de passe ne correspondent pas' 
+        return handleCORS(NextResponse.json({
+          error: 'Les mots de passe ne correspondent pas'
         }, { status: 400 }));
       }
 
-      const passwordValidation = validatePassword(new_password);
+      // Charger les paramètres de sécurité pour la validation du mot de passe
+      let securitySettings = {};
+      try {
+        securitySettings = await appSettingsService.getSecuritySettings();
+      } catch (_e) {
+        // Utiliser les valeurs par défaut en cas d'erreur
+      }
+
+      const passwordValidation = validatePassword(new_password, securitySettings);
       if (!passwordValidation.valid) {
-        return handleCORS(NextResponse.json({ 
-          error: passwordValidation.message 
+        return handleCORS(NextResponse.json({
+          error: passwordValidation.message
         }, { status: 400 }));
       }
 
@@ -2094,6 +2154,259 @@ export async function POST(request) {
         message: 'Mot de passe modifié avec succès',
         success: true
       }));
+    }
+
+    // POST /api/auth/2fa/setup - Initialize 2FA setup (get QR code)
+    if (path === '/auth/2fa/setup' || path === '/auth/2fa/setup/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        // Get app name from settings
+        const appSettings = await appSettingsService.getAppSettings();
+        const appName = appSettings.appName || 'PM Gestion';
+
+        // Generate new secret
+        const { secret, qrCodeUrl, otpauthUrl } = await generateTwoFactorSecret(user.email, appName);
+
+        // Store pending secret (not yet verified)
+        await User.findByIdAndUpdate(user._id, {
+          twoFactorPendingSecret: secret
+        });
+
+        return handleCORS(APIResponse.success({
+          qrCodeUrl,
+          secret, // Manual entry backup
+          message: 'Scannez le QR code avec votre application d\'authentification'
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'POST /auth/2fa/setup'));
+      }
+    }
+
+    // POST /api/auth/2fa/verify-setup - Verify and activate 2FA
+    if (path === '/auth/2fa/verify-setup' || path === '/auth/2fa/verify-setup/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const { token } = body;
+        if (!token) {
+          return handleCORS(APIResponse.badRequest('Code de vérification requis'));
+        }
+
+        // Get pending secret
+        const userWithSecret = await User.findById(user._id).select('+twoFactorPendingSecret');
+        if (!userWithSecret.twoFactorPendingSecret) {
+          return handleCORS(APIResponse.badRequest('Veuillez d\'abord initialiser la configuration 2FA'));
+        }
+
+        // Verify token
+        const isValid = verifyTwoFactorToken(token, userWithSecret.twoFactorPendingSecret);
+        if (!isValid) {
+          return handleCORS(APIResponse.badRequest('Code invalide. Veuillez réessayer.'));
+        }
+
+        // Generate backup codes
+        const backupCodes = generateBackupCodes(10);
+
+        // Activate 2FA
+        await User.findByIdAndUpdate(user._id, {
+          twoFactorEnabled: true,
+          twoFactorSecret: userWithSecret.twoFactorPendingSecret,
+          twoFactorBackupCodes: backupCodes,
+          $unset: { twoFactorPendingSecret: 1 }
+        });
+
+        await logActivity(user, 'modification', 'utilisateur', user._id, 'Activation 2FA', { request, httpMethod: 'POST', endpoint: '/auth/2fa/verify-setup', httpStatus: 200 });
+
+        return handleCORS(APIResponse.success({
+          message: 'Authentification à deux facteurs activée',
+          backupCodes, // Show once to user
+          warning: 'Conservez ces codes de récupération en lieu sûr. Ils ne seront plus affichés.'
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'POST /auth/2fa/verify-setup'));
+      }
+    }
+
+    // POST /api/auth/2fa/verify - Verify 2FA token during login
+    if (path === '/auth/2fa/verify' || path === '/auth/2fa/verify/') {
+      try {
+        const { email, token, isBackupCode } = body;
+
+        if (!email || !token) {
+          return handleCORS(APIResponse.badRequest('Email et code requis'));
+        }
+
+        await connectDB();
+        const user = await User.findOne({ email: email.toLowerCase() })
+          .select('+twoFactorSecret +twoFactorBackupCodes +password')
+          .populate('role_id');
+
+        if (!user || !user.twoFactorEnabled) {
+          return handleCORS(APIResponse.badRequest('2FA non configuré pour cet utilisateur'));
+        }
+
+        let isValid = false;
+        let newBackupCodes = user.twoFactorBackupCodes;
+
+        if (isBackupCode) {
+          // Verify backup code
+          const result = verifyBackupCode(token, user.twoFactorBackupCodes || []);
+          isValid = result.valid;
+          newBackupCodes = result.remainingCodes;
+
+          if (isValid) {
+            // Update remaining backup codes
+            await User.findByIdAndUpdate(user._id, {
+              twoFactorBackupCodes: newBackupCodes
+            });
+          }
+        } else {
+          // Verify TOTP token
+          isValid = verifyTwoFactorToken(token, user.twoFactorSecret);
+        }
+
+        if (!isValid) {
+          return handleCORS(APIResponse.badRequest('Code invalide'));
+        }
+
+        // Load security settings for token expiration
+        let securitySettings;
+        try {
+          securitySettings = await appSettingsService.getSecuritySettings();
+        } catch (e) {
+          securitySettings = { sessionTimeout: 30 };
+        }
+
+        // Generate JWT token (same as normal login)
+        const jwtToken = await signToken({
+          userId: user._id.toString(),
+          email: user.email,
+          role: user.role_id?.nom
+        }, Math.ceil(securitySettings.sessionTimeout / (60 * 24)) || 7);
+
+        // Reset login attempts
+        await user.resetLoginAttempts();
+
+        await logActivity(user, 'connexion', 'utilisateur', user._id, 'Connexion réussie avec 2FA', { request, httpMethod: 'POST', endpoint: '/auth/2fa/verify', httpStatus: 200 });
+
+        const response = APIResponse.success({
+          message: 'Connexion réussie',
+          token: jwtToken,
+          user: {
+            id: user._id,
+            nom_complet: user.nom_complet,
+            email: user.email,
+            role: user.role_id,
+            first_login: user.first_login,
+            must_change_password: user.must_change_password
+          },
+          backupCodesRemaining: isBackupCode ? newBackupCodes.length : undefined
+        });
+
+        response.headers.set('Set-Cookie', createAuthCookieHeader(jwtToken));
+        return handleCORS(response);
+      } catch (error) {
+        return handleCORS(handleError(error, 'POST /auth/2fa/verify'));
+      }
+    }
+
+    // POST /api/auth/2fa/disable - Disable 2FA
+    if (path === '/auth/2fa/disable' || path === '/auth/2fa/disable/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const { password, token } = body;
+        if (!password) {
+          return handleCORS(APIResponse.badRequest('Mot de passe requis'));
+        }
+
+        // Verify password
+        const userWithPassword = await User.findById(user._id).select('+password +twoFactorSecret');
+        const isPasswordValid = await verifyPassword(password, userWithPassword.password);
+        if (!isPasswordValid) {
+          return handleCORS(APIResponse.badRequest('Mot de passe incorrect'));
+        }
+
+        // If 2FA is enabled, require current 2FA token
+        if (userWithPassword.twoFactorSecret && token) {
+          const isValid = verifyTwoFactorToken(token, userWithPassword.twoFactorSecret);
+          if (!isValid) {
+            return handleCORS(APIResponse.badRequest('Code 2FA invalide'));
+          }
+        }
+
+        // Disable 2FA
+        await User.findByIdAndUpdate(user._id, {
+          twoFactorEnabled: false,
+          $unset: {
+            twoFactorSecret: 1,
+            twoFactorBackupCodes: 1,
+            twoFactorPendingSecret: 1
+          }
+        });
+
+        await logActivity(user, 'modification', 'utilisateur', user._id, 'Désactivation 2FA', { request, httpMethod: 'POST', endpoint: '/auth/2fa/disable', httpStatus: 200 });
+
+        return handleCORS(APIResponse.success({
+          message: 'Authentification à deux facteurs désactivée'
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'POST /auth/2fa/disable'));
+      }
+    }
+
+    // POST /api/auth/2fa/regenerate-codes - Regenerate backup codes
+    if (path === '/auth/2fa/regenerate-codes' || path === '/auth/2fa/regenerate-codes/') {
+      try {
+        const user = await authenticate(request);
+        if (!user) {
+          return handleCORS(APIResponse.unauthorized());
+        }
+
+        const { password } = body;
+        if (!password) {
+          return handleCORS(APIResponse.badRequest('Mot de passe requis'));
+        }
+
+        // Verify password
+        const userWithPassword = await User.findById(user._id).select('+password');
+        const isPasswordValid = await verifyPassword(password, userWithPassword.password);
+        if (!isPasswordValid) {
+          return handleCORS(APIResponse.badRequest('Mot de passe incorrect'));
+        }
+
+        // Check if 2FA is enabled
+        const userWith2FA = await User.findById(user._id);
+        if (!userWith2FA.twoFactorEnabled) {
+          return handleCORS(APIResponse.badRequest('2FA n\'est pas activé'));
+        }
+
+        // Generate new backup codes
+        const backupCodes = generateBackupCodes(10);
+        await User.findByIdAndUpdate(user._id, {
+          twoFactorBackupCodes: backupCodes
+        });
+
+        await logActivity(user, 'modification', 'utilisateur', user._id, 'Régénération codes de récupération 2FA', { request, httpMethod: 'POST', endpoint: '/auth/2fa/regenerate-codes', httpStatus: 200 });
+
+        return handleCORS(APIResponse.success({
+          message: 'Nouveaux codes de récupération générés',
+          backupCodes,
+          warning: 'Les anciens codes ont été invalidés. Conservez ces nouveaux codes en lieu sûr.'
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'POST /auth/2fa/regenerate-codes'));
+      }
     }
 
     // POST /api/users - Créer utilisateur (admin ou super-admin)
@@ -3034,11 +3347,54 @@ export async function POST(request) {
           uploadé_par: user._id
         });
 
-        await logActivity(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${sanitizedFilename}`, { request, httpMethod: 'POST', endpoint: '/files/upload', httpStatus: 201, relatedProjectId: projetId || null });
+        // Synchroniser vers SharePoint si configuré et projet spécifié
+        let sharepointInfo = null;
+        if (projetId) {
+          try {
+            const sharepointService = (await import('@/lib/services/sharepointService')).default;
+            const isConfigured = await sharepointService.isSharePointConfigured();
+
+            if (isConfigured) {
+              const project = await Project.findById(projetId).select('nom');
+              if (project) {
+                const spResult = await sharepointService.uploadFileToProject(
+                  projetId,
+                  project.nom,
+                  sanitizedFilename,
+                  base64,
+                  file.type
+                );
+
+                // Mettre à jour le fichier avec les infos SharePoint
+                fileDoc.sharepoint_id = spResult.id;
+                fileDoc.sharepoint_url = spResult.webUrl;
+                fileDoc.sharepoint_synced = true;
+                fileDoc.last_sync_sharepoint = new Date();
+                await fileDoc.save();
+
+                sharepointInfo = {
+                  synced: true,
+                  sharepoint_id: spResult.id,
+                  sharepoint_url: spResult.webUrl
+                };
+              }
+            }
+          } catch (spError) {
+            // Log l'erreur mais ne pas bloquer l'upload local
+            console.error('Erreur sync SharePoint:', spError.message);
+            sharepointInfo = {
+              synced: false,
+              error: spError.message
+            };
+          }
+        }
+
+        await logActivity(user, 'création', 'fichier', fileDoc._id, `Upload fichier ${sanitizedFilename}${sharepointInfo?.synced ? ' (sync SharePoint)' : ''}`, { request, httpMethod: 'POST', endpoint: '/files/upload', httpStatus: 201, relatedProjectId: projetId || null });
 
         return handleCORS(NextResponse.json({
           message: 'Fichier téléversé avec succès',
-          file: fileDoc
+          file: fileDoc,
+          sharepoint: sharepointInfo
         }));
       } catch (error) {
         console.error('Erreur upload:', error);
@@ -3317,41 +3673,78 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { tenant_id, client_id, client_secret } = body;
+      const { tenant_id, client_id, client_secret, site_id } = body;
 
-      if (!tenant_id || !client_id || !client_secret) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Identifiants manquants' 
+      if (!tenant_id || !client_id || !client_secret || !site_id) {
+        return handleCORS(NextResponse.json({
+          error: 'Tous les identifiants sont requis (tenant_id, client_id, client_secret, site_id)'
         }, { status: 400 }));
       }
 
-      // Simuler un test de connexion
-      // Dans une vraie implémentation, on appellerait Microsoft Graph API
-      // pour valider les credentials
-      
-      // Pour l'instant, on vérifie juste le format des IDs (UUID)
+      // Valider le format des IDs (UUID)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      
+
       if (!uuidRegex.test(tenant_id)) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Format Tenant ID invalide (doit être un UUID)' 
+        return handleCORS(NextResponse.json({
+          error: 'Format Tenant ID invalide (doit être un UUID)'
         }, { status: 400 }));
       }
 
       if (!uuidRegex.test(client_id)) {
-        return handleCORS(NextResponse.json({ 
-          error: 'Format Client ID invalide (doit être un UUID)' 
+        return handleCORS(NextResponse.json({
+          error: 'Format Client ID invalide (doit être un UUID)'
         }, { status: 400 }));
       }
 
-      await logActivity(user, 'test', 'sharepoint', null, 'Test de connexion SharePoint', { request, httpMethod: 'POST', endpoint: '/sharepoint/test', httpStatus: 200 });
+      try {
+        // Test réel de connexion via Microsoft Graph API
+        const sharepointService = (await import('@/lib/services/sharepointService')).default;
+        const SharePointConfig = (await import('@/models/SharePointConfig')).default;
 
-      // En production, ici on ferait l'appel OAuth2 vers Microsoft
-      return handleCORS(NextResponse.json({
-        success: true,
-        message: 'Configuration validée. Enregistrez pour activer la connexion.',
-        note: 'L\'intégration réelle avec Microsoft Graph sera activée après configuration complète.'
-      }));
+        const testResult = await sharepointService.testConnectionWithConfig({
+          tenant_id,
+          client_id,
+          client_secret,
+          site_id
+        });
+
+        if (testResult.success) {
+          // Mettre à jour le statut de connexion
+          await SharePointConfig.updateConnectionStatus({
+            connected: true,
+            site_name: testResult.site.name,
+            site_url: testResult.site.webUrl,
+            last_error: null
+          });
+
+          await logActivity(user, 'test', 'sharepoint', null, `Test de connexion SharePoint réussi - Site: ${testResult.site.name}`, { request, httpMethod: 'POST', endpoint: '/sharepoint/test', httpStatus: 200 });
+
+          return handleCORS(NextResponse.json({
+            success: true,
+            message: 'Connexion réussie à SharePoint',
+            site: testResult.site
+          }));
+        } else {
+          // Mettre à jour le statut d'erreur
+          await SharePointConfig.updateConnectionStatus({
+            connected: false,
+            last_error: testResult.error
+          });
+
+          await logActivity(user, 'test', 'sharepoint', null, `Test de connexion SharePoint échoué: ${testResult.error}`, { request, httpMethod: 'POST', endpoint: '/sharepoint/test', httpStatus: 400 });
+
+          return handleCORS(NextResponse.json({
+            success: false,
+            error: testResult.error
+          }, { status: 400 }));
+        }
+      } catch (error) {
+        await logActivity(user, 'test', 'sharepoint', null, `Erreur test SharePoint: ${error.message}`, { request, httpMethod: 'POST', endpoint: '/sharepoint/test', httpStatus: 500 });
+        return handleCORS(NextResponse.json({
+          success: false,
+          error: error.message
+        }, { status: 500 }));
+      }
     }
 
     // POST /api/sharepoint/sync - Synchronisation manuelle
@@ -3361,14 +3754,53 @@ export async function POST(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      await logActivity(user, 'sync', 'sharepoint', null, 'Synchronisation manuelle SharePoint lancée', { request, httpMethod: 'POST', endpoint: '/sharepoint/sync', httpStatus: 200 });
+      try {
+        const sharepointService = (await import('@/lib/services/sharepointService')).default;
+        const SharePointConfig = (await import('@/models/SharePointConfig')).default;
 
-      // Simuler une synchronisation
-      return handleCORS(NextResponse.json({
-        success: true,
-        message: 'Synchronisation initiée',
-        details: 'La synchronisation sera effectuée en arrière-plan'
-      }));
+        // Vérifier que SharePoint est configuré
+        const isConfigured = await sharepointService.isSharePointConfigured();
+        if (!isConfigured) {
+          return handleCORS(NextResponse.json({
+            success: false,
+            error: 'SharePoint n\'est pas configuré. Veuillez configurer et tester la connexion d\'abord.'
+          }, { status: 400 }));
+        }
+
+        // Lancer la synchronisation
+        const syncResult = await sharepointService.syncAllProjects();
+
+        // Mettre à jour les statistiques
+        await SharePointConfig.updateSyncStats({
+          files_synced: syncResult.files_synced,
+          files_failed: syncResult.files_failed,
+          errors: syncResult.errors.map(e => ({
+            file_name: e.file_name || e.project_name,
+            error: e.error
+          }))
+        });
+
+        await logActivity(user, 'sync', 'sharepoint', null,
+          `Synchronisation SharePoint: ${syncResult.projects_synced} projets, ${syncResult.files_synced} fichiers synchronisés, ${syncResult.files_failed} erreurs`,
+          { request, httpMethod: 'POST', endpoint: '/sharepoint/sync', httpStatus: 200 });
+
+        return handleCORS(NextResponse.json({
+          success: true,
+          message: 'Synchronisation terminée',
+          results: {
+            projects_synced: syncResult.projects_synced,
+            files_synced: syncResult.files_synced,
+            files_failed: syncResult.files_failed,
+            errors: syncResult.errors.slice(0, 10) // Limiter les erreurs retournées
+          }
+        }));
+      } catch (error) {
+        await logActivity(user, 'sync', 'sharepoint', null, `Erreur synchronisation SharePoint: ${error.message}`, { request, httpMethod: 'POST', endpoint: '/sharepoint/sync', httpStatus: 500 });
+        return handleCORS(NextResponse.json({
+          success: false,
+          error: error.message
+        }, { status: 500 }));
+      }
     }
 
     // POST /api/init-default-template - Créer template par défaut (pour faciliter le démarrage)
@@ -3735,18 +4167,43 @@ export async function PUT(request) {
       // Vérifier les permissions
       const canChangeRoles = user.role_id?.permissions?.adminConfig ||
         user.role_id?.permissions?.changerRoleMembre ||
+        user.role_id?.permissions?.gererMembresProjet ||
         project.chef_projet.toString() === user._id.toString();
 
       if (!canChangeRoles) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      // Vérifier que le rôle existe et appartient au projet
-      const projectRole = await ProjectRole.findById(project_role_id);
+      // Vérifier si c'est un rôle de projet ou un rôle système
+      let projectRole = await ProjectRole.findById(project_role_id);
+
       if (!projectRole || projectRole.project_id.toString() !== projectId) {
-        return handleCORS(NextResponse.json({
-          error: 'Rôle de projet invalide'
-        }, { status: 400 }));
+        // Essayer de le résoudre comme rôle système
+        const systemRole = await Role.findById(project_role_id);
+
+        if (!systemRole) {
+          return handleCORS(NextResponse.json({
+            error: 'Rôle invalide'
+          }, { status: 400 }));
+        }
+
+        // Chercher un ProjectRole avec le même nom dans ce projet
+        projectRole = await ProjectRole.findOne({
+          project_id: projectId,
+          nom: systemRole.nom
+        });
+
+        // Si pas de ProjectRole correspondant, en créer un basé sur le rôle système
+        if (!projectRole) {
+          projectRole = await ProjectRole.create({
+            project_id: projectId,
+            nom: systemRole.nom,
+            description: systemRole.description,
+            is_predefined: systemRole.is_predefined,
+            permissions: systemRole.permissions,
+            visibleMenus: systemRole.visibleMenus
+          });
+        }
       }
 
       // Trouver et mettre à jour le membre
@@ -3756,8 +4213,15 @@ export async function PUT(request) {
       }
 
       const oldRoleId = member.project_role_id;
-      member.project_role_id = project_role_id;
+      member.project_role_id = projectRole._id;
       await project.save();
+
+      // Invalider le cache du projet
+      const projectServiceModule = await import('@/lib/services/projectService');
+      const projectServiceInstance = projectServiceModule.default;
+      if (projectServiceInstance?.invalidateCache) {
+        projectServiceInstance.invalidateCache(projectId);
+      }
 
       // Récupérer le nom de l'ancien rôle pour le log
       const oldRole = await ProjectRole.findById(oldRoleId);
@@ -3768,7 +4232,7 @@ export async function PUT(request) {
         'modification',
         'membre_projet',
         member._id,
-        `Changement rôle ${memberUser?.nom_complet}: ${oldRole?.nom} → ${projectRole.nom}`,
+        `Changement rôle ${memberUser?.nom_complet}: ${oldRole?.nom || 'Non défini'} → ${projectRole.nom}`,
         { request, httpMethod: 'PUT', endpoint: '/projects/:id/members/:userId/role', httpStatus: 200, relatedProjectId: projectId }
       );
 
@@ -4142,9 +4606,27 @@ export async function PUT(request) {
       if (statut === 'validé') {
         timesheet.validé_par = user._id;
         timesheet.date_validation = new Date();
+
+        // Incrémenter temps_réel de la tâche associée
+        if (timesheet.task_id) {
+          await Task.findByIdAndUpdate(
+            timesheet.task_id,
+            { $inc: { temps_réel: timesheet.heures } }
+          );
+        }
       }
 
       await timesheet.save();
+
+      // Invalider le cache du projet pour refléter les changements
+      if (timesheet.projet_id) {
+        const projectServiceModule = await import('@/lib/services/projectService');
+        const projectServiceInstance = projectServiceModule.default;
+        if (projectServiceInstance?.invalidateCache) {
+          projectServiceInstance.invalidateCache(timesheet.projet_id.toString());
+        }
+      }
+
       await logActivity(user, 'modification', 'timesheet', timesheet._id, `Changement statut timesheet: ${statut}`, { request, httpMethod: 'PUT', endpoint: '/timesheets/:id/status', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
@@ -4223,21 +4705,55 @@ export async function PUT(request) {
         return handleCORS(NextResponse.json({ error: 'Accès refusé' }, { status: 403 }));
       }
 
-      const { enabled } = body;
+      try {
+        const SharePointConfig = (await import('@/models/SharePointConfig')).default;
+        const sharepointService = (await import('@/lib/services/sharepointService')).default;
 
-      // Dans une vraie implémentation, on sauvegarderait dans une collection Settings
-      // ou dans des variables d'environnement chiffrées
+        const { enabled, config } = body;
 
-      await logActivity(user, 'modification', 'sharepoint', null,
-        `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`,
-        { request, httpMethod: 'PUT', endpoint: '/sharepoint/config', httpStatus: 200 });
+        // Construire les données à sauvegarder
+        const updateData = {
+          enabled: enabled || false
+        };
 
-      return handleCORS(NextResponse.json({
-        success: true,
-        message: 'Configuration SharePoint enregistrée',
-        enabled: enabled,
-        note: 'Les modifications prendront effet immédiatement'
-      }));
+        if (config) {
+          if (config.tenant_id !== undefined) updateData.tenant_id = config.tenant_id;
+          if (config.client_id !== undefined) updateData.client_id = config.client_id;
+          if (config.site_id !== undefined) updateData.site_id = config.site_id;
+          // Ne mettre à jour le secret que s'il n'est pas masqué
+          if (config.client_secret && config.client_secret !== '********') {
+            updateData.client_secret = config.client_secret;
+          }
+          if (config.auto_sync !== undefined) updateData.sync_enabled = config.auto_sync;
+          if (config.sync_interval !== undefined) updateData.sync_interval = config.sync_interval;
+        }
+
+        // Sauvegarder la configuration
+        const savedConfig = await SharePointConfig.updateConfig(updateData, user._id);
+
+        // Invalider le cache du service
+        sharepointService.invalidateConfigCache();
+
+        await logActivity(user, 'modification', 'sharepoint', null,
+          `Configuration SharePoint ${enabled ? 'activée' : 'désactivée'}`,
+          { request, httpMethod: 'PUT', endpoint: '/sharepoint/config', httpStatus: 200 });
+
+        return handleCORS(NextResponse.json({
+          success: true,
+          message: 'Configuration SharePoint enregistrée',
+          enabled: savedConfig.enabled,
+          config: {
+            tenant_id: savedConfig.tenant_id || '',
+            site_id: savedConfig.site_id || '',
+            client_id: savedConfig.client_id || '',
+            client_secret: savedConfig.client_secret ? '********' : '',
+            auto_sync: savedConfig.sync_enabled || false,
+            sync_interval: savedConfig.sync_interval || 60
+          }
+        }));
+      } catch (error) {
+        return handleCORS(handleError(error, 'PUT /sharepoint/config'));
+      }
     }
 
     // PUT /api/admin/maintenance - Modifier mode maintenance
@@ -4683,7 +5199,7 @@ export async function PUT(request) {
       // Calculate completed points
       const completedTasks = sprintTasks.filter(t => t.statut === 'Terminé');
       const completedPoints = completedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
-      const completedHeures = completedTasks.reduce((sum, t) => sum + (t.temps_réel || t.estimation_heures || 0), 0);
+      const completedHeures = completedTasks.reduce((sum, t) => sum + (t.temps_réel || 0), 0);
 
       // Update burndown data with final entry
       const today = new Date();
@@ -5519,12 +6035,30 @@ export async function DELETE(request) {
         }
       }
 
+      // Supprimer de SharePoint si synchronisé
+      let sharepointDeleted = false;
+      if (file.sharepoint_id) {
+        try {
+          const sharepointService = (await import('@/lib/services/sharepointService')).default;
+          const isConfigured = await sharepointService.isSharePointConfigured();
+
+          if (isConfigured) {
+            await sharepointService.deleteFile(file.sharepoint_id);
+            sharepointDeleted = true;
+          }
+        } catch (spError) {
+          // Log l'erreur mais continuer la suppression locale
+          console.error('Erreur suppression SharePoint:', spError.message);
+        }
+      }
+
       await File.findByIdAndDelete(fileId);
 
-      await logActivity(user, 'suppression', 'fichier', fileId, `Suppression fichier ${file.nom}`, { request, httpMethod: 'DELETE', endpoint: '/files/:id', httpStatus: 200 });
+      await logActivity(user, 'suppression', 'fichier', fileId, `Suppression fichier ${file.nom}${sharepointDeleted ? ' (+ SharePoint)' : ''}`, { request, httpMethod: 'DELETE', endpoint: '/files/:id', httpStatus: 200 });
 
       return handleCORS(NextResponse.json({
-        message: 'Fichier supprimé avec succès'
+        message: 'Fichier supprimé avec succès',
+        sharepoint_deleted: sharepointDeleted
       }));
     }
 

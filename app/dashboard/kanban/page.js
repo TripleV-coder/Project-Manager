@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import { useItemFormData } from '@/hooks/useItemFormData';
 import ItemFormDialog from '@/components/ItemFormDialog';
+import { useTranslation } from '@/contexts/AppSettingsContext';
 
 /**
  * Extrait les données d'une réponse API de manière sécurisée
@@ -32,6 +33,7 @@ export default function KanbanPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get('project');
+  const { t } = useTranslation();
 
   const [selectedProject, setSelectedProject] = useState(projectId || '');
   const [tasks, setTasks] = useState([]);
@@ -257,10 +259,10 @@ export default function KanbanPage() {
 
   if (!projectsLoaded) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="space-y-4 text-center">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-gray-600">Chargement des projets...</p>
+          <p className="text-gray-600 dark:text-gray-400">{t('loading')}</p>
         </div>
       </div>
     );
@@ -270,10 +272,10 @@ export default function KanbanPage() {
     return (
       <div className="p-6">
         <Card className="p-12 text-center">
-          <h2 className="text-2xl font-bold mb-4">Aucun projet</h2>
-          <p className="text-gray-600 mb-6">Créez un projet pour utiliser le Kanban</p>
+          <h2 className="text-2xl font-bold mb-4 dark:text-white">{t('noProjects')}</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{t('createProjectForKanban')}</p>
           <Button onClick={() => router.push('/dashboard/projects')}>
-            Créer un projet
+            {t('createProject')}
           </Button>
         </Card>
       </div>
@@ -281,12 +283,12 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
         <div className="flex items-center justify-between max-w-full">
           <div className="flex items-center gap-4 flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">Kanban Board</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('kanban')}</h1>
             <Select value={selectedProject} onValueChange={(value) => {
               setSelectedProject(value);
               setLoading(true);
