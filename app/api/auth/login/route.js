@@ -6,6 +6,8 @@ import { loginRequestSchema } from '@/lib/requestValidation';
 import { hashPassword, verifyPassword } from '@/lib/auth';
 import { createUserAccessToken, issueAuthTokens } from '@/lib/requestAuth';
 import { logActivity } from '@/lib/auditService';
+import { notifyAboutFailedLogins } from '@/lib/auditNotificationService';
+import { getClientIP } from '@/lib/rateLimit';
 import User from '@/models/User';
 
 // Dummy bcrypt hash used to equalize timing when the email is unknown.
@@ -65,10 +67,19 @@ export async function POST(request) {
     if (!isValid) {
       // Manage failed attempts
       user.loginAttempts = (user.loginAttempts || 0) + 1;
-      if (user.loginAttempts >= 5) {
+      const lockoutThresholdReached = user.loginAttempts >= 5;
+      if (lockoutThresholdReached) {
         user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 mins
       }
       await user.save();
+
+      // Anomaly alert: at the lockout threshold, fan out a notification to
+      // Super Admins so the team can react (account takeover attempt, leaked
+      // credential dump replay, etc). Best-effort — failure is swallowed.
+      if (lockoutThresholdReached) {
+        const ip = getClientIP(request) || 'unknown';
+        notifyAboutFailedLogins(user._id, user.loginAttempts, ip).catch(() => {});
+      }
 
       await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
       return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
