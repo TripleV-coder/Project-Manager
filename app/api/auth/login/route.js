@@ -3,13 +3,33 @@ import connectDB from '@/lib/mongodb';
 import { handleError } from '@/lib/apiResponse';
 import { validateBody } from '@/lib/validate';
 import { loginRequestSchema } from '@/lib/requestValidation';
-import { verifyPassword } from '@/lib/auth';
+import { hashPassword, verifyPassword } from '@/lib/auth';
 import { createUserAccessToken, issueAuthTokens } from '@/lib/requestAuth';
 import { logActivity } from '@/lib/auditService';
 import User from '@/models/User';
 
+// Dummy bcrypt hash used to equalize timing when the email is unknown.
+// Computed once on first call (lazy) to avoid blocking module load.
+let DUMMY_HASH = null;
+async function getDummyHash() {
+  if (!DUMMY_HASH) DUMMY_HASH = await hashPassword('not-a-real-password-anti-enum-' + Date.now());
+  return DUMMY_HASH;
+}
+
+// Floor the total request duration to mitigate timing side-channels.
+// Real bcrypt(12) ≈ 150-300 ms; we ensure the no-user / lockout / inactive
+// branches all take at least this long.
+const MIN_LOGIN_DURATION_MS = 350;
+async function settleAtLeast(startedAt, ms) {
+  const elapsed = Date.now() - startedAt;
+  if (elapsed < ms) await new Promise((r) => setTimeout(r, ms - elapsed));
+}
+
+const GENERIC_AUTH_ERROR = 'Identifiants invalides';
+
 // POST /api/auth/login
 export async function POST(request) {
+  const startedAt = Date.now();
   try {
     await connectDB();
     const validation = await validateBody(request, loginRequestSchema);
@@ -17,31 +37,27 @@ export async function POST(request) {
 
     const { email, password } = validation.data;
 
-    // Protection par lockout
     const user = await User.findOne({ email: email.toLowerCase() }).populate('role_id');
 
+    // No-user / inactive / locked branches all return the same generic
+    // message + status so an attacker can't enumerate accounts. We still
+    // run the bcrypt compare on these branches to equalize timing.
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Identifiants invalides' },
-        { status: 401 }
-      );
+      await verifyPassword(password, await getDummyHash()).catch(() => false);
+      await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
+      return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     if (user.status !== 'Actif') {
-      return NextResponse.json(
-        { success: false, error: 'Ce compte est inactif ou suspendu' },
-        { status: 403 }
-      );
+      await verifyPassword(password, user.password).catch(() => false);
+      await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
+      return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     if (user.lockUntil && user.lockUntil > Date.now()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Compte temporairement bloqué. Réessayez dans ${Math.ceil((user.lockUntil - Date.now()) / 60000)} minutes.`,
-        },
-        { status: 403 }
-      );
+      await verifyPassword(password, user.password).catch(() => false);
+      await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
+      return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     const isValid = await verifyPassword(password, user.password);
@@ -54,10 +70,8 @@ export async function POST(request) {
       }
       await user.save();
 
-      return NextResponse.json(
-        { success: false, error: 'Identifiants invalides' },
-        { status: 401 }
-      );
+      await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
+      return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
     // Success, reset attempts

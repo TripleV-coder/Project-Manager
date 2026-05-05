@@ -5,7 +5,8 @@ import { verifyPassword } from '@/lib/auth';
 import { issueAuthTokens, createUserAccessToken } from '@/lib/requestAuth';
 
 jest.mock('@/lib/auth', () => ({
-  verifyPassword: jest.fn(),
+  verifyPassword: jest.fn().mockResolvedValue(false),
+  hashPassword: jest.fn().mockResolvedValue('$2b$12$dummyhashfordeterministictests'),
 }));
 
 jest.mock('@/lib/requestAuth', () => ({
@@ -59,12 +60,13 @@ describe('POST /api/auth/login', () => {
     expect(res.body.error).toBe('Identifiants invalides');
   });
 
-  it('devrait rejeter un utilisateur inactif', async () => {
+  it('devrait rejeter un utilisateur inactif avec un message générique (anti-énumération)', async () => {
     User.findOne.mockImplementation(() => {
       return {
         populate: jest.fn().mockResolvedValue({
           email: 'test@example.com',
           status: 'Inactif',
+          password: 'hashedpassword',
         }),
       };
     });
@@ -72,8 +74,9 @@ describe('POST /api/auth/login', () => {
     const req = createMockRequest({ email: 'test@example.com', password: 'Password123!' });
     const res = await POST(req);
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('inactif ou suspendu');
+    // anti-enum: status & message identical to "wrong password"
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Identifiants invalides');
   });
 
   it('devrait connecter avec succès un utilisateur valide', async () => {
