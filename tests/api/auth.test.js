@@ -139,7 +139,7 @@ describe('POST /api/auth/login', () => {
       email: 'test@example.com',
       status: 'Actif',
       password: 'hashedpassword',
-      loginAttempts: 4,
+      failedLoginAttempts: 4,
       save: jest.fn().mockResolvedValue(true),
     };
 
@@ -156,7 +156,7 @@ describe('POST /api/auth/login', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(401);
-    expect(mockUser.loginAttempts).toBe(5);
+    expect(mockUser.failedLoginAttempts).toBe(5);
     expect(mockUser.lockUntil).toBeDefined();
     expect(mockUser.save).toHaveBeenCalled();
   });

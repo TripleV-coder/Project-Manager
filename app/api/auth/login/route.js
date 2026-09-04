@@ -4,11 +4,9 @@ import { handleError } from '@/lib/apiResponse';
 import { validateBody } from '@/lib/validate';
 import { loginRequestSchema } from '@/lib/requestValidation';
 import { hashPassword, verifyPassword } from '@/lib/auth';
-import {
-  createUserAccessToken,
-  issueAuthTokens,
-  serializeAuthenticatedUser,
-} from '@/lib/requestAuth';
+import { issueAuthTokens, serializeAuthenticatedUser } from '@/lib/requestAuth';
+import { createStepUpToken, STEP_UP_SCOPE } from '@/lib/auth/stepUp';
+import { mustChangePassword } from '@/lib/userState';
 import { logActivity } from '@/lib/auditService';
 import { notifyAboutFailedLogins } from '@/lib/auditNotificationService';
 import { getClientIP } from '@/lib/rateLimit';
@@ -78,8 +76,7 @@ export async function POST(request) {
     const isValid = await verifyPassword(password, user.password);
 
     if (!isValid) {
-      user.failedLoginAttempts = (user.failedLoginAttempts || user.loginAttempts || 0) + 1;
-      user.loginAttempts = user.failedLoginAttempts;
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
       const lockoutThresholdReached = user.failedLoginAttempts >= 5;
       if (lockoutThresholdReached) {
         user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 mins
@@ -98,32 +95,37 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: GENERIC_AUTH_ERROR }, { status: 401 });
     }
 
-    // Success, reset attempts
-    user.loginAttempts = 0;
+    // Success — reset failed-attempt state.
     user.failedLoginAttempts = 0;
     user.lockUntil = undefined;
-    user.lastLoginAt = new Date();
     user.dernière_connexion = new Date();
     await user.save();
 
-    const mustChange =
-      user.must_change_password === true ||
-      user.mustChangePassword === true ||
-      user.first_login === true;
-
-    if (user.twoFactorEnabled && !mustChange) {
+    // 2FA gate takes precedence over must-change: a 2FA user always proves
+    // their second factor before anything else.
+    if (user.twoFactorEnabled) {
       return NextResponse.json({
         success: true,
-        require2FA: true,
         requires2FA: true,
+        require2FA: true,
         email: user.email,
-        tempToken: await createUserAccessToken(user, 5),
+        tempToken: await createStepUpToken(user, STEP_UP_SCOPE.TWO_FACTOR, 5),
+      });
+    }
+
+    // Must-change-password: hand back a pwd-scoped step-up token, NOT a session.
+    if (mustChangePassword(user)) {
+      return NextResponse.json({
+        success: true,
+        requirePasswordChange: true,
+        tempToken: await createStepUpToken(user, STEP_UP_SCOPE.PASSWORD_CHANGE, 15),
+        user: serializeAuthenticatedUser(user),
       });
     }
 
     const response = NextResponse.json({
       success: true,
-      requirePasswordChange: mustChange,
+      requirePasswordChange: false,
       user: serializeAuthenticatedUser(user),
     });
 
