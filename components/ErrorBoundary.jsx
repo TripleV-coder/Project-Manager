@@ -1,6 +1,19 @@
 'use client';
 
 import { Component } from 'react';
+import { useRouter } from 'next/navigation';
+
+function BackToDashboard() {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push('/dashboard')}
+      className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors font-medium"
+    >
+      Retour
+    </button>
+  );
+}
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -8,7 +21,7 @@ export class ErrorBoundary extends Component {
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
     };
     this.handleReset = this.handleReset.bind(this);
   }
@@ -31,7 +44,7 @@ export class ErrorBoundary extends Component {
     this.setState({
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
     });
   }
 
@@ -63,7 +76,7 @@ export class ErrorBoundary extends Component {
             </h2>
 
             <p className="text-center text-gray-600 mb-4">
-              {this.state.error?.message || 'Une erreur inattendue s\'est produite'}
+              {this.state.error?.message || "Une erreur inattendue s'est produite"}
             </p>
 
             {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
@@ -85,12 +98,7 @@ export class ErrorBoundary extends Component {
                 Réessayer
               </button>
 
-              <button
-                onClick={() => window.location.href = '/dashboard'}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors font-medium"
-              >
-                Retour
-              </button>
+              <BackToDashboard />
             </div>
 
             <p className="text-center text-xs text-gray-500 mt-4">

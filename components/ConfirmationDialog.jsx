@@ -24,9 +24,7 @@ export function ConfirmationDialog({ isOpen, onClose, state }) {
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={state.onCancel}>
-            {state.cancelLabel}
-          </AlertDialogCancel>
+          <AlertDialogCancel onClick={state.onCancel}>{state.cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={state.onConfirm}
             className={state.isDangerous ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}

@@ -1,18 +1,23 @@
-import { useState, useMemo, useCallback } from 'react';
+import { memo, useState, useMemo, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
 import { getStatusConfig, getAvailableTransitions } from '@/lib/workflows';
 
-export default function StatusBadge({
+function StatusBadge({
   type = 'timesheet',
   statut,
-  entityId,
+  _entityId,
   onStatusChange,
   readOnly = false,
   canChange = true,
-  userPermissions = {}
+  userPermissions = {},
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -25,21 +30,24 @@ export default function StatusBadge({
     return getAvailableTransitions(type, statut, userPermissions);
   }, [type, statut, userPermissions]);
 
+  // Handle status change - delegate to parent callback
+  const handleStatusChange = useCallback(
+    async (newStatut) => {
+      if (!onStatusChange) return;
+
+      setLoading(true);
+      try {
+        await onStatusChange(newStatut);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [onStatusChange]
+  );
+
   if (!statusConfig) {
     return <Badge className="bg-gray-100 text-gray-800">Inconnu</Badge>;
   }
-
-  // Handle status change - delegate to parent callback
-  const handleStatusChange = useCallback(async (newStatut) => {
-    if (!onStatusChange) return;
-
-    setLoading(true);
-    try {
-      await onStatusChange(newStatut);
-    } finally {
-      setLoading(false);
-    }
-  }, [onStatusChange]);
 
   const canTransition = availableTransitions.length > 0 && canChange && !readOnly;
 
@@ -60,7 +68,7 @@ export default function StatusBadge({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {availableTransitions.map(newStatut => {
+        {availableTransitions.map((newStatut) => {
           const targetConfig = getStatusConfig(type, newStatut);
           return (
             <DropdownMenuItem
@@ -77,3 +85,5 @@ export default function StatusBadge({
     </DropdownMenu>
   );
 }
+
+export default memo(StatusBadge);

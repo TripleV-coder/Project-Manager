@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 const ThemeContext = createContext({
   theme: 'light',
   setTheme: () => {},
-  resolvedTheme: 'light'
+  resolvedTheme: 'light',
 });
 
 export function ThemeProvider({ children }) {

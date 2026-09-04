@@ -13,6 +13,7 @@ const INITIAL_FORM_DATA = {
   story_points: '',
   assigné_à: '',
   sprint_id: '',
+  projet_id: '',
   date_début: '',
   date_échéance: '',
   estimation_heures: '',
@@ -102,17 +103,21 @@ export function useItemFormValidation({
           ...INITIAL_FORM_DATA,
           type: type,
           parent_id: parentItem?._id || '',
+          projet_id: projectId && projectId !== 'all' ? projectId : '',
         });
       }
       setValidationErrors({});
     }
-  }, [open, editingItem, parentItem, type]);
+  }, [open, editingItem, parentItem, type, projectId]);
+
+  const resolvedProjectId =
+    formData.projet_id || (projectId && projectId !== 'all' ? projectId : '');
 
   // Validation du formulaire
   const validateForm = useCallback(() => {
     const errors = {};
 
-    if (!isEditing && !projectId && projectId !== 'all') {
+    if (!isEditing && !resolvedProjectId) {
       errors.projet = t('selectProject');
     }
 
@@ -131,7 +136,7 @@ export function useItemFormValidation({
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, projectId, isEditing]);
+  }, [formData, resolvedProjectId, isEditing]);
 
   // Construire le payload pour l'API
   const buildPayload = useCallback(() => {
@@ -152,7 +157,7 @@ export function useItemFormValidation({
 
     if (!isEditing) {
       payload.type = currentType;
-      payload.projet_id = projectId;
+      payload.projet_id = resolvedProjectId;
       payload.parent_id = formData.parent_id || parentItem?._id || null;
     }
 
@@ -193,7 +198,7 @@ export function useItemFormValidation({
     }
 
     return payload;
-  }, [formData, currentType, projectId, parentItem, isEditing, fieldVisibility]);
+  }, [formData, currentType, resolvedProjectId, parentItem, isEditing, fieldVisibility]);
 
   // Soumettre le formulaire
   const handleSubmit = async () => {

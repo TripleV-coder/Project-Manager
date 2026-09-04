@@ -18,7 +18,7 @@ export function LazyImage({
   blurDataURL,
   objectFit = 'cover',
   onLoad,
-  onError
+  onError,
 }) {
   const [isLoading, setIsLoading] = useState(!priority);
   const [hasError, setHasError] = useState(false);
@@ -37,7 +37,7 @@ export function LazyImage({
         }
       },
       {
-        rootMargin: '50px' // Start loading 50px before element is visible
+        rootMargin: '50px', // Start loading 50px before element is visible
       }
     );
 

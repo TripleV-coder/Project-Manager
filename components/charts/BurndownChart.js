@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ReferenceLine
+  ReferenceLine,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { TrendingDown } from 'lucide-react';
@@ -19,7 +19,7 @@ import { TrendingDown } from 'lucide-react';
  * Burndown Chart Component
  * Shows remaining work vs ideal burndown line for a sprint
  */
-export default function BurndownChart({ sprint, tasks = [] }) {
+function BurndownChart({ sprint, tasks = [] }) {
   const chartData = useMemo(() => {
     if (!sprint?.date_début || !sprint?.date_fin) return [];
 
@@ -28,7 +28,7 @@ export default function BurndownChart({ sprint, tasks = [] }) {
     const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
     // Calculate total story points for this sprint
-    const sprintTasks = tasks.filter(t => t.sprint_id === sprint._id);
+    const sprintTasks = tasks.filter((t) => t.sprint_id === sprint._id);
     const totalPointsFromTasks = sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
     // Prefer stored story_points_planifiés if available
     const totalPoints = sprint.story_points_planifiés || totalPointsFromTasks;
@@ -40,7 +40,7 @@ export default function BurndownChart({ sprint, tasks = [] }) {
     if (sprint.burndown_data && sprint.burndown_data.length > 0) {
       // Create a map of stored data by date
       const storedDataMap = new Map();
-      sprint.burndown_data.forEach(entry => {
+      sprint.burndown_data.forEach((entry) => {
         const dateKey = new Date(entry.date).toDateString();
         storedDataMap.set(dateKey, entry);
       });
@@ -53,7 +53,10 @@ export default function BurndownChart({ sprint, tasks = [] }) {
         const dateKey = currentDate.toDateString();
 
         // Calculate ideal burndown (linear)
-        const idealRemaining = Math.max(0, totalPoints - (totalPoints / Math.max(1, totalDays - 1)) * i);
+        const idealRemaining = Math.max(
+          0,
+          totalPoints - (totalPoints / Math.max(1, totalDays - 1)) * i
+        );
 
         // Get stored data for this day if available
         const storedEntry = storedDataMap.get(dateKey);
@@ -65,12 +68,17 @@ export default function BurndownChart({ sprint, tasks = [] }) {
             actualRemaining = storedEntry.story_points_restants;
           } else {
             // Calculate from tasks if no stored data
-            const completedByDate = sprintTasks.filter(t => {
+            const completedByDate = sprintTasks.filter((t) => {
               if (t.statut !== 'Terminé') return false;
-              const completedDate = t.date_complétion ? new Date(t.date_complétion) : new Date(t.updated_at);
+              const completedDate = t.date_complétion
+                ? new Date(t.date_complétion)
+                : new Date(t.updated_at);
               return completedDate <= currentDate;
             });
-            const completedPoints = completedByDate.reduce((sum, t) => sum + (t.story_points || 0), 0);
+            const completedPoints = completedByDate.reduce(
+              (sum, t) => sum + (t.story_points || 0),
+              0
+            );
             actualRemaining = totalPoints - completedPoints;
           }
         }
@@ -80,7 +88,7 @@ export default function BurndownChart({ sprint, tasks = [] }) {
           fullDate: currentDate.toLocaleDateString('fr-FR'),
           réel: actualRemaining,
           idéal: storedEntry?.idéal ?? Math.round(idealRemaining * 10) / 10,
-          jour: i + 1
+          jour: i + 1,
         });
       }
       return data;
@@ -94,14 +102,19 @@ export default function BurndownChart({ sprint, tasks = [] }) {
       currentDate.setDate(startDate.getDate() + i);
 
       // Calculate ideal burndown (linear)
-      const idealRemaining = Math.max(0, totalPoints - (totalPoints / Math.max(1, totalDays - 1)) * i);
+      const idealRemaining = Math.max(
+        0,
+        totalPoints - (totalPoints / Math.max(1, totalDays - 1)) * i
+      );
 
       // Calculate actual remaining points up to this date
       let actualRemaining = null;
       if (currentDate <= today) {
-        const completedByDate = sprintTasks.filter(t => {
+        const completedByDate = sprintTasks.filter((t) => {
           if (t.statut !== 'Terminé') return false;
-          const completedDate = t.date_complétion ? new Date(t.date_complétion) : new Date(t.updated_at);
+          const completedDate = t.date_complétion
+            ? new Date(t.date_complétion)
+            : new Date(t.updated_at);
           return completedDate <= currentDate;
         });
         const completedPoints = completedByDate.reduce((sum, t) => sum + (t.story_points || 0), 0);
@@ -113,7 +126,7 @@ export default function BurndownChart({ sprint, tasks = [] }) {
         fullDate: currentDate.toLocaleDateString('fr-FR'),
         réel: actualRemaining,
         idéal: Math.round(idealRemaining * 10) / 10,
-        jour: i + 1
+        jour: i + 1,
       });
     }
 
@@ -123,14 +136,14 @@ export default function BurndownChart({ sprint, tasks = [] }) {
   const totalPoints = useMemo(() => {
     // Prefer stored story_points_planifiés
     if (sprint?.story_points_planifiés) return sprint.story_points_planifiés;
-    const sprintTasks = tasks.filter(t => t.sprint_id === sprint?._id);
+    const sprintTasks = tasks.filter((t) => t.sprint_id === sprint?._id);
     return sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
   }, [sprint, tasks]);
 
   const completedPoints = useMemo(() => {
     // Prefer stored story_points_complétés
     if (sprint?.story_points_complétés !== undefined) return sprint.story_points_complétés;
-    const sprintTasks = tasks.filter(t => t.sprint_id === sprint?._id && t.statut === 'Terminé');
+    const sprintTasks = tasks.filter((t) => t.sprint_id === sprint?._id && t.statut === 'Terminé');
     return sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
   }, [sprint, tasks]);
 
@@ -189,15 +202,16 @@ export default function BurndownChart({ sprint, tasks = [] }) {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 12 }}
-                stroke="#9ca3af"
-              />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#9ca3af" />
               <YAxis
                 tick={{ fontSize: 12 }}
                 stroke="#9ca3af"
-                label={{ value: 'Story Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                label={{
+                  value: 'Story Points',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { textAnchor: 'middle' },
+                }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
@@ -228,3 +242,5 @@ export default function BurndownChart({ sprint, tasks = [] }) {
     </Card>
   );
 }
+
+export default memo(BurndownChart);

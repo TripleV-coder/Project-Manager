@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useSocket } from '@/context/SocketContext';
+import { useSocket } from '@/contexts/SocketContext';
 import { toast } from 'sonner';
 
 /**
  * Hook for simplified real-time updates with automatic error handling
- * 
+ *
  * Usage:
  * const { data, loading, error, subscribe, unsubscribe } = useRealtime(
  *   'task:updated',
- *   (data) => console.log('Task updated:', data)
+ *   (data) => { // handle update }
  * );
  */
 export function useRealtime(eventName, onDataReceived, options = {}) {
@@ -23,7 +23,7 @@ export function useRealtime(eventName, onDataReceived, options = {}) {
     showErrorToast = true,
     errorMessage = 'Connection lost',
     retryOnError: _retryOnError = true,
-    maxRetries = 3
+    maxRetries = 3,
   } = options;
 
   const [retryCount, setRetryCount] = useState(0);
@@ -43,7 +43,6 @@ export function useRealtime(eventName, onDataReceived, options = {}) {
           onDataReceived(receivedData);
         }
       } catch (err) {
-        console.error(`Error handling ${eventName}:`, err);
         setError(err);
         if (showErrorToast) {
           toast.error(`Error processing ${eventName}: ${err.message}`);
@@ -73,7 +72,7 @@ export function useRealtime(eventName, onDataReceived, options = {}) {
       if (showErrorToast && retryCount < maxRetries) {
         // Retry after delay
         const timer = setTimeout(() => {
-          setRetryCount(prev => prev + 1);
+          setRetryCount((prev) => prev + 1);
         }, 2000);
         return () => clearTimeout(timer);
       }
@@ -97,13 +96,13 @@ export function useRealtime(eventName, onDataReceived, options = {}) {
     error,
     isConnected,
     subscribe,
-    unsubscribe
+    unsubscribe,
   };
 }
 
 /**
  * Hook for emitting real-time events
- * 
+ *
  * Usage:
  * const { emit, loading, error } = useRealtimeEmit();
  * await emit('task:update', { taskId, status: 'done' });
@@ -155,18 +154,18 @@ export function useRealtimeEmit() {
     emit,
     loading,
     error,
-    isConnected
+    isConnected,
   };
 }
 
 /**
  * Hook for listening to multiple events at once
- * 
+ *
  * Usage:
  * const { unsubscribe } = useRealtimeMulti({
- *   'task:created': (data) => console.log('Task created', data),
- *   'task:updated': (data) => console.log('Task updated', data),
- *   'task:deleted': (data) => console.log('Task deleted', data)
+ *   'task:created': (data) => { // handle creation },
+ *   'task:updated': (data) => { // handle update },
+ *   'task:deleted': (data) => { // handle deletion }
  * });
  */
 const DEFAULT_HANDLERS = {};
@@ -177,7 +176,7 @@ export function useRealtimeMulti(eventHandlers = DEFAULT_HANDLERS) {
 
   const unsubscribe = useCallback(() => {
     if (!socket) return;
-    Object.keys(eventHandlers).forEach(eventName => {
+    Object.keys(eventHandlers).forEach((eventName) => {
       socket.off(eventName);
     });
   }, [socket, eventHandlers]);
@@ -196,7 +195,6 @@ export function useRealtimeMulti(eventHandlers = DEFAULT_HANDLERS) {
         try {
           handler(data);
         } catch (err) {
-          console.error(`Error in handler for ${eventName}:`, err);
           setError(err);
           toast.error(`Error in ${eventName} handler: ${err.message}`);
         }
@@ -209,7 +207,7 @@ export function useRealtimeMulti(eventHandlers = DEFAULT_HANDLERS) {
 
     // Cleanup
     return () => {
-      unsubscribers.forEach(cleanup => cleanup?.());
+      unsubscribers.forEach((cleanup) => cleanup?.());
     };
   }, [socket, isConnected, eventHandlers]);
 

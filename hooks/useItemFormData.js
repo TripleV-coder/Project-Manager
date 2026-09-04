@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { safeFetch } from '@/lib/fetch-with-timeout';
 import { toast } from 'sonner';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
+import { extractAssignableUsers } from '@/lib/projectRoster';
 
 /**
  * Hook pour charger et gérer les données nécessaires aux formulaires de création/édition
@@ -22,8 +23,10 @@ export function useItemFormData({
   loadUsers = true,
   loadSprints = true,
   loadDeliverables = false,
-  onUnauthorized = () => {}
+  onUnauthorized = () => {},
 } = {}) {
+  const { authFetch } = useAuthFetch();
+
   // États des données
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
@@ -46,7 +49,7 @@ export function useItemFormData({
     users: null,
     sprints: null,
     deliverables: null,
-    items: null
+    items: null,
   });
 
   // Vérification si les données sont prêtes
@@ -73,16 +76,37 @@ export function useItemFormData({
   }, []);
 
   /**
+   * Helper interne : fetch + parse JSON avec gestion d'erreurs
+   */
+  const safeFetchJson = useCallback(
+    async (url) => {
+      const response = await authFetch(url);
+      if (!response.ok) {
+        const error = new Error(`HTTP_ERROR_${response.status}`);
+        error.status = response.status;
+        try {
+          error.data = await response.json();
+        } catch {
+          /* ignore */
+        }
+        throw error;
+      }
+      return await response.json();
+    },
+    [authFetch]
+  );
+
+  /**
    * Charger les projets
    */
-  const fetchProjects = useCallback(async (token) => {
+  const fetchProjects = useCallback(async () => {
     if (!loadProjects) return;
 
     setLoadingProjects(true);
-    setErrors(prev => ({ ...prev, projects: null }));
+    setErrors((prev) => ({ ...prev, projects: null }));
 
     try {
-      const response = await safeFetch('/api/projects?limit=100&page=1', token);
+      const response = await safeFetchJson('/api/projects?limit=100&page=1');
       const projectsList = extractData(response, ['data', 'projects']);
 
       if (!Array.isArray(projectsList)) {
@@ -93,193 +117,201 @@ export function useItemFormData({
       return projectsList;
     } catch (error) {
       console.error('Erreur chargement projets:', error);
-      setErrors(prev => ({ ...prev, projects: error.message }));
+      setErrors((prev) => ({ ...prev, projects: error.message }));
 
       if (error.message === 'UNAUTHORIZED') {
         onUnauthorized();
-      } else if (error.message !== 'TIMEOUT') {
+      } else if (!error.message?.startsWith('HTTP_ERROR')) {
         toast.error('Erreur lors du chargement des projets');
       }
       return [];
     } finally {
       setLoadingProjects(false);
     }
-  }, [loadProjects, extractData, onUnauthorized]);
+  }, [loadProjects, extractData, onUnauthorized, safeFetchJson]);
 
   /**
-   * Charger les utilisateurs
+   * Charger les personnes assignables : roster du projet, pas l'annuaire admin.
    */
-  const fetchUsers = useCallback(async (token) => {
-    if (!loadUsers) return;
+  const fetchUsers = useCallback(
+    async (filterProjectId = projectId) => {
+      if (!loadUsers) return;
 
-    setLoadingUsers(true);
-    setErrors(prev => ({ ...prev, users: null }));
+      setLoadingUsers(true);
+      setErrors((prev) => ({ ...prev, users: null }));
 
-    try {
-      const response = await safeFetch('/api/users?limit=100&page=1', token);
-      const usersList = extractData(response, ['data', 'users']);
+      try {
+        if (!filterProjectId || filterProjectId === 'all') {
+          setUsers([]);
+          return [];
+        }
 
-      if (!Array.isArray(usersList)) {
-        throw new Error('Format de réponse invalide pour les utilisateurs');
+        const response = await safeFetchJson(`/api/projects/${filterProjectId}`);
+        const project = response.project || response.data || response;
+        const usersList = extractAssignableUsers(project);
+
+        setUsers(usersList);
+        return usersList;
+      } catch (error) {
+        console.error('Erreur chargement membres du projet:', error);
+        setErrors((prev) => ({ ...prev, users: error.message }));
+        setUsers([]);
+
+        if (error.message === 'UNAUTHORIZED') {
+          onUnauthorized();
+        }
+        return [];
+      } finally {
+        setLoadingUsers(false);
       }
-
-      setUsers(usersList);
-      return usersList;
-    } catch (error) {
-      console.error('Erreur chargement utilisateurs:', error);
-      setErrors(prev => ({ ...prev, users: error.message }));
-
-      if (error.message === 'UNAUTHORIZED') {
-        onUnauthorized();
-      }
-      return [];
-    } finally {
-      setLoadingUsers(false);
-    }
-  }, [loadUsers, extractData, onUnauthorized]);
+    },
+    [loadUsers, projectId, onUnauthorized, safeFetchJson]
+  );
 
   /**
    * Charger les sprints (optionnellement filtrés par projet)
    */
-  const fetchSprints = useCallback(async (token, filterProjectId = null) => {
-    if (!loadSprints) return;
+  const fetchSprints = useCallback(
+    async (filterProjectId = null) => {
+      if (!loadSprints) return;
 
-    setLoadingSprints(true);
-    setErrors(prev => ({ ...prev, sprints: null }));
+      setLoadingSprints(true);
+      setErrors((prev) => ({ ...prev, sprints: null }));
 
-    try {
-      const url = filterProjectId
-        ? `/api/sprints?projet_id=${filterProjectId}`
-        : '/api/sprints?limit=100';
+      try {
+        const url = filterProjectId
+          ? `/api/sprints?projet_id=${filterProjectId}`
+          : '/api/sprints?limit=100';
 
-      const response = await safeFetch(url, token);
-      const sprintsList = extractData(response, ['data', 'sprints']);
+        const response = await safeFetchJson(url);
+        const sprintsList = extractData(response, ['data', 'sprints']);
 
-      if (!Array.isArray(sprintsList)) {
-        throw new Error('Format de réponse invalide pour les sprints');
+        if (!Array.isArray(sprintsList)) {
+          throw new Error('Format de réponse invalide pour les sprints');
+        }
+
+        setSprints(sprintsList);
+        return sprintsList;
+      } catch (error) {
+        console.error('Erreur chargement sprints:', error);
+        setErrors((prev) => ({ ...prev, sprints: error.message }));
+
+        if (error.message === 'UNAUTHORIZED') {
+          onUnauthorized();
+        }
+        return [];
+      } finally {
+        setLoadingSprints(false);
       }
-
-      setSprints(sprintsList);
-      return sprintsList;
-    } catch (error) {
-      console.error('Erreur chargement sprints:', error);
-      setErrors(prev => ({ ...prev, sprints: error.message }));
-
-      if (error.message === 'UNAUTHORIZED') {
-        onUnauthorized();
-      }
-      return [];
-    } finally {
-      setLoadingSprints(false);
-    }
-  }, [loadSprints, extractData, onUnauthorized]);
+    },
+    [loadSprints, extractData, onUnauthorized, safeFetchJson]
+  );
 
   /**
    * Charger les livrables (optionnellement filtrés par projet)
    */
-  const fetchDeliverables = useCallback(async (token, filterProjectId = null) => {
-    if (!loadDeliverables) return;
+  const fetchDeliverables = useCallback(
+    async (filterProjectId = null) => {
+      if (!loadDeliverables) return;
 
-    setLoadingDeliverables(true);
-    setErrors(prev => ({ ...prev, deliverables: null }));
+      setLoadingDeliverables(true);
+      setErrors((prev) => ({ ...prev, deliverables: null }));
 
-    try {
-      const url = filterProjectId
-        ? `/api/deliverables?projet_id=${filterProjectId}&limit=100`
-        : '/api/deliverables?limit=100&page=1';
+      try {
+        const url = filterProjectId
+          ? `/api/deliverables?projet_id=${filterProjectId}&limit=100`
+          : '/api/deliverables?limit=100&page=1';
 
-      const response = await safeFetch(url, token);
-      const deliverablesList = extractData(response, ['data', 'deliverables']);
+        const response = await safeFetchJson(url);
+        const deliverablesList = extractData(response, ['data', 'deliverables']);
 
-      if (!Array.isArray(deliverablesList)) {
-        throw new Error('Format de réponse invalide pour les livrables');
+        if (!Array.isArray(deliverablesList)) {
+          throw new Error('Format de réponse invalide pour les livrables');
+        }
+
+        setDeliverables(deliverablesList);
+        return deliverablesList;
+      } catch (error) {
+        console.error('Erreur chargement livrables:', error);
+        setErrors((prev) => ({ ...prev, deliverables: error.message }));
+
+        if (error.message === 'UNAUTHORIZED') {
+          onUnauthorized();
+        }
+        return [];
+      } finally {
+        setLoadingDeliverables(false);
       }
-
-      setDeliverables(deliverablesList);
-      return deliverablesList;
-    } catch (error) {
-      console.error('Erreur chargement livrables:', error);
-      setErrors(prev => ({ ...prev, deliverables: error.message }));
-
-      if (error.message === 'UNAUTHORIZED') {
-        onUnauthorized();
-      }
-      return [];
-    } finally {
-      setLoadingDeliverables(false);
-    }
-  }, [loadDeliverables, extractData, onUnauthorized]);
+    },
+    [loadDeliverables, extractData, onUnauthorized, safeFetchJson]
+  );
 
   /**
    * Charger les epics et stories pour un projet donné
    */
-  const fetchEpicsAndStories = useCallback(async (token, filterProjectId) => {
-    if (!filterProjectId || filterProjectId === 'all') {
-      setEpics([]);
-      setStories([]);
-      return { epics: [], stories: [] };
-    }
-
-    setLoadingItems(true);
-    setErrors(prev => ({ ...prev, items: null }));
-
-    try {
-      const response = await safeFetch(
-        `/api/tasks?projet_id=${filterProjectId}&limit=200&page=1`,
-        token
-      );
-      const tasksList = extractData(response, ['data', 'tasks']);
-
-      if (!Array.isArray(tasksList)) {
-        throw new Error('Format de réponse invalide pour les tâches');
+  const fetchEpicsAndStories = useCallback(
+    async (filterProjectId) => {
+      if (!filterProjectId || filterProjectId === 'all') {
+        setEpics([]);
+        setStories([]);
+        return { epics: [], stories: [] };
       }
 
-      const epicsList = tasksList.filter(t => t.type === 'Épic');
-      const storiesList = tasksList.filter(t => t.type === 'Story');
+      setLoadingItems(true);
+      setErrors((prev) => ({ ...prev, items: null }));
 
-      setEpics(epicsList);
-      setStories(storiesList);
+      try {
+        const response = await safeFetchJson(
+          `/api/tasks?projet_id=${filterProjectId}&limit=200&page=1`
+        );
+        const tasksList = extractData(response, ['data', 'tasks']);
 
-      return { epics: epicsList, stories: storiesList };
-    } catch (error) {
-      console.error('Erreur chargement epics/stories:', error);
-      setErrors(prev => ({ ...prev, items: error.message }));
+        if (!Array.isArray(tasksList)) {
+          throw new Error('Format de réponse invalide pour les tâches');
+        }
 
-      if (error.message === 'UNAUTHORIZED') {
-        onUnauthorized();
+        const epicsList = tasksList.filter((t) => t.type === 'Épic');
+        const storiesList = tasksList.filter((t) => t.type === 'Story');
+
+        setEpics(epicsList);
+        setStories(storiesList);
+
+        return { epics: epicsList, stories: storiesList };
+      } catch (error) {
+        console.error('Erreur chargement epics/stories:', error);
+        setErrors((prev) => ({ ...prev, items: error.message }));
+
+        if (error.message === 'UNAUTHORIZED') {
+          onUnauthorized();
+        }
+        return { epics: [], stories: [] };
+      } finally {
+        setLoadingItems(false);
       }
-      return { epics: [], stories: [] };
-    } finally {
-      setLoadingItems(false);
-    }
-  }, [extractData, onUnauthorized]);
+    },
+    [extractData, onUnauthorized, safeFetchJson]
+  );
 
   /**
    * Charger toutes les données initiales
    */
   const loadAllData = useCallback(async () => {
-    const token = localStorage.getItem('pm_token');
-    if (!token) {
-      onUnauthorized();
-      return;
-    }
-
     setLoading(true);
     setDataReady(false);
 
     try {
       const promises = [];
 
-      if (loadProjects) promises.push(fetchProjects(token));
-      if (loadUsers) promises.push(fetchUsers(token));
-      if (loadSprints) promises.push(fetchSprints(token, projectId));
-      if (loadDeliverables) promises.push(fetchDeliverables(token, projectId));
+      if (loadProjects) promises.push(fetchProjects());
+      if (loadUsers) promises.push(fetchUsers());
+      if (loadSprints) promises.push(fetchSprints(projectId));
+      if (loadDeliverables) promises.push(fetchDeliverables(projectId));
 
       await Promise.all(promises);
 
       // Charger les epics/stories si un projet est sélectionné
       if (projectId && projectId !== 'all') {
-        await fetchEpicsAndStories(token, projectId);
+        await fetchEpicsAndStories(projectId);
       }
 
       setDataReady(true);
@@ -300,27 +332,32 @@ export function useItemFormData({
     fetchSprints,
     fetchDeliverables,
     fetchEpicsAndStories,
-    onUnauthorized
   ]);
 
   /**
    * Recharger les données liées à un projet spécifique
    */
-  const reloadProjectData = useCallback(async (newProjectId) => {
-    const token = localStorage.getItem('pm_token');
-    if (!token) {
-      onUnauthorized();
-      return;
-    }
+  const reloadProjectData = useCallback(
+    async (newProjectId) => {
+      const promises = [];
 
-    const promises = [];
+      if (loadSprints) promises.push(fetchSprints(newProjectId));
+      if (loadDeliverables) promises.push(fetchDeliverables(newProjectId));
+      if (loadUsers) promises.push(fetchUsers(newProjectId));
+      promises.push(fetchEpicsAndStories(newProjectId));
 
-    if (loadSprints) promises.push(fetchSprints(token, newProjectId));
-    if (loadDeliverables) promises.push(fetchDeliverables(token, newProjectId));
-    promises.push(fetchEpicsAndStories(token, newProjectId));
-
-    await Promise.all(promises);
-  }, [loadSprints, loadDeliverables, fetchSprints, fetchDeliverables, fetchEpicsAndStories, onUnauthorized]);
+      await Promise.all(promises);
+    },
+    [
+      loadSprints,
+      loadDeliverables,
+      loadUsers,
+      fetchSprints,
+      fetchDeliverables,
+      fetchUsers,
+      fetchEpicsAndStories,
+    ]
+  );
 
   /**
    * Rafraîchir toutes les données
@@ -361,7 +398,7 @@ export function useItemFormData({
 
     // États d'erreur
     errors,
-    hasErrors: Object.values(errors).some(e => e !== null),
+    hasErrors: Object.values(errors).some((e) => e !== null),
 
     // État de préparation
     dataReady,
@@ -369,7 +406,7 @@ export function useItemFormData({
     // Actions
     refresh,
     reloadProjectData,
-    fetchEpicsAndStories
+    fetchEpicsAndStories,
   };
 }
 

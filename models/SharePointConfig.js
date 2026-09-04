@@ -207,5 +207,13 @@ SharePointConfigSchema.statics.updateSyncStats = async function (stats) {
   );
 };
 
-export default mongoose.models.SharePointConfig ||
-  mongoose.model('SharePointConfig', SharePointConfigSchema);
+const SharePointConfig =
+  mongoose.models.SharePointConfig || mongoose.model('SharePointConfig', SharePointConfigSchema);
+
+SharePointConfig.getConfig = SharePointConfigSchema.statics.getConfig;
+SharePointConfig.updateConfig = SharePointConfigSchema.statics.updateConfig;
+SharePointConfig.isConfigured = SharePointConfigSchema.statics.isConfigured;
+SharePointConfig.updateConnectionStatus = SharePointConfigSchema.statics.updateConnectionStatus;
+SharePointConfig.updateSyncStats = SharePointConfigSchema.statics.updateSyncStats;
+
+export default SharePointConfig;

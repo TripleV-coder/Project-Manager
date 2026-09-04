@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 /**
  * Hook pour gérer les notifications push côté client
  */
 export function usePushNotifications() {
+  const { authFetch } = useAuthFetch();
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscription, setSubscription] = useState(null);
@@ -48,7 +50,7 @@ export function usePushNotifications() {
 
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('Service Worker registered:', registration.scope);
+      // Service worker registered silently
       return registration;
     } catch (err) {
       console.error('Service Worker registration failed:', err);
@@ -89,10 +91,7 @@ export function usePushNotifications() {
       }
 
       // Obtenir la clé VAPID publique
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/push/vapid-key', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authFetch('/api/push/vapid-key');
 
       if (!response.ok) {
         throw new Error('Failed to get VAPID key');
@@ -110,17 +109,14 @@ export function usePushNotifications() {
       // S'abonner
       const pushSubscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey
+        applicationServerKey,
       });
 
       // Envoyer l'abonnement au serveur
-      const saveResponse = await fetch('/api/push/subscribe', {
+      const saveResponse = await authFetch('/api/push/subscribe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(pushSubscription.toJSON())
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pushSubscription.toJSON()),
       });
 
       if (!saveResponse.ok) {
@@ -138,6 +134,7 @@ export function usePushNotifications() {
       setLoading(false);
       return null;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSupported, registerServiceWorker]);
 
   // Se désabonner des notifications push
@@ -149,14 +146,10 @@ export function usePushNotifications() {
 
     try {
       // Supprimer l'abonnement du serveur
-      const token = localStorage.getItem('pm_token');
-      await fetch('/api/push/unsubscribe', {
+      await authFetch('/api/push/unsubscribe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ endpoint: subscription.endpoint })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
       });
 
       // Se désabonner localement
@@ -173,6 +166,7 @@ export function usePushNotifications() {
       setLoading(false);
       return false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscription]);
 
   return {
@@ -184,16 +178,14 @@ export function usePushNotifications() {
     error,
     subscribe,
     unsubscribe,
-    registerServiceWorker
+    registerServiceWorker,
   };
 }
 
 // Utilitaire pour convertir la clé VAPID
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
 
   const rawData = atob(base64);
   const outputArray = new Uint8Array(rawData.length);

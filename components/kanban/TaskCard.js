@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Clock } from 'lucide-react';
@@ -5,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
-export default function TaskCard({ task, isDragging: _isDragging }) {
+function TaskCard({ task, isDragging: _isDragging }) {
   const {
     attributes,
     listeners,
@@ -22,10 +23,10 @@ export default function TaskCard({ task, isDragging: _isDragging }) {
   };
 
   const priorityColors = {
-    'Critique': 'bg-red-100 text-red-700 border-red-200',
-    'Haute': 'bg-orange-100 text-orange-700 border-orange-200',
-    'Moyenne': 'bg-blue-100 text-blue-700 border-blue-200',
-    'Basse': 'bg-gray-100 text-gray-700 border-gray-200'
+    Critique: 'bg-red-100 text-red-700 border-red-200',
+    Haute: 'bg-orange-100 text-orange-700 border-orange-200',
+    Moyenne: 'bg-blue-100 text-blue-700 border-blue-200',
+    Basse: 'bg-gray-100 text-gray-700 border-gray-200',
   };
 
   return (
@@ -42,8 +43,8 @@ export default function TaskCard({ task, isDragging: _isDragging }) {
 
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={`text-xs ${priorityColors[task.priorité] || ''}`}
                   >
                     {task.priorité}
@@ -54,7 +55,7 @@ export default function TaskCard({ task, isDragging: _isDragging }) {
                     </Badge>
                   )}
                 </div>
-                
+
                 {task.assigné_à && (
                   <Avatar className="w-6 h-6">
                     <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs">
@@ -77,3 +78,5 @@ export default function TaskCard({ task, isDragging: _isDragging }) {
     </div>
   );
 }
+
+export default memo(TaskCard);

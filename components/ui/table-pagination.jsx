@@ -24,7 +24,7 @@ export default function TablePagination({
   onItemsPerPageChange,
   itemsPerPageOptions = [10, 15, 25, 50],
   showItemsPerPage = true,
-  className = ''
+  className = '',
 }) {
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
@@ -66,8 +66,10 @@ export default function TablePagination({
             onChange={(e) => onItemsPerPageChange(parseInt(e.target.value))}
             className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
-            {itemsPerPageOptions.map(n => (
-              <option key={n} value={n}>{n} / page</option>
+            {itemsPerPageOptions.map((n) => (
+              <option key={n} value={n}>
+                {n} / page
+              </option>
             ))}
           </select>
         )}
@@ -98,9 +100,11 @@ export default function TablePagination({
 
           {/* Numéros de page */}
           <div className="flex items-center gap-0.5 mx-1">
-            {getPageNumbers().map((page, i) => (
+            {getPageNumbers().map((page, i) =>
               page === '...' ? (
-                <span key={`ellipsis-${i}`} className="px-2 text-xs text-gray-400">...</span>
+                <span key={`ellipsis-${i}`} className="px-2 text-xs text-gray-400">
+                  ...
+                </span>
               ) : (
                 <button
                   key={page}
@@ -116,7 +120,7 @@ export default function TablePagination({
                   {page}
                 </button>
               )
-            ))}
+            )}
           </div>
 
           {/* Page suivante */}

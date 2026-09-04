@@ -7,9 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useTranslation } from '@/contexts/AppSettingsContext';
+import { authFetch } from '@/lib/auth-fetch';
 
 export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
   const { t } = useTranslation();
@@ -43,12 +51,8 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
   const startSetup = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/auth/2fa/setup', {
+      const response = await authFetch('/api/auth/2fa/setup', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
       });
 
       const data = await response.json();
@@ -76,14 +80,12 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/auth/2fa/verify-setup', {
+      const response = await authFetch('/api/auth/2fa/verify-setup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ token: verificationCode })
+        body: JSON.stringify({ token: verificationCode }),
       });
 
       const data = await response.json();
@@ -112,17 +114,15 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/auth/2fa/disable', {
+      const response = await authFetch('/api/auth/2fa/disable', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           password: disablePassword,
-          token: disable2FACode || undefined
-        })
+          token: disable2FACode || undefined,
+        }),
       });
 
       const data = await response.json();
@@ -152,14 +152,12 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/auth/2fa/regenerate-codes', {
+      const response = await authFetch('/api/auth/2fa/regenerate-codes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ password: regeneratePassword })
+        body: JSON.stringify({ password: regeneratePassword }),
       });
 
       const data = await response.json();
@@ -211,12 +209,12 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
               </div>
               <div>
                 <CardTitle className="text-lg">{t('twoFactorAuth')}</CardTitle>
-                <CardDescription>
-                  {t('twoFactorDescription')}
-                </CardDescription>
+                <CardDescription>{t('twoFactorDescription')}</CardDescription>
               </div>
             </div>
-            <Badge className={enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+            <Badge
+              className={enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}
+            >
               {enabled ? t('enabled') : t('disabled')}
             </Badge>
           </div>
@@ -224,15 +222,9 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
         <CardContent>
           {enabled ? (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                {t('twoFactorProtectedMessage')}
-              </p>
+              <p className="text-sm text-gray-600">{t('twoFactorProtectedMessage')}</p>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRegenerateDialogOpen(true)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setRegenerateDialogOpen(true)}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   {t('regenerateBackupCodes')}
                 </Button>
@@ -248,9 +240,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                {t('twoFactorSetupMessage')}
-              </p>
+              <p className="text-sm text-gray-600">{t('twoFactorSetupMessage')}</p>
               <Button onClick={startSetup} disabled={loading}>
                 {loading ? (
                   <>
@@ -288,23 +278,16 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
               {/* QR Code */}
               <div className="flex justify-center">
                 {qrCodeUrl && (
-                  <img
-                    src={qrCodeUrl}
-                    alt="QR Code 2FA"
-                    className="w-48 h-48 border rounded-lg"
-                  />
+                  // eslint-disable-next-line @next/next/no-img-element -- QR data-URI, non optimisable
+                  <img src={qrCodeUrl} alt="QR Code 2FA" className="w-48 h-48 border rounded-lg" />
                 )}
               </div>
 
               {/* Manual Entry */}
               <div className="space-y-2">
-                <p className="text-sm text-gray-600 text-center">
-                  {t('orEnterManually')}
-                </p>
+                <p className="text-sm text-gray-600 text-center">{t('orEnterManually')}</p>
                 <div className="flex items-center gap-2 justify-center">
-                  <code className="px-3 py-2 bg-gray-100 rounded font-mono text-sm">
-                    {secret}
-                  </code>
+                  <code className="px-3 py-2 bg-gray-100 rounded font-mono text-sm">{secret}</code>
                   <Button size="sm" variant="ghost" onClick={copySecret}>
                     {copiedSecret ? (
                       <Check className="w-4 h-4 text-green-600" />
@@ -320,7 +303,9 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
                 <Label>{t('enter6DigitCode')}</Label>
                 <Input
                   value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onChange={(e) =>
+                    setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
                   placeholder="000000"
                   className="text-center text-2xl tracking-widest"
                   maxLength={6}
@@ -334,9 +319,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
               <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-yellow-800">
-                    {t('backupCodesWarningMessage')}
-                  </p>
+                  <p className="text-sm text-yellow-800">{t('backupCodesWarningMessage')}</p>
                 </div>
               </div>
 
@@ -364,10 +347,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
                 <Button variant="outline" onClick={closeSetupDialog}>
                   {t('cancel')}
                 </Button>
-                <Button
-                  onClick={verifySetup}
-                  disabled={loading || verificationCode.length !== 6}
-                >
+                <Button onClick={verifySetup} disabled={loading || verificationCode.length !== 6}>
                   {loading ? t('verifying') : t('verifyAndActivate')}
                 </Button>
               </>
@@ -386,9 +366,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('disable2FATitle')}</DialogTitle>
-            <DialogDescription>
-              {t('disable2FAWarning')}
-            </DialogDescription>
+            <DialogDescription>{t('disable2FAWarning')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -432,9 +410,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('regenerateBackupCodesTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('regenerateBackupCodesWarning')}
-            </DialogDescription>
+            <DialogDescription>{t('regenerateBackupCodesWarning')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -453,10 +429,7 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
             <Button variant="outline" onClick={() => setRegenerateDialogOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button
-              onClick={handleRegenerateCodes}
-              disabled={loading || !regeneratePassword}
-            >
+            <Button onClick={handleRegenerateCodes} disabled={loading || !regeneratePassword}>
               {loading ? t('generating') : t('generateNewCodes')}
             </Button>
           </DialogFooter>
@@ -468,18 +441,14 @@ export default function TwoFactorSetup({ isEnabled = false, onStatusChange }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('newBackupCodesTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('saveBackupCodesMessage')}
-            </DialogDescription>
+            <DialogDescription>{t('saveBackupCodesMessage')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-yellow-800">
-                  {t('oldCodesInvalidated')}
-                </p>
+                <p className="text-sm text-yellow-800">{t('oldCodesInvalidated')}</p>
               </div>
             </div>
 
