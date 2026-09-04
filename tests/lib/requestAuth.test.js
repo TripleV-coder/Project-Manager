@@ -96,4 +96,22 @@ describe('requestAuth', () => {
 
     expect(user?._id).toBe('user-1');
   });
+
+  test('authenticateRequest rejects a step-up token even with a valid signature', async () => {
+    verifyToken.mockResolvedValue({
+      userId: 'user-1',
+      tokenVersion: 0,
+      stepUp: true,
+      scope: '2fa',
+    });
+
+    const request = {
+      headers: { get: (name) => (name === 'authorization' ? 'Bearer a.b.c' : null) },
+    };
+
+    const user = await authenticateRequest(request);
+
+    expect(user).toBeNull();
+    expect(User.findById).not.toHaveBeenCalled();
+  });
 });
