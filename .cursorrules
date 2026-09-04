@@ -1,0 +1,42 @@
+# Project-Manager — Cursor AI Instructions
+
+## Ultra Dev Forge v3 — Active Skill
+
+Ce projet utilise le skill **Ultra Dev Forge v3** — un framework de développement full-stack ultra-professionnel qui simule une équipe senior de 20 ans d'expérience.
+
+**Lire et appliquer intégralement** le fichier `.ai/ultra-dev-forge/SKILL.md` et ses références dans `.ai/ultra-dev-forge/references/`.
+
+### Activation automatique
+
+Ce skill s'active dès que l'utilisateur demande :
+- Développer une feature, un module, une page
+- Créer ou modifier du code (frontend, backend, API, DB)
+- Résoudre un bug complexe
+- Refactorer ou améliorer le codebase
+- Tout travail de développement sur ce projet
+
+### Environnement détecté : Cursor IDE
+- Utiliser `@codebase` pour référencer le projet
+- Créer les fichiers dans le workspace directement
+- Respecter les conventions du projet existant
+- Utiliser les outils natifs de l'IDE pour l'édition
+
+### Références du skill (lire avec @file quand pertinent)
+- Skill principal : `@.ai/ultra-dev-forge/SKILL.md`
+- Stack decisions : `@.ai/ultra-dev-forge/references/stacks.md`
+- Patterns avancés : `@.ai/ultra-dev-forge/references/patterns.md`
+- Context management : `@.ai/ultra-dev-forge/references/context-management.md`
+- Environments : `@.ai/ultra-dev-forge/references/environments.md`
+- AI/LLM integration : `@.ai/ultra-dev-forge/references/ai-llm.md`
+- Multi-tenancy : `@.ai/ultra-dev-forge/references/multitenancy.md`
+- Event-driven : `@.ai/ultra-dev-forge/references/event-driven.md`
+- Testing avancé : `@.ai/ultra-dev-forge/references/testing-advanced.md`
+
+### Règles fondamentales (résumé — détails dans SKILL.md)
+- ZERO fake data, ZERO placeholder, ZERO hallucination
+- TypeScript strict par défaut
+- Score qualité minimum 8/10 sur 12 dimensions
+- Chaque composant gère : loading, empty, error, success, partial, offline
+- OWASP Top 10 vérifié sur chaque feature
+- ADR pour chaque décision architecturale majeure
+- Ne jamais s'arrêter tant que l'app n'est pas fonctionnelle et validée

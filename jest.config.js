@@ -1,8 +1,8 @@
-const nextJest = require('next/jest')
+const nextJest = require('next/jest');
 
 const createJestConfig = nextJest({
   dir: './',
-})
+});
 
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
@@ -10,10 +10,7 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
-  testMatch: [
-    '**/__tests__/**/*.[jt]s?(x)',
-    '**/?(*.)+(spec|test).[jt]s?(x)',
-  ],
+  testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   collectCoverageFrom: [
     'lib/**/*.{js,jsx}',
     'app/api/**/*.{js,jsx}',
@@ -21,25 +18,20 @@ const customJestConfig = {
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/.next/**',
+    '!**/.next-prod/**',
     '!**/coverage/**',
     '!**/dist/**',
   ],
-  coveragePathIgnorePatterns: [
-    '/node_modules/',
-    '/.next/',
-  ],
+  coveragePathIgnorePatterns: ['/node_modules/', '/.next/', '/.next-prod/'],
   testPathIgnorePatterns: [
     '/node_modules/',
     '/.next/',
+    '/.next-prod/',
     '<rootDir>/.next/',
+    '<rootDir>/tests/e2e/',
   ],
-  modulePathIgnorePatterns: [
-    '<rootDir>/.next/',
-  ],
-  transformIgnorePatterns: [
-    'node_modules/(?!(jose|uuid)/)',
-    '^.+\\.module\\.(css|sass|scss)$',
-  ],
+  modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/.next-prod/'],
+  transformIgnorePatterns: ['node_modules/(?!(jose|uuid)/)', '^.+\\.module\\.(css|sass|scss)$'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   globals: {
     'ts-jest': {
@@ -48,6 +40,6 @@ const customJestConfig = {
       },
     },
   },
-}
+};
 
-module.exports = createJestConfig(customJestConfig)
+module.exports = createJestConfig(customJestConfig);

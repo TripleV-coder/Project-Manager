@@ -17,8 +17,14 @@
     "jsx": "preserve",
     "incremental": true,
     "types": ["jest", "node"],
-    "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
   "include": [
     "next-env.d.ts",
@@ -27,7 +33,8 @@
     "**/*.js",
     "**/*.jsx",
     ".next/types/**/*.ts",
-    "types/**/*.d.ts"
+    "types/**/*.d.ts",
+    ".next-prod/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
