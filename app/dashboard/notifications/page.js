@@ -10,9 +10,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import TablePagination from '@/components/ui/table-pagination';
 import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function NotificationsPage() {
-  const router = useRouter();
+  const _router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { formatDate } = useFormatters();
   const { t } = useTranslation();
   const [notifications, setNotifications] = useState([]);
@@ -28,15 +30,7 @@ export default function NotificationsPage() {
 
   const loadNotifications = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('/api/notifications', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authFetch('/api/notifications', {});
       const data = await response.json();
       // API returns { success: true, data: [...] } or legacy format
       setNotifications(data.data || data.notifications || []);
@@ -50,21 +44,21 @@ export default function NotificationsPage() {
 
   const handleMarkAsRead = async (notificationId) => {
     try {
-      const token = localStorage.getItem('pm_token');
-      await fetch(`/api/notifications/${notificationId}/read`, {
+      await authFetch(`/api/notifications/${notificationId}/read`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      const updatedNotifications = notifications.map(n =>
+      const updatedNotifications = notifications.map((n) =>
         n._id === notificationId ? { ...n, lu: true } : n
       );
       setNotifications(updatedNotifications);
       toast.success(t('notificationMarkedAsRead'));
 
       // Émettre un événement pour mettre à jour le compteur dans le layout
-      const newUnreadCount = updatedNotifications.filter(n => !n.lu).length;
-      window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } }));
+      const newUnreadCount = updatedNotifications.filter((n) => !n.lu).length;
+      window.dispatchEvent(
+        new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } })
+      );
     } catch (error) {
       console.error('Erreur:', error);
     }
@@ -72,17 +66,17 @@ export default function NotificationsPage() {
 
   const handleMarkAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      await fetch('/api/notifications/read-all', {
+      await authFetch('/api/notifications/read-all', {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      setNotifications(notifications.map(n => ({ ...n, lu: true })));
+      setNotifications(notifications.map((n) => ({ ...n, lu: true })));
       toast.success(t('allNotificationsMarkedAsRead'));
 
       // Émettre un événement pour mettre à jour le compteur dans le layout
-      window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: 0 } }));
+      window.dispatchEvent(
+        new CustomEvent('notifications-updated', { detail: { unreadCount: 0 } })
+      );
     } catch (error) {
       console.error('Erreur:', error);
     }
@@ -90,21 +84,21 @@ export default function NotificationsPage() {
 
   const handleDelete = async (notificationId) => {
     try {
-      const token = localStorage.getItem('pm_token');
-      await fetch(`/api/notifications/${notificationId}`, {
+      await authFetch(`/api/notifications/${notificationId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      const deletedNotification = notifications.find(n => n._id === notificationId);
-      const updatedNotifications = notifications.filter(n => n._id !== notificationId);
+      const deletedNotification = notifications.find((n) => n._id === notificationId);
+      const updatedNotifications = notifications.filter((n) => n._id !== notificationId);
       setNotifications(updatedNotifications);
       toast.success(t('notificationDeleted'));
 
       // Si la notification supprimée était non lue, mettre à jour le compteur
       if (deletedNotification && !deletedNotification.lu) {
-        const newUnreadCount = updatedNotifications.filter(n => !n.lu).length;
-        window.dispatchEvent(new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } }));
+        const newUnreadCount = updatedNotifications.filter((n) => !n.lu).length;
+        window.dispatchEvent(
+          new CustomEvent('notifications-updated', { detail: { unreadCount: newUnreadCount } })
+        );
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -120,7 +114,7 @@ export default function NotificationsPage() {
     setCurrentPage(1);
   };
 
-  const filteredNotifications = notifications.filter(n => {
+  const filteredNotifications = notifications.filter((n) => {
     if (filter === 'unread') return !n.lu;
     if (filter === 'read') return n.lu;
     return true;
@@ -132,7 +126,7 @@ export default function NotificationsPage() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedNotifications = filteredNotifications.slice(startIndex, startIndex + itemsPerPage);
 
-  const unreadCount = notifications.filter(n => !n.lu).length;
+  const unreadCount = notifications.filter((n) => !n.lu).length;
 
   if (loading) {
     return (
@@ -147,9 +141,11 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">{t('notifications')}</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Centre de Notifications & Alertes</h1>
           <p className="text-xs text-gray-500">
-            {unreadCount > 0 ? `${unreadCount} ${t('unreadNotifications').toLowerCase()}` : t('noNewNotifications')}
+            {unreadCount > 0
+              ? `${unreadCount} ${t('unreadNotifications').toLowerCase()}`
+              : 'Vous êtes à jour ! Aucune nouvelle notification.'}
           </p>
         </div>
         {unreadCount > 0 && (
@@ -162,11 +158,23 @@ export default function NotificationsPage() {
 
       <Card className="border shadow-sm overflow-hidden">
         <CardHeader className="p-3 border-b bg-gray-50/50">
-          <Tabs value={filter} onValueChange={(val) => { setFilter(val); setCurrentPage(1); }}>
+          <Tabs
+            value={filter}
+            onValueChange={(val) => {
+              setFilter(val);
+              setCurrentPage(1);
+            }}
+          >
             <TabsList className="h-8">
-              <TabsTrigger value="all" className="text-xs h-7 px-3">{t('allNotifications')} ({notifications.length})</TabsTrigger>
-              <TabsTrigger value="unread" className="text-xs h-7 px-3">{t('unreadNotifications')} ({unreadCount})</TabsTrigger>
-              <TabsTrigger value="read" className="text-xs h-7 px-3">{t('readNotifications')} ({notifications.length - unreadCount})</TabsTrigger>
+              <TabsTrigger value="all" className="text-xs h-7 px-3">
+                {t('allNotifications')} ({notifications.length})
+              </TabsTrigger>
+              <TabsTrigger value="unread" className="text-xs h-7 px-3">
+                {t('unreadNotifications')} ({unreadCount})
+              </TabsTrigger>
+              <TabsTrigger value="read" className="text-xs h-7 px-3">
+                {t('readNotifications')} ({notifications.length - unreadCount})
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>
@@ -192,9 +200,13 @@ export default function NotificationsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-sm font-medium text-gray-900">{notification.titre}</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {notification.titre}
+                        </span>
                         {!notification.lu && (
-                          <Badge className="bg-indigo-600 text-white text-[10px] px-1.5 py-0">{t('new')}</Badge>
+                          <Badge className="bg-indigo-600 text-white text-[10px] px-1.5 py-0">
+                            {t('new')}
+                          </Badge>
                         )}
                       </div>
                       <p className="text-xs text-gray-600 line-clamp-2">{notification.message}</p>

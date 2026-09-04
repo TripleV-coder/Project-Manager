@@ -3,27 +3,69 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Files, Upload, Download, Trash2, Search, FolderPlus,
-  File, FileText, FileImage, FileVideo, FileAudio,
-  MoreVertical, Eye, Grid, List, X,
-  Folder, ChevronRight, Home
+  Files,
+  Upload,
+  Download,
+  Trash2,
+  Search,
+  FolderPlus,
+  File,
+  FileText,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  MoreVertical,
+  Eye,
+  Grid,
+  List,
+  X,
+  Folder,
+  ChevronRight,
+  Home,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function FilesPage() {
   const { confirm } = useConfirmation();
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
@@ -62,16 +104,9 @@ export default function FilesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       // Load user permissions first to ensure RBAC is applied before rendering
-      const userRes = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000)
+      const userRes = await authFetch('/api/auth/me', {
+        signal: AbortSignal.timeout(10000),
       });
       if (userRes.ok) {
         const userData = await userRes.json();
@@ -84,11 +119,10 @@ export default function FilesPage() {
       }
 
       const [projectsRes, filesRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch(`/api/files${selectedProject !== 'all' ? `?projet_id=${selectedProject}` : ''}`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(10000)
-        })
+        authFetch('/api/projects', { signal: AbortSignal.timeout(10000) }),
+        authFetch(`/api/files${selectedProject !== 'all' ? `?projet_id=${selectedProject}` : ''}`, {
+          signal: AbortSignal.timeout(10000),
+        }),
       ]);
 
       const projectsData = await projectsRes.json();
@@ -124,7 +158,6 @@ export default function FilesPage() {
     setUploadProgress(0);
 
     try {
-      const token = localStorage.getItem('pm_token');
       const totalFiles = selectedFiles.length;
       let uploaded = 0;
 
@@ -134,12 +167,9 @@ export default function FilesPage() {
         formData.append('projet_id', selectedProject !== 'all' ? selectedProject : '');
         formData.append('folder', currentFolder);
 
-        const response = await fetch('/api/files/upload', {
+        const response = await authFetch('/api/files/upload', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
+          body: formData,
         });
 
         if (!response.ok) {
@@ -166,10 +196,7 @@ export default function FilesPage() {
 
   const handleDownload = async (file) => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/files/${file._id}/download`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authFetch(`/api/files/${file._id}/download`, {});
 
       if (!response.ok) throw new Error('Erreur téléchargement');
 
@@ -196,15 +223,13 @@ export default function FilesPage() {
       description: 'Êtes-vous sûr de vouloir supprimer ce fichier ?',
       actionLabel: 'Supprimer',
       cancelLabel: 'Annuler',
-      isDangerous: true
+      isDangerous: true,
     });
     if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/files/${fileId}`, {
+      const response = await authFetch(`/api/files/${fileId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
@@ -226,18 +251,16 @@ export default function FilesPage() {
     }
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/files/folder', {
+      const response = await authFetch('/api/files/folder', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           nom: newFolderName,
           parent: currentFolder,
-          projet_id: selectedProject !== 'all' ? selectedProject : null
-        })
+          projet_id: selectedProject !== 'all' ? selectedProject : null,
+        }),
       });
 
       if (response.ok) {
@@ -271,7 +294,7 @@ export default function FilesPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const filteredFiles = files.filter(f => 
+  const filteredFiles = files.filter((f) =>
     f.nom?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -296,8 +319,12 @@ export default function FilesPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Gestion des Fichiers</h1>
-          <p className="text-gray-600 text-sm lg:text-base">Gérez tous les documents de vos projets</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">
+            Documents & Livrables
+          </h1>
+          <p className="text-gray-600 text-sm lg:text-base">
+            Espace de stockage sécurisé pour tous vos documents et livrables projet.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {canManageFiles && (
@@ -394,21 +421,23 @@ export default function FilesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les projets</SelectItem>
-                {projects.map(p => (
-                  <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p._id} value={p._id}>
+                    {p.nom}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <div className="flex gap-2">
-              <Button 
-                variant={viewMode === 'grid' ? 'default' : 'outline'} 
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setViewMode('grid')}
               >
                 <Grid className="w-4 h-4" />
               </Button>
-              <Button 
-                variant={viewMode === 'list' ? 'default' : 'outline'} 
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'outline'}
                 size="icon"
                 onClick={() => setViewMode('list')}
               >
@@ -421,24 +450,28 @@ export default function FilesPage() {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
-        <button 
+        <button
           onClick={() => setCurrentFolder('/')}
           className="flex items-center gap-1 hover:text-indigo-600"
         >
           <Home className="w-4 h-4" />
           Racine
         </button>
-        {currentFolder !== '/' && currentFolder.split('/').filter(Boolean).map((part, idx, arr) => (
-          <div key={idx} className="flex items-center gap-2">
-            <ChevronRight className="w-4 h-4" />
-            <button 
-              onClick={() => setCurrentFolder('/' + arr.slice(0, idx + 1).join('/'))}
-              className="hover:text-indigo-600"
-            >
-              {part}
-            </button>
-          </div>
-        ))}
+        {currentFolder !== '/' &&
+          currentFolder
+            .split('/')
+            .filter(Boolean)
+            .map((part, idx, arr) => (
+              <div key={idx} className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4" />
+                <button
+                  onClick={() => setCurrentFolder('/' + arr.slice(0, idx + 1).join('/'))}
+                  className="hover:text-indigo-600"
+                >
+                  {part}
+                </button>
+              </div>
+            ))}
       </div>
 
       {/* Files Display */}
@@ -446,15 +479,22 @@ export default function FilesPage() {
         <Card className="p-12">
           <div className="text-center">
             <Files className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun fichier</h3>
-            <p className="text-gray-600 mb-4">Commencez par téléverser vos premiers fichiers</p>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Téléverser des fichiers
-            </Button>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Aucun document pour le moment
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mb-6 max-w-md mx-auto">
+              Déposez ici vos comptes-rendus, présentations, maquettes et livrables pour que toute
+              l'équipe y ait accès facilement.
+            </p>
+            {canManageFiles && (
+              <Button
+                className="bg-indigo-600 hover:bg-indigo-700 shadow-sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Ajouter des documents
+              </Button>
+            )}
           </div>
         </Card>
       ) : viewMode === 'grid' ? (
@@ -492,8 +532,8 @@ export default function FilesPage() {
                   <div className="flex flex-col items-center">
                     <div className="relative w-full">
                       {file.type?.startsWith('image/') && file.url ? (
-                        <img 
-                          src={file.url} 
+                        <img
+                          src={file.url}
                           alt={file.nom}
                           className="w-full h-24 object-cover rounded-lg mb-3"
                         />
@@ -558,7 +598,7 @@ export default function FilesPage() {
             <TableBody>
               {filteredFiles.map((file) => {
                 const IconComponent = getFileIcon(file.type);
-                const project = projects.find(p => p._id === file.projet_id);
+                const project = projects.find((p) => p._id === file.projet_id);
                 return (
                   <TableRow key={file._id}>
                     <TableCell>
@@ -572,10 +612,14 @@ export default function FilesPage() {
                     <TableCell className="hidden sm:table-cell">
                       <Badge variant="outline">{file.type?.split('/')[1] || 'inconnu'}</Badge>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">{formatFileSize(file.taille)}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {formatFileSize(file.taille)}
+                    </TableCell>
                     <TableCell className="hidden lg:table-cell">{project?.nom || '-'}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {file.created_at ? new Date(file.created_at).toLocaleDateString('fr-FR') : '-'}
+                      {file.created_at
+                        ? new Date(file.created_at).toLocaleDateString('fr-FR')
+                        : '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -607,14 +651,15 @@ export default function FilesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Téléverser des fichiers</DialogTitle>
-            <DialogDescription>
-              {selectedFiles.length} fichier(s) sélectionné(s)
-            </DialogDescription>
+            <DialogDescription>{selectedFiles.length} fichier(s) sélectionné(s)</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               {selectedFiles.map((file, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                >
                   <div className="flex items-center gap-3">
                     <File className="w-5 h-5 text-gray-600" />
                     <div>
@@ -622,10 +667,10 @@ export default function FilesPage() {
                       <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
                     </div>
                   </div>
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="icon"
-                    onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                    onClick={() => setSelectedFiles((prev) => prev.filter((_, i) => i !== idx))}
                   >
                     <X className="w-4 h-4" />
                   </Button>
@@ -642,14 +687,18 @@ export default function FilesPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setUploadDialogOpen(false);
-              setSelectedFiles([]);
-            }} disabled={uploading}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUploadDialogOpen(false);
+                setSelectedFiles([]);
+              }}
+              disabled={uploading}
+            >
               Annuler
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700"
               onClick={handleUpload}
               disabled={uploading || selectedFiles.length === 0}
             >
@@ -679,10 +728,7 @@ export default function FilesPage() {
             <Button variant="outline" onClick={() => setNewFolderDialogOpen(false)}>
               Annuler
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
-              onClick={handleCreateFolder}
-            >
+            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleCreateFolder}>
               Créer
             </Button>
           </DialogFooter>
@@ -698,8 +744,8 @@ export default function FilesPage() {
             </DialogHeader>
             <div className="py-4">
               {previewFile.type?.startsWith('image/') ? (
-                <img 
-                  src={previewFile.url} 
+                <img
+                  src={previewFile.url}
                   alt={previewFile.nom}
                   className="max-w-full max-h-[60vh] mx-auto rounded-lg"
                 />

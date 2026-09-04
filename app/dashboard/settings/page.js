@@ -3,9 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Globe, Bell, Shield, Palette, Mail,
-  Save, RefreshCw,
-  Moon, Sun, Monitor
+  Globe,
+  Bell,
+  Shield,
+  Palette,
+  Mail,
+  Save,
+  RefreshCw,
+  Moon,
+  Sun,
+  Monitor,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -16,21 +23,38 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { theme: currentTheme, setTheme: applyTheme } = useTheme();
   const {
     sidebarCompact: currentSidebarCompact,
     setSidebarCompact: applySidebarCompact,
     primaryColor: currentPrimaryColor,
-    setPrimaryColor: applyPrimaryColor
+    setPrimaryColor: applyPrimaryColor,
   } = usePreferences();
   const { updateSettings: updateAppSettings } = useAppSettings();
   const { t } = useTranslation();
+  const {
+    isSubscribed,
+    subscribe,
+    unsubscribe,
+    loading: pushLoading,
+    permission,
+  } = usePushNotifications();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -60,26 +84,19 @@ export default function SettingsPage() {
     // Apparence
     theme: 'light',
     primaryColor: '#4f46e5',
-    sidebarCompact: false
+    sidebarCompact: false,
   });
 
   const loadSettings = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('/api/settings', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000)
+      const response = await authFetch('/api/settings', {
+        signal: AbortSignal.timeout(10000),
       });
 
       if (response.ok) {
         const data = await response.json();
         if (data.settings) {
-          setSettings(prev => ({ ...prev, ...data.settings }));
+          setSettings((prev) => ({ ...prev, ...data.settings }));
         }
       }
       setLoading(false);
@@ -87,6 +104,7 @@ export default function SettingsPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -95,25 +113,47 @@ export default function SettingsPage() {
 
   // Synchroniser les préférences locales avec les contextes
   useEffect(() => {
-    setSettings(prev => ({
+    setSettings((prev) => ({
       ...prev,
       theme: currentTheme || prev.theme,
       sidebarCompact: currentSidebarCompact,
-      primaryColor: currentPrimaryColor || prev.primaryColor
+      primaryColor: currentPrimaryColor || prev.primaryColor,
     }));
   }, [currentTheme, currentSidebarCompact, currentPrimaryColor]);
+
+  // Synchroniser l'état d'abonnement push
+  useEffect(() => {
+    setSettings((prev) => ({
+      ...prev,
+      pushNotifications: isSubscribed,
+    }));
+  }, [isSubscribed]);
+
+  const handlePushToggle = async (checked) => {
+    if (checked) {
+      const result = await subscribe();
+      if (result) {
+        toast.success(t('notificationsEnabled'));
+      } else if (permission === 'denied') {
+        toast.error(t('notificationsPermissionDenied'));
+      }
+    } else {
+      const result = await unsubscribe();
+      if (result) {
+        toast.success(t('notificationsDisabled'));
+      }
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/settings', {
+      const response = await authFetch('/api/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ settings })
+        body: JSON.stringify({ settings }),
       });
 
       if (response.ok) {
@@ -152,17 +192,21 @@ export default function SettingsPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">{t('settings')}</h1>
-          <p className="text-gray-600">{t('appDescription')}</p>
+          <p className="text-gray-600">{t('settingsSubtitle')}</p>
         </div>
-        <Button 
+        <Button
           className="bg-indigo-600 hover:bg-indigo-700"
           onClick={handleSave}
           disabled={saving}
         >
           {saving ? (
-            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> {t('loading')}</>
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> {t('loading')}
+            </>
           ) : (
-            <><Save className="w-4 h-4 mr-2" /> {t('save')}</>
+            <>
+              <Save className="w-4 h-4 mr-2" /> {t('save')}
+            </>
           )}
         </Button>
       </div>
@@ -192,7 +236,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('generalSettings')}</CardTitle>
-              <CardDescription>{t('appDescription')}</CardDescription>
+              <CardDescription>{t('generalSettingsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -240,7 +284,9 @@ export default function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Africa/Porto-Novo">Cotonou / Porto-Novo (UTC+1)</SelectItem>
+                      <SelectItem value="Africa/Porto-Novo">
+                        Cotonou / Porto-Novo (UTC+1)
+                      </SelectItem>
                       <SelectItem value="Africa/Abidjan">Abidjan (UTC+0)</SelectItem>
                       <SelectItem value="Africa/Lagos">Lagos (UTC+1)</SelectItem>
                       <SelectItem value="Africa/Douala">Douala (UTC+1)</SelectItem>
@@ -298,7 +344,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('notificationSettings')}</CardTitle>
-              <CardDescription>{t('notifications')}</CardDescription>
+              <CardDescription>{t('notificationSettingsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
@@ -326,7 +372,8 @@ export default function SettingsPage() {
                   </div>
                   <Switch
                     checked={settings.pushNotifications}
-                    onCheckedChange={(v) => setSettings({ ...settings, pushNotifications: v })}
+                    onCheckedChange={handlePushToggle}
+                    disabled={pushLoading}
                   />
                 </div>
               </div>
@@ -336,13 +383,36 @@ export default function SettingsPage() {
 
               <div className="space-y-3">
                 {[
-                  { key: 'notifyTaskAssigned', labelKey: 'notifyTaskAssignedLabel', descKey: 'notifyTaskAssignedDesc' },
-                  { key: 'notifyTaskCompleted', labelKey: 'notifyTaskCompletedLabel', descKey: 'notifyTaskCompletedDesc' },
-                  { key: 'notifyCommentMention', labelKey: 'notifyCommentMentionLabel', descKey: 'notifyCommentMentionDesc' },
-                  { key: 'notifySprintStart', labelKey: 'notifySprintStartLabel', descKey: 'notifySprintStartDesc' },
-                  { key: 'notifyBudgetAlert', labelKey: 'notifyBudgetAlertLabel', descKey: 'notifyBudgetAlertDesc' }
+                  {
+                    key: 'notifyTaskAssigned',
+                    labelKey: 'notifyTaskAssignedLabel',
+                    descKey: 'notifyTaskAssignedDesc',
+                  },
+                  {
+                    key: 'notifyTaskCompleted',
+                    labelKey: 'notifyTaskCompletedLabel',
+                    descKey: 'notifyTaskCompletedDesc',
+                  },
+                  {
+                    key: 'notifyCommentMention',
+                    labelKey: 'notifyCommentMentionLabel',
+                    descKey: 'notifyCommentMentionDesc',
+                  },
+                  {
+                    key: 'notifySprintStart',
+                    labelKey: 'notifySprintStartLabel',
+                    descKey: 'notifySprintStartDesc',
+                  },
+                  {
+                    key: 'notifyBudgetAlert',
+                    labelKey: 'notifyBudgetAlertLabel',
+                    descKey: 'notifyBudgetAlertDesc',
+                  },
                 ].map((item) => (
-                  <div key={item.key} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
                     <div>
                       <p className="font-medium text-sm">{t(item.labelKey)}</p>
                       <p className="text-xs text-gray-500">{t(item.descKey)}</p>
@@ -363,37 +433,45 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('securitySettings')}</CardTitle>
-              <CardDescription>{t('securitySettings')}</CardDescription>
+              <CardDescription>{t('securitySettingsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>{t('sessionTimeout')} ({t('minutes')})</Label>
+                  <Label>
+                    {t('sessionTimeout')} ({t('minutes')})
+                  </Label>
                   <Input
                     type="number"
                     value={settings.sessionTimeout}
-                    onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) || 30 })}
+                    onChange={(e) =>
+                      setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) || 30 })
+                    }
                   />
-                  <p className="text-xs text-gray-500">{t('sessionTimeout')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>{t('maxLoginAttempts')}</Label>
                   <Input
                     type="number"
                     value={settings.maxLoginAttempts}
-                    onChange={(e) => setSettings({ ...settings, maxLoginAttempts: parseInt(e.target.value) || 5 })}
+                    onChange={(e) =>
+                      setSettings({ ...settings, maxLoginAttempts: parseInt(e.target.value) || 5 })
+                    }
                   />
-                  <p className="text-xs text-gray-500">{t('maxLoginAttempts')}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>{t('lockoutDuration')} ({t('minutes')})</Label>
+                  <Label>
+                    {t('lockoutDuration')} ({t('minutes')})
+                  </Label>
                   <Input
                     type="number"
                     value={settings.lockoutDuration}
-                    onChange={(e) => setSettings({ ...settings, lockoutDuration: parseInt(e.target.value) || 15 })}
+                    onChange={(e) =>
+                      setSettings({ ...settings, lockoutDuration: parseInt(e.target.value) || 15 })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -401,7 +479,9 @@ export default function SettingsPage() {
                   <Input
                     type="number"
                     value={settings.passwordMinLength}
-                    onChange={(e) => setSettings({ ...settings, passwordMinLength: parseInt(e.target.value) || 8 })}
+                    onChange={(e) =>
+                      setSettings({ ...settings, passwordMinLength: parseInt(e.target.value) || 8 })
+                    }
                   />
                 </div>
               </div>
@@ -452,7 +532,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('appearanceSettings')}</CardTitle>
-              <CardDescription>{t('appearanceSettings')}</CardDescription>
+              <CardDescription>{t('appearanceSettingsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
@@ -461,7 +541,7 @@ export default function SettingsPage() {
                   {[
                     { value: 'light', icon: Sun, labelKey: 'light' },
                     { value: 'dark', icon: Moon, labelKey: 'dark' },
-                    { value: 'system', icon: Monitor, labelKey: 'system' }
+                    { value: 'system', icon: Monitor, labelKey: 'system' },
                   ].map((themeOption) => (
                     <button
                       key={themeOption.value}
@@ -476,9 +556,11 @@ export default function SettingsPage() {
                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                       }`}
                     >
-                      <themeOption.icon className={`w-6 h-6 ${
-                        settings.theme === themeOption.value ? 'text-indigo-600' : 'text-gray-400'
-                      }`} />
+                      <themeOption.icon
+                        className={`w-6 h-6 ${
+                          settings.theme === themeOption.value ? 'text-indigo-600' : 'text-gray-400'
+                        }`}
+                      />
                       <span className="text-sm font-medium">{t(themeOption.labelKey)}</span>
                     </button>
                   ))}
@@ -510,20 +592,24 @@ export default function SettingsPage() {
                     className="w-32"
                   />
                   <div className="flex gap-2">
-                    {['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'].map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => {
-                          setSettings({ ...settings, primaryColor: color });
-                          applyPrimaryColor(color);
-                          toast.success(t('settingsSaved'));
-                        }}
-                        className={`w-8 h-8 rounded-full border-2 transition-all ${
-                          settings.primaryColor === color ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
+                    {['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'].map(
+                      (color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setSettings({ ...settings, primaryColor: color });
+                            applyPrimaryColor(color);
+                            toast.success(t('settingsSaved'));
+                          }}
+                          className={`w-8 h-8 rounded-full border-2 transition-all ${
+                            settings.primaryColor === color
+                              ? 'border-gray-900 dark:border-white scale-110'
+                              : 'border-transparent hover:scale-105'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      )
+                    )}
                   </div>
                 </div>
               </div>

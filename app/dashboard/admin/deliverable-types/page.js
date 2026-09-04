@@ -2,24 +2,30 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Layers, Plus, Edit2, Trash2, GripVertical,
-  X, ChevronRight, FileText
-} from 'lucide-react';
+import { Layers, Plus, Edit2, Trash2, GripVertical, X, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function DeliverableTypesPage() {
   const { confirm } = useConfirmation();
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [types, setTypes] = useState([]);
@@ -29,7 +35,7 @@ export default function DeliverableTypesPage() {
     nom: '',
     description: '',
     couleur: '#6366f1',
-    workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation']
+    workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation'],
   });
   const [newEtape, setNewEtape] = useState('');
 
@@ -38,15 +44,9 @@ export default function DeliverableTypesPage() {
 
   const loadTypes = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const [userRes, typesRes] = await Promise.all([
-        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/deliverable-types', { headers: { 'Authorization': `Bearer ${token}` } })
+        authFetch('/api/auth/me'),
+        authFetch('/api/deliverable-types'),
       ]);
 
       const userData = await userRes.json();
@@ -69,6 +69,7 @@ export default function DeliverableTypesPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -82,14 +83,12 @@ export default function DeliverableTypesPage() {
     }
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/deliverable-types', {
+      const response = await authFetch('/api/deliverable-types', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       if (response.ok) {
@@ -111,14 +110,12 @@ export default function DeliverableTypesPage() {
     if (!editingType) return;
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/deliverable-types/${editingType._id}`, {
+      const response = await authFetch(`/api/deliverable-types/${editingType._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       if (response.ok) {
@@ -142,15 +139,13 @@ export default function DeliverableTypesPage() {
       description: 'Êtes-vous sûr de vouloir supprimer ce type de livrable ?',
       actionLabel: 'Supprimer',
       cancelLabel: 'Annuler',
-      isDangerous: true
+      isDangerous: true,
     });
     if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/deliverable-types/${typeId}`, {
+      const response = await authFetch(`/api/deliverable-types/${typeId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
@@ -168,7 +163,7 @@ export default function DeliverableTypesPage() {
       nom: '',
       description: '',
       couleur: '#6366f1',
-      workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation']
+      workflow_étapes: ['Création', 'Revue', 'Validation', 'Approbation'],
     });
     setNewEtape('');
   };
@@ -179,26 +174,27 @@ export default function DeliverableTypesPage() {
       nom: type.nom,
       description: type.description || '',
       couleur: type.couleur || '#6366f1',
-      workflow_étapes: type.workflow_étapes && type.workflow_étapes.length > 0
-        ? type.workflow_étapes
-        : ['Création', 'Revue', 'Validation', 'Approbation']
+      workflow_étapes:
+        type.workflow_étapes && type.workflow_étapes.length > 0
+          ? type.workflow_étapes
+          : ['Création', 'Revue', 'Validation', 'Approbation'],
     });
     setCreateDialogOpen(true);
   };
 
   const addEtape = () => {
     if (!newEtape.trim()) return;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      workflow_étapes: [...prev.workflow_étapes, newEtape.trim()]
+      workflow_étapes: [...prev.workflow_étapes, newEtape.trim()],
     }));
     setNewEtape('');
   };
 
   const removeEtape = (index) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      workflow_étapes: prev.workflow_étapes.filter((_, i) => i !== index)
+      workflow_étapes: prev.workflow_étapes.filter((_, i) => i !== index),
     }));
   };
 
@@ -207,7 +203,7 @@ export default function DeliverableTypesPage() {
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= newEtapes.length) return;
     [newEtapes[index], newEtapes[newIndex]] = [newEtapes[newIndex], newEtapes[index]];
-    setFormData(prev => ({ ...prev, workflow_étapes: newEtapes }));
+    setFormData((prev) => ({ ...prev, workflow_étapes: newEtapes }));
   };
 
   if (loading) {
@@ -223,13 +219,20 @@ export default function DeliverableTypesPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Types de Livrables</h1>
-          <p className="text-gray-600">Définissez les types et leurs workflows de validation</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">
+            Types de Livrables & Workflows
+          </h1>
+          <p className="text-gray-600">
+            Définissez les types de documents et leurs étapes de validation obligatoires.
+          </p>
         </div>
         {canManageDeliverableTypes('adminConfig') && (
           <Button
             className="bg-indigo-600 hover:bg-indigo-700"
-            onClick={() => { resetForm(); setCreateDialogOpen(true); }}
+            onClick={() => {
+              resetForm();
+              setCreateDialogOpen(true);
+            }}
           >
             <Plus className="w-4 h-4 mr-2" />
             Nouveau type
@@ -243,9 +246,16 @@ export default function DeliverableTypesPage() {
           <div className="text-center">
             <Layers className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucun type de livrable</h3>
-            <p className="text-gray-600 mb-4">Créez votre premier type de livrable avec son workflow</p>
+            <p className="text-gray-600 mb-4">
+              Créez votre premier type de livrable avec son workflow
+            </p>
             {canManageDeliverableTypes('adminConfig') && (
-              <Button onClick={() => { resetForm(); setCreateDialogOpen(true); }}>
+              <Button
+                onClick={() => {
+                  resetForm();
+                  setCreateDialogOpen(true);
+                }}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Créer un type
               </Button>
@@ -270,7 +280,12 @@ export default function DeliverableTypesPage() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(type)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openEditDialog(type)}
+                    >
                       <Edit2 className="w-4 h-4" />
                     </Button>
                     <Button
@@ -287,20 +302,27 @@ export default function DeliverableTypesPage() {
               <CardContent className="space-y-3">
                 {/* Description */}
                 <div>
-                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-1">Description</p>
+                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-1">
+                    Description
+                  </p>
                   <p className="text-sm text-gray-600">
-                    {type.description || <span className="italic text-gray-400">Aucune description</span>}
+                    {type.description || (
+                      <span className="italic text-gray-400">Aucune description</span>
+                    )}
                   </p>
                 </div>
 
                 {/* Workflow de validation */}
                 <div>
-                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-2">Workflow de validation</p>
+                  <p className="text-[11px] font-medium text-gray-400 uppercase mb-2">
+                    Workflow de validation
+                  </p>
                   {(() => {
                     // Utiliser workflow_étapes s'il existe, sinon les étapes par défaut
-                    const etapes = type.workflow_étapes && type.workflow_étapes.length > 0
-                      ? type.workflow_étapes
-                      : ['Création', 'Revue', 'Validation', 'Approbation'];
+                    const etapes =
+                      type.workflow_étapes && type.workflow_étapes.length > 0
+                        ? type.workflow_étapes
+                        : ['Création', 'Revue', 'Validation', 'Approbation'];
                     return (
                       <div className="flex flex-wrap items-center gap-1.5">
                         {etapes.map((etape, idx) => (
@@ -308,7 +330,11 @@ export default function DeliverableTypesPage() {
                             <Badge
                               variant="outline"
                               className="text-xs px-2 py-0.5"
-                              style={{ borderColor: type.couleur, color: type.couleur, backgroundColor: type.couleur + '10' }}
+                              style={{
+                                borderColor: type.couleur,
+                                color: type.couleur,
+                                backgroundColor: type.couleur + '10',
+                              }}
                             >
                               {idx + 1}. {etape}
                             </Badge>
@@ -328,22 +354,23 @@ export default function DeliverableTypesPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => {
-        if (!open) {
-          setEditingType(null);
-          resetForm();
-        }
-        setCreateDialogOpen(open);
-      }}>
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingType(null);
+            resetForm();
+          }
+          setCreateDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Layers className="w-5 h-5" />
               {editingType ? 'Modifier le type' : 'Nouveau type de livrable'}
             </DialogTitle>
-            <DialogDescription>
-              Définissez le type et son workflow de validation
-            </DialogDescription>
+            <DialogDescription>Définissez le type et son workflow de validation</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -385,29 +412,31 @@ export default function DeliverableTypesPage() {
                 {formData.workflow_étapes.map((etape, idx) => (
                   <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
                     <GripVertical className="w-4 h-4 text-gray-400" />
-                    <Badge variant="outline" className="mr-2">{idx + 1}</Badge>
+                    <Badge variant="outline" className="mr-2">
+                      {idx + 1}
+                    </Badge>
                     <span className="flex-1 text-sm">{etape}</span>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8"
                       onClick={() => moveEtape(idx, -1)}
                       disabled={idx === 0}
                     >
                       <ChevronRight className="w-4 h-4 rotate-[-90deg]" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8"
                       onClick={() => moveEtape(idx, 1)}
                       disabled={idx === formData.workflow_étapes.length - 1}
                     >
                       <ChevronRight className="w-4 h-4 rotate-90" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8 text-red-600 hover:text-red-700"
                       onClick={() => removeEtape(idx)}
                     >
@@ -434,8 +463,8 @@ export default function DeliverableTypesPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Annuler
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700" 
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700"
               onClick={editingType ? handleUpdate : handleCreate}
             >
               {editingType ? 'Mettre à jour' : 'Créer'}

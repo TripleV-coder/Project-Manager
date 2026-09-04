@@ -11,39 +11,34 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function SharePointConfigPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sharePointEnabled, setSharePointEnabled] = useState(false);
+  const [hasSecret, setHasSecret] = useState(false);
   const [config, setConfig] = useState({
     tenant_id: '',
     site_id: '',
     client_id: '',
     client_secret: '',
     auto_sync: true,
-    sync_interval: 15
+    sync_interval: 15,
   });
   const [status, setStatus] = useState({
     connected: false,
     last_sync: null,
     files_synced: 0,
-    errors: 0
+    errors: 0,
   });
 
   const checkAuth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authFetch('/api/auth/me', {});
 
       if (!response.ok) {
         router.push('/login');
@@ -59,21 +54,22 @@ export default function SharePointConfigPage() {
     } catch (error) {
       console.error('Erreur:', error);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const loadConfig = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/sharepoint/config', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await authFetch('/api/sharepoint/config', {
+        signal: AbortSignal.timeout(10000),
       });
 
       if (response.ok) {
         const data = await response.json();
         if (data.config) {
-          setConfig(data.config);
+          setConfig({ ...data.config, client_secret: '' });
           setSharePointEnabled(data.enabled || false);
         }
+        setHasSecret(Boolean(data.has_secret));
         if (data.status) {
           setStatus(data.status);
         }
@@ -84,6 +80,7 @@ export default function SharePointConfigPage() {
       console.error('Erreur:', error);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -92,21 +89,23 @@ export default function SharePointConfigPage() {
   }, [checkAuth, loadConfig]);
 
   const handleTestConnection = async () => {
-    if (!config.tenant_id || !config.client_id || !config.client_secret) {
-      toast.error('Veuillez remplir tous les identifiants');
+    if (!config.tenant_id || !config.client_id || !config.site_id) {
+      toast.error('Veuillez renseigner Tenant ID, Client ID et Site ID');
+      return;
+    }
+    if (!config.client_secret && !hasSecret) {
+      toast.error('Veuillez renseigner le Client Secret');
       return;
     }
 
     setTesting(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/sharepoint/test', {
+      const response = await authFetch('/api/sharepoint/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(config),
       });
 
       const data = await response.json();
@@ -115,7 +114,7 @@ export default function SharePointConfigPage() {
         toast.success('Connexion SharePoint réussie !');
         setStatus({ ...status, connected: true });
       } else {
-        toast.error(data.error || 'Échec de la connexion - Vérifiez vos identifiants');
+        toast.error(data.error || 'Échec de la connexion : veuillez vérifier vos identifiants');
         setStatus({ ...status, connected: false });
       }
     } catch (error) {
@@ -129,24 +128,25 @@ export default function SharePointConfigPage() {
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/sharepoint/config', {
+      const response = await authFetch('/api/sharepoint/config', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           enabled: sharePointEnabled,
-          config: config
-        })
+          config: config,
+        }),
       });
+
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         toast.success('Configuration enregistrée avec succès');
+        setHasSecret(Boolean(data.has_secret) || hasSecret || Boolean(config.client_secret));
         loadConfig();
       } else {
-        toast.error('Erreur lors de l\'enregistrement');
+        toast.error(data.error || "Erreur lors de l'enregistrement");
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -158,15 +158,13 @@ export default function SharePointConfigPage() {
 
   const handleManualSync = async () => {
     if (!status.connected) {
-      toast.error('Veuillez d\'abord établir une connexion');
+      toast.error("Veuillez d'abord établir une connexion");
       return;
     }
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/sharepoint/sync', {
+      const response = await authFetch('/api/sharepoint/sync', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
@@ -193,7 +191,9 @@ export default function SharePointConfigPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Configuration SharePoint</h1>
-        <p className="text-gray-600">Intégrez SharePoint pour la gestion centralisée des fichiers de vos projets</p>
+        <p className="text-gray-600">
+          Intégrez SharePoint pour la gestion centralisée des fichiers de vos projets
+        </p>
       </div>
 
       <div className="space-y-6">
@@ -205,7 +205,11 @@ export default function SharePointConfigPage() {
                 <CardTitle>Statut de l'intégration</CardTitle>
                 <CardDescription>État actuel de la connexion SharePoint</CardDescription>
               </div>
-              <Badge className={sharePointEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+              <Badge
+                className={
+                  sharePointEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }
+              >
                 {sharePointEnabled ? 'Activé' : 'Désactivé'}
               </Badge>
             </div>
@@ -225,7 +229,7 @@ export default function SharePointConfigPage() {
                   {status.connected ? 'Connecté' : 'Non connecté'}
                 </p>
               </div>
-              
+
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
                   <FileText className="w-5 h-5 text-gray-600" />
@@ -233,7 +237,7 @@ export default function SharePointConfigPage() {
                 </div>
                 <p className="text-2xl font-bold text-gray-900">{status.files_synced || 0}</p>
               </div>
-              
+
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
                   <Clock className="w-5 h-5 text-gray-600" />
@@ -251,7 +255,9 @@ export default function SharePointConfigPage() {
         <Card>
           <CardHeader>
             <CardTitle>Configuration</CardTitle>
-            <CardDescription>Paramètres de connexion Microsoft SharePoint via Azure AD</CardDescription>
+            <CardDescription>
+              Paramètres de connexion Microsoft SharePoint via Azure AD
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="credentials">
@@ -265,7 +271,8 @@ export default function SharePointConfigPage() {
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
                   <p className="text-sm text-blue-800">
                     <AlertCircle className="w-4 h-4 inline mr-1" />
-                    Pour configurer l'intégration SharePoint, vous devez créer une application dans Azure Active Directory.
+                    Pour configurer l'intégration SharePoint, vous devez créer une application dans
+                    Azure Active Directory.
                   </p>
                 </div>
 
@@ -277,7 +284,8 @@ export default function SharePointConfigPage() {
                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   />
                   <p className="text-xs text-gray-500">
-                    Trouvez votre Tenant ID dans Azure Portal &rarr; Azure Active Directory &rarr; Propriétés
+                    Trouvez votre Tenant ID dans Azure Portal &rarr; Azure Active Directory &rarr;
+                    Propriétés
                   </p>
                 </div>
 
@@ -311,17 +319,27 @@ export default function SharePointConfigPage() {
                     type="password"
                     value={config.client_secret}
                     onChange={(e) => setConfig({ ...config, client_secret: e.target.value })}
-                    placeholder="******************"
+                    placeholder={
+                      hasSecret
+                        ? 'Laisser vide pour conserver le secret actuel'
+                        : '******************'
+                    }
                   />
                   <p className="text-xs text-gray-500">
                     Le secret sera chiffré et stocké de manière sécurisée
                   </p>
                 </div>
 
-                <Button 
-                  onClick={handleTestConnection} 
-                  disabled={testing || !config.tenant_id || !config.client_id || !config.client_secret} 
-                  variant="outline" 
+                <Button
+                  onClick={handleTestConnection}
+                  disabled={
+                    testing ||
+                    !config.tenant_id ||
+                    !config.client_id ||
+                    !config.site_id ||
+                    (!config.client_secret && !hasSecret)
+                  }
+                  variant="outline"
                   className="w-full"
                 >
                   {testing ? (
@@ -357,7 +375,9 @@ export default function SharePointConfigPage() {
                   <Input
                     type="number"
                     value={config.sync_interval}
-                    onChange={(e) => setConfig({ ...config, sync_interval: parseInt(e.target.value) || 15 })}
+                    onChange={(e) =>
+                      setConfig({ ...config, sync_interval: parseInt(e.target.value) || 15 })
+                    }
                     min="5"
                     max="1440"
                   />
@@ -366,9 +386,9 @@ export default function SharePointConfigPage() {
                   </p>
                 </div>
 
-                <Button 
-                  onClick={handleManualSync} 
-                  variant="outline" 
+                <Button
+                  onClick={handleManualSync}
+                  variant="outline"
                   className="w-full"
                   disabled={!status.connected}
                 >
@@ -420,15 +440,12 @@ export default function SharePointConfigPage() {
                   Active la synchronisation des fichiers pour tous les projets
                 </p>
               </div>
-              <Switch
-                checked={sharePointEnabled}
-                onCheckedChange={setSharePointEnabled}
-              />
+              <Switch checked={sharePointEnabled} onCheckedChange={setSharePointEnabled} />
             </div>
 
             <div className="flex gap-2">
-              <Button 
-                onClick={handleSaveConfig} 
+              <Button
+                onClick={handleSaveConfig}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700"
                 disabled={saving}
               >
@@ -457,45 +474,80 @@ export default function SharePointConfigPage() {
           <CardContent>
             <div className="space-y-4 text-sm text-gray-600">
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  1
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Créer une application Azure AD</p>
-                  <p>Rendez-vous sur <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">portal.azure.com</a> &rarr; Azure Active Directory &rarr; App registrations &rarr; New registration</p>
+                  <p>
+                    Rendez-vous sur{' '}
+                    <a
+                      href="https://portal.azure.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:underline"
+                    >
+                      portal.azure.com
+                    </a>{' '}
+                    &rarr; Azure Active Directory &rarr; App registrations &rarr; New registration
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  2
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Configurer les permissions API</p>
-                  <p>Dans votre application &rarr; API permissions &rarr; Add permission &rarr; Microsoft Graph &rarr; Application permissions &rarr; Ajoutez Files.ReadWrite.All et Sites.ReadWrite.All</p>
+                  <p>
+                    Dans votre application &rarr; API permissions &rarr; Add permission &rarr;
+                    Microsoft Graph &rarr; Application permissions &rarr; Ajoutez
+                    Files.ReadWrite.All et Sites.ReadWrite.All
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  3
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Créer un Client Secret</p>
-                  <p>Certificates &amp; secrets &rarr; New client secret &rarr; Copiez la valeur générée (visible une seule fois)</p>
+                  <p>
+                    Certificates &amp; secrets &rarr; New client secret &rarr; Copiez la valeur
+                    générée (visible une seule fois)
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  4
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Obtenir le consentement admin</p>
                   <p>API permissions &rarr; Grant admin consent for [votre organisation]</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">5</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  5
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Copier les identifiants</p>
-                  <p>Récupérez le Tenant ID (dans Overview), Application (client) ID, et le Client Secret créé</p>
+                  <p>
+                    Récupérez le Tenant ID (dans Overview), Application (client) ID, et le Client
+                    Secret créé
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">6</div>
+                <div className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                  6
+                </div>
                 <div>
                   <p className="font-medium text-gray-900">Tester et activer</p>
-                  <p>Entrez les identifiants ci-dessus, testez la connexion et activez l'intégration</p>
+                  <p>
+                    Entrez les identifiants ci-dessus, testez la connexion et activez l'intégration
+                  </p>
                 </div>
               </div>
             </div>

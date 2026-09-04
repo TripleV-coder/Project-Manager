@@ -6,17 +6,39 @@ import { Clock, Plus, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
 import StatusBadge from '@/components/StatusBadge';
 import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function TimesheetsPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { formatDate } = useFormatters();
   const { t } = useTranslation();
   const [timesheets, setTimesheets] = useState([]);
@@ -30,26 +52,22 @@ export default function TimesheetsPage() {
     tâche_id: '',
     date: new Date().toISOString().split('T')[0],
     heures: '',
-    description: ''
+    description: '',
   });
 
   const handleStatusChange = async (timesheetId, newStatut) => {
     // Optimistic update
     const previousTimesheets = [...timesheets];
-    setTimesheets(timesheets.map(t =>
-      t._id === timesheetId ? { ...t, statut: newStatut } : t
-    ));
+    setTimesheets(timesheets.map((t) => (t._id === timesheetId ? { ...t, statut: newStatut } : t)));
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/timesheets/${timesheetId}/status`, {
+      const response = await authFetch(`/api/timesheets/${timesheetId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ statut: newStatut }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
@@ -78,34 +96,29 @@ export default function TimesheetsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const [projectsRes, tasksRes, timesheetsRes] = await Promise.all([
-        fetch('/api/projects?limit=50&page=1', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: controller.signal
+        authFetch('/api/projects?limit=50&page=1', {
+          signal: controller.signal,
         }),
-        fetch('/api/tasks?limit=100&page=1', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: controller.signal
+        authFetch('/api/tasks?limit=100&page=1', {
+          signal: controller.signal,
         }),
-        fetch('/api/timesheets?limit=100&page=1', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: controller.signal
-        })
+        authFetch('/api/timesheets?limit=100&page=1', {
+          signal: controller.signal,
+        }),
       ]);
 
       clearTimeout(timeoutId);
 
       if (!projectsRes.ok || !tasksRes.ok || !timesheetsRes.ok) {
-        const status = !projectsRes.ok ? projectsRes.status : !tasksRes.ok ? tasksRes.status : timesheetsRes.status;
+        const status = !projectsRes.ok
+          ? projectsRes.status
+          : !tasksRes.ok
+            ? tasksRes.status
+            : timesheetsRes.status;
         if (status === 401) {
           router.push('/login');
         }
@@ -145,14 +158,19 @@ export default function TimesheetsPage() {
       }
 
       setSubmitting(true);
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/timesheets', {
+      const response = await authFetch('/api/timesheets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newEntry)
+        body: JSON.stringify({
+          projet_id: newEntry.projet_id,
+          tâche_id:
+            newEntry.tâche_id && newEntry.tâche_id !== 'all' ? newEntry.tâche_id : undefined,
+          date: newEntry.date,
+          heures: newEntry.heures,
+          description: newEntry.description,
+        }),
       });
 
       const data = await response.json();
@@ -160,7 +178,13 @@ export default function TimesheetsPage() {
       if (response.ok) {
         toast.success(t('timeEntryAdded'));
         setCreateDialogOpen(false);
-        setNewEntry({ projet_id: '', tâche_id: '', date: new Date().toISOString().split('T')[0], heures: '', description: '' });
+        setNewEntry({
+          projet_id: '',
+          tâche_id: '',
+          date: new Date().toISOString().split('T')[0],
+          heures: '',
+          description: '',
+        });
         await loadData();
       } else {
         toast.error(data.error || t('errorOccurred'));
@@ -187,15 +211,15 @@ export default function TimesheetsPage() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('timesheetManagement')}</h1>
-          <p className="text-gray-600">{t('logTime')}</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('timesheetTitle')}</h1>
+          <p className="text-gray-600">{t('timesheetSubtitle')}</p>
         </div>
-        <Button 
+        <Button
           className="bg-indigo-600 hover:bg-indigo-700"
           onClick={() => setCreateDialogOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
-          {t('logTime')}
+          {t('logTimeButton')}
         </Button>
       </div>
 
@@ -221,7 +245,9 @@ export default function TimesheetsPage() {
             <CardTitle className="text-sm font-medium text-gray-600">{t('average')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{timesheets.length > 0 ? (totalHeures / timesheets.length).toFixed(1) : 0}h</div>
+            <div className="text-3xl font-bold text-gray-900">
+              {timesheets.length > 0 ? (totalHeures / timesheets.length).toFixed(1) : 0}h
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -256,8 +282,16 @@ export default function TimesheetsPage() {
                         {formatDate(entry.date)}
                       </div>
                     </TableCell>
-                    <TableCell>{projects.find(p => p._id === entry.projet_id)?.nom || 'N/A'}</TableCell>
-                    <TableCell>{(entry.task_id || entry.tâche_id) ? tasks.find(t => t._id === (entry.task_id?._id || entry.task_id || entry.tâche_id))?.titre || entry.task_id?.titre : 'Général'}</TableCell>
+                    <TableCell>
+                      {projects.find((p) => p._id === entry.projet_id)?.nom || 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {entry.task_id || entry.tâche_id
+                        ? tasks.find(
+                            (t) => t._id === (entry.task_id?._id || entry.task_id || entry.tâche_id)
+                          )?.titre || entry.task_id?.titre
+                        : 'Général'}
+                    </TableCell>
                     <TableCell>
                       <Badge className="bg-indigo-100 text-indigo-800">{entry.heures}h</Badge>
                     </TableCell>
@@ -286,28 +320,42 @@ export default function TimesheetsPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>{t('project')} *</Label>
-              <Select value={newEntry.projet_id} onValueChange={(val) => setNewEntry({ ...newEntry, projet_id: val })}>
+              <Select
+                value={newEntry.projet_id}
+                onValueChange={(val) => setNewEntry({ ...newEntry, projet_id: val })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={t('select')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map(p => (
-                    <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p._id} value={p._id}>
+                      {p.nom}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{t('task')} ({t('optional')})</Label>
-              <Select value={newEntry.tâche_id} onValueChange={(val) => setNewEntry({ ...newEntry, tâche_id: val })}>
+              <Label>
+                {t('task')} ({t('optional')})
+              </Label>
+              <Select
+                value={newEntry.tâche_id}
+                onValueChange={(val) => setNewEntry({ ...newEntry, tâche_id: val })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={t('none')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('none')}</SelectItem>
-                  {tasks.filter(task => task.projet_id === newEntry.projet_id).map(task => (
-                    <SelectItem key={task._id} value={task._id}>{task.titre}</SelectItem>
-                  ))}
+                  {tasks
+                    .filter((task) => task.projet_id === newEntry.projet_id)
+                    .map((task) => (
+                      <SelectItem key={task._id} value={task._id}>
+                        {task.titre}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -341,8 +389,18 @@ export default function TimesheetsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={submitting}>{t('cancel')}</Button>
-            <Button onClick={handleCreateEntry} className="bg-indigo-600 hover:bg-indigo-700" disabled={submitting}>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={submitting}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={handleCreateEntry}
+              className="bg-indigo-600 hover:bg-indigo-700"
+              disabled={submitting}
+            >
               {submitting ? t('loading') : t('save')}
             </Button>
           </DialogFooter>

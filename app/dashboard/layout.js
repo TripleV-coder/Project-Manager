@@ -12,15 +12,17 @@ import {
   ChevronDown,
   ChevronRight,
   Bell,
-  User
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { getAvailableMenus } from '@/lib/menuConfig';
+import { clearAuthSession, markAuthSession } from '@/lib/client-auth';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useAppSettings, useTranslation } from '@/contexts/AppSettingsContext';
+import { CommandPalette } from '@/components/CommandPalette';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
@@ -43,30 +45,23 @@ export default function DashboardLayout({ children }) {
 
   const loadUser = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       // Load user with timeout
       const userResponse = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!userResponse.ok) {
-        localStorage.removeItem('pm_token');
+        clearAuthSession();
         router.push('/login');
         return;
       }
 
-      let userData = await userResponse.json();
+      const userData = await userResponse.json();
 
       // Vérifier le mode maintenance
       try {
         const maintenanceResponse = await fetch('/api/settings/maintenance', {
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(5000),
         });
         if (maintenanceResponse.ok) {
           const maintenanceData = await maintenanceResponse.json();
@@ -81,38 +76,20 @@ export default function DashboardLayout({ children }) {
         console.error('Erreur vérification maintenance:', e);
       }
 
-      // Auto-migrate Administrateur to Super Administrateur if needed
-      if (userData.role?.nom === 'Administrateur') {
-        try {
-          const migrateRes = await fetch('/api/migrate-admin-role', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (migrateRes.ok) {
-            const migrateData = await migrateRes.json();
-            userData = {
-              ...userData,
-              role: migrateData.user.role
-            };
-            console.log('[OK] Admin role migrated to Super Administrateur');
-          }
-        } catch (e) {
-          console.error('Migration failed:', e);
-        }
-      }
-
+      markAuthSession(userData);
       setUser(userData);
       setLoading(false);
 
-      // Load notifications in background (non-blocking)
-      fetch('/api/notifications', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(5000)
-      })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data?.notifications) {
-            setUnreadNotifications(data.notifications.filter(n => !n.lu).length);
+      fetch('/api/notifications', { signal: AbortSignal.timeout(5000) })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (typeof data?.unreadCount === 'number') {
+            setUnreadNotifications(data.unreadCount);
+            return;
+          }
+          const list = data?.data || data?.notifications || [];
+          if (Array.isArray(list)) {
+            setUnreadNotifications(list.filter((n) => !n.lu).length);
           }
         })
         .catch(() => {
@@ -149,21 +126,28 @@ export default function DashboardLayout({ children }) {
     };
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('pm_token');
-    localStorage.removeItem('pm_user');
-    toast.success(t('logoutSuccess'));
-    router.push('/login');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_error) {
+      // Ignore logout transport failures and clear local state anyway.
+    } finally {
+      clearAuthSession();
+      toast.success(t('logoutSuccess'));
+      router.push('/login');
+    }
   };
 
   // Obtenir les menus filtrés selon les permissions de l'utilisateur
   // Ceci utilise les permissions système. Les pages project-specific
   // doivent vérifier les permissions fusionnées (système + projet)
-  const availableMenus = user ? getAvailableMenus(user) : {
-    mainMenuItems: [],
-    adminMenuItems: [],
-    notificationsMenu: null
-  };
+  const availableMenus = user
+    ? getAvailableMenus(user)
+    : {
+        mainMenuItems: [],
+        adminMenuItems: [],
+        notificationsMenu: null,
+      };
 
   const mainMenuItems = availableMenus.mainMenuItems;
   const adminMenuItems = availableMenus.adminMenuItems;
@@ -184,16 +168,18 @@ export default function DashboardLayout({ children }) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Overlay mobile */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar Mobile */}
-      <aside className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 lg:hidden ${
-        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
+      <aside
+        className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 lg:hidden ${
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
         <div className="h-full flex flex-col">
           {/* Header Mobile */}
           <div className="h-16 flex items-center justify-between px-4 border-b dark:border-gray-700">
@@ -201,9 +187,14 @@ export default function DashboardLayout({ children }) {
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
                 <FolderKanban className="w-6 h-6 text-white" />
               </div>
-              <span className="font-bold text-gray-900 dark:text-white">{appSettings.appName?.split(' - ')[0] || 'PM'}</span>
+              <span className="font-bold text-gray-900 dark:text-white">
+                {appSettings.appName?.split(' - ')[0] || 'PM'}
+              </span>
             </div>
-            <button onClick={() => setMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+            >
               <X className="w-5 h-5 dark:text-gray-300" />
             </button>
           </div>
@@ -250,7 +241,9 @@ export default function DashboardLayout({ children }) {
             {/* Section Admin */}
             {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t dark:border-gray-700">
-                <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">{t('administration')}</p>
+                <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">
+                  {t('administration')}
+                </p>
                 {adminMenuItems.map((item) => (
                   <Link
                     key={item.href}
@@ -282,7 +275,11 @@ export default function DashboardLayout({ children }) {
                 <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role?.nom}</p>
               </div>
             </div>
-            <Button variant="outline" className="w-full text-red-600 dark:text-red-400 dark:border-gray-600" onClick={handleLogout}>
+            <Button
+              variant="outline"
+              className="w-full text-red-600 dark:text-red-400 dark:border-gray-600"
+              onClick={handleLogout}
+            >
               <LogOut className="w-4 h-4 mr-2" />
               {t('logout')}
             </Button>
@@ -291,9 +288,11 @@ export default function DashboardLayout({ children }) {
       </aside>
 
       {/* Sidebar Desktop */}
-      <aside className={`hidden lg:block fixed top-0 left-0 h-full bg-white dark:bg-gray-800 border-r dark:border-gray-700 transition-all duration-300 z-30 ${
-        sidebarOpen ? 'w-64' : 'w-20'
-      }`}>
+      <aside
+        className={`hidden lg:block fixed top-0 left-0 h-full bg-white dark:bg-gray-800 border-r dark:border-gray-700 transition-all duration-300 z-30 ${
+          sidebarOpen ? 'w-64' : 'w-20'
+        }`}
+      >
         <div className="h-full flex flex-col">
           {/* Logo */}
           <div className="h-16 flex items-center px-4 border-b dark:border-gray-700">
@@ -303,8 +302,12 @@ export default function DashboardLayout({ children }) {
                   <FolderKanban className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-gray-900 dark:text-white">{appSettings.appName?.split(' - ')[0] || 'PM'}</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{appSettings.appDescription?.slice(0, 20) || 'Projets Agile'}</p>
+                  <h1 className="font-bold text-gray-900 dark:text-white">
+                    {appSettings.appName?.split(' - ')[0] || 'PM'}
+                  </h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {appSettings.appDescription?.slice(0, 20) || 'Projets Agile'}
+                  </p>
                 </div>
               </div>
             ) : (
@@ -351,7 +354,9 @@ export default function DashboardLayout({ children }) {
                     </span>
                   )}
                 </div>
-                {sidebarOpen && <span className="font-medium text-sm">{t(notificationsMenu.labelKey)}</span>}
+                {sidebarOpen && (
+                  <span className="font-medium text-sm">{t(notificationsMenu.labelKey)}</span>
+                )}
               </Link>
             )}
 
@@ -359,7 +364,9 @@ export default function DashboardLayout({ children }) {
             {adminMenuItems.length > 0 && (
               <div className="pt-4 mt-4 border-t dark:border-gray-700">
                 {sidebarOpen && (
-                  <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">{t('administration')}</p>
+                  <p className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">
+                    {t('administration')}
+                  </p>
                 )}
 
                 {sidebarOpen ? (
@@ -376,7 +383,11 @@ export default function DashboardLayout({ children }) {
                         <Settings className="w-5 h-5" />
                         <span className="font-medium text-sm">Admin</span>
                       </div>
-                      {adminOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      {adminOpen ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
                     </button>
                     {adminOpen && (
                       <div className="mt-1 ml-2 space-y-1">
@@ -433,8 +444,12 @@ export default function DashboardLayout({ children }) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate dark:text-white">{user?.nom_complet}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.role?.nom}</p>
+                    <p className="font-medium text-sm truncate dark:text-white">
+                      {user?.nom_complet}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {user?.role?.nom}
+                    </p>
                   </div>
                 </Link>
                 <Button
@@ -471,9 +486,7 @@ export default function DashboardLayout({ children }) {
       </aside>
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${
-        sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
-      }`}>
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Header */}
         <header className="h-16 bg-white dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between px-4 sticky top-0 z-20">
           <div className="flex items-center gap-3">
@@ -494,25 +507,51 @@ export default function DashboardLayout({ children }) {
             {/* Breadcrumb */}
             <div className="hidden sm:block">
               <h2 className="font-semibold text-gray-900 dark:text-white">
-                {pathname === '/dashboard' ? t('dashboard') :
-                 pathname.includes('/admin/roles') ? t('rolesPermissions') :
-                 pathname.includes('/admin/sharepoint') ? t('sharepoint') :
-                 pathname.includes('/admin/templates') ? t('projectTemplates') :
-                 pathname.includes('/settings') ? t('settings') :
-                 pathname.includes('/users') ? t('users') :
-                 pathname.includes('/projects') ? t('projects') :
-                 pathname.includes('/tasks') ? t('tasks') :
-                 pathname.includes('/sprints') ? t('sprints') :
-                 pathname.includes('/timesheets') ? t('timesheets') :
-                 pathname.includes('/budget') ? t('budget') :
-                 pathname.includes('/notifications') ? t('notifications') :
-                 pathname.includes('/profile') ? t('profile') :
-                 t('dashboard')}
+                {pathname === '/dashboard'
+                  ? t('dashboard')
+                  : pathname.includes('/admin/roles')
+                    ? t('rolesPermissions')
+                    : pathname.includes('/admin/sharepoint')
+                      ? t('sharepoint')
+                      : pathname.includes('/admin/templates')
+                        ? t('projectTemplates')
+                        : pathname.includes('/settings')
+                          ? t('settings')
+                          : pathname.includes('/users')
+                            ? t('users')
+                            : pathname.includes('/projects')
+                              ? t('projects')
+                              : pathname.includes('/tasks')
+                                ? t('tasks')
+                                : pathname.includes('/sprints')
+                                  ? t('sprints')
+                                  : pathname.includes('/timesheets')
+                                    ? t('timesheets')
+                                    : pathname.includes('/budget')
+                                      ? t('budget')
+                                      : pathname.includes('/reports')
+                                        ? t('reports')
+                                        : pathname.includes('/kanban')
+                                          ? t('kanban')
+                                          : pathname.includes('/backlog')
+                                            ? t('backlog')
+                                            : pathname.includes('/roadmap')
+                                              ? t('roadmap')
+                                              : pathname.includes('/files')
+                                                ? t('files')
+                                                : pathname.includes('/comments')
+                                                  ? t('comments')
+                                                  : pathname.includes('/notifications')
+                                                    ? t('notifications')
+                                                    : pathname.includes('/profile')
+                                                      ? t('profile')
+                                                      : t('dashboard')}
               </h2>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <CommandPalette user={user} onLogout={handleLogout} />
             <Link
               href="/dashboard/notifications"
               className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
@@ -532,9 +571,7 @@ export default function DashboardLayout({ children }) {
         </header>
 
         {/* Page Content */}
-        <main className="min-h-[calc(100vh-4rem)]">
-          {children}
-        </main>
+        <main className="min-h-[calc(100vh-4rem)]">{children}</main>
       </div>
     </div>
   );

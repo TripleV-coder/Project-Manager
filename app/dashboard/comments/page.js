@@ -3,9 +3,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  MessageSquare, Send, Search,
-  MoreVertical, Edit2, Trash2, Reply, AtSign,
-  Clock, CheckCircle2
+  MessageSquare,
+  Send,
+  Search,
+  MoreVertical,
+  Edit2,
+  Trash2,
+  Reply,
+  AtSign,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,14 +20,27 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function CommentsPage() {
-  const router = useRouter();
+  const _router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { confirm } = useConfirmation();
   const textareaRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -49,16 +69,13 @@ export default function CommentsPage() {
   // Charger les permissions une seule fois au montage
   useEffect(() => {
     loadUserPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadUserPermissions = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) return;
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
+      const response = await authFetch('/api/auth/me');
+      if (response && response.ok) {
         const data = await response.json();
         const permissions = data.role?.permissions || {};
         setUserPermissions(permissions);
@@ -67,16 +84,15 @@ export default function CommentsPage() {
         // Charger l'activité seulement si l'utilisateur a la permission voirAudit
         if (permissions.voirAudit || permissions.adminConfig) {
           try {
-            const activityRes = await fetch('/api/activity?limit=50', {
-              headers: { 'Authorization': `Bearer ${token}` },
-              signal: AbortSignal.timeout(10000)
+            const activityRes = await authFetch('/api/activity?limit=50', {
+              signal: AbortSignal.timeout(10000),
             });
-            if (activityRes.ok) {
+            if (activityRes && activityRes.ok) {
               const activityData = await activityRes.json();
               setActivities(activityData.activities || activityData.data || []);
             }
           } catch {
-            // Silencieux en cas d'erreur
+            toast.error("Erreur lors du chargement de l'activité");
           }
         }
       }
@@ -100,12 +116,6 @@ export default function CommentsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       let commentsUrl = '/api/comments';
       const params = [];
       if (selectedTask !== 'all') {
@@ -119,9 +129,9 @@ export default function CommentsPage() {
 
       // Charger les données de base (projets, tâches, commentaires)
       const [projectsRes, tasksRes, commentsRes] = await Promise.all([
-        fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch(commentsUrl, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
+        authFetch('/api/projects', { signal: AbortSignal.timeout(10000) }),
+        authFetch('/api/tasks', { signal: AbortSignal.timeout(10000) }),
+        authFetch(commentsUrl, { signal: AbortSignal.timeout(10000) }),
       ]);
 
       const projectsData = await projectsRes.json();
@@ -135,16 +145,13 @@ export default function CommentsPage() {
 
       // Extraire les auteurs des commentaires pour les mentions (fonctionne pour tous les rôles)
       const commentAuthors = (commentsData.comments || commentsData.data || [])
-        .filter(c => c.auteur)
-        .map(c => c.auteur);
-      const uniqueAuthors = commentAuthors.filter((author, idx, self) =>
-        idx === self.findIndex(a => a._id === author._id)
+        .filter((c) => c.auteur)
+        .map((c) => c.auteur);
+      const uniqueAuthors = commentAuthors.filter(
+        (author, idx, self) => idx === self.findIndex((a) => a._id === author._id)
       );
       setUsers(uniqueAuthors);
 
-      // L'activité n'est pas chargée pour les utilisateurs sans permission voirAudit
-      // On initialise à vide - seuls les admins pourront voir l'onglet Activité avec des données
-      setActivities([]);
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
@@ -160,38 +167,33 @@ export default function CommentsPage() {
     }
 
     if (!canComment) {
-      toast.error('Vous n\'avez pas la permission de commenter');
+      toast.error("Vous n'avez pas la permission de commenter");
       return;
     }
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('pm_token');
-
       // Extraire les mentions du texte
       const mentionRegex = /@(\w+)/g;
       const mentions = [];
       let match;
       while ((match = mentionRegex.exec(newComment)) !== null) {
-        const mentionedUser = users.find(u =>
+        const mentionedUser = users.find((u) =>
           (u.nom_complet || '').toLowerCase().includes(match[1].toLowerCase())
         );
         if (mentionedUser) mentions.push(mentionedUser._id);
       }
 
-      const response = await fetch('/api/comments', {
+      const response = await authFetch('/api/comments', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entity_type: selectedTask !== 'all' ? 'task' : 'project',
           entity_id: selectedTask !== 'all' ? selectedTask : selectedProject,
           contenu: newComment,
           parent_id: replyingTo?._id || null,
-          mentions: mentions
-        })
+          mentions: mentions,
+        }),
       });
 
       if (response.ok) {
@@ -217,15 +219,13 @@ export default function CommentsPage() {
       description: 'Êtes-vous sûr de vouloir supprimer ce commentaire ?',
       actionLabel: 'Supprimer',
       cancelLabel: 'Annuler',
-      isDangerous: true
+      isDangerous: true,
     });
     if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/comments/${commentId}`, {
+      const response = await authFetch(`/api/comments/${commentId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
@@ -240,7 +240,7 @@ export default function CommentsPage() {
 
   const insertMention = (user) => {
     const mention = `@${(user.nom_complet || '').split(' ')[0]} `;
-    setNewComment(prev => prev.replace(/@\w*$/, '') + mention);
+    setNewComment((prev) => prev.replace(/@\w*$/, '') + mention);
     setShowMentions(false);
     textareaRef.current?.focus();
   };
@@ -267,22 +267,23 @@ export default function CommentsPage() {
     }
   };
 
-  const filteredComments = comments.filter(c =>
-    c.contenu?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.auteur?.nom_complet?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredComments = comments.filter(
+    (c) =>
+      c.contenu?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.auteur?.nom_complet?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredUsers = users.filter(u =>
-    u.nom_complet.toLowerCase().includes(mentionSearch)
-  ).slice(0, 5);
+  const filteredUsers = users
+    .filter((u) => u.nom_complet.toLowerCase().includes(mentionSearch))
+    .slice(0, 5);
 
   const formatDate = (date) => {
     if (!date) return '';
     const d = new Date(date);
     const now = new Date();
     const diff = now - d;
-    
-    if (diff < 60000) return 'À l\'instant';
+
+    if (diff < 60000) return "À l'instant";
     if (diff < 3600000) return `Il y a ${Math.floor(diff / 60000)} min`;
     if (diff < 86400000) return `Il y a ${Math.floor(diff / 3600000)} h`;
     if (diff < 604800000) return `Il y a ${Math.floor(diff / 86400000)} j`;
@@ -291,10 +292,14 @@ export default function CommentsPage() {
 
   const getActivityIcon = (action) => {
     switch (action) {
-      case 'création': return <CheckCircle2 className="w-4 h-4 text-green-600" />;
-      case 'modification': return <Edit2 className="w-4 h-4 text-blue-600" />;
-      case 'suppression': return <Trash2 className="w-4 h-4 text-red-600" />;
-      default: return <Clock className="w-4 h-4 text-gray-600" />;
+      case 'création':
+        return <CheckCircle2 className="w-4 h-4 text-green-600" />;
+      case 'modification':
+        return <Edit2 className="w-4 h-4 text-blue-600" />;
+      case 'suppression':
+        return <Trash2 className="w-4 h-4 text-red-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-600" />;
     }
   };
 
@@ -310,8 +315,12 @@ export default function CommentsPage() {
     <div className="p-4 lg:p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Commentaires & Activité</h1>
-        <p className="text-gray-600 text-sm lg:text-base">Communication et historique des actions</p>
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-1">
+          Commentaires & Activité
+        </h1>
+        <p className="text-gray-600 text-sm lg:text-base">
+          Communication et historique des actions
+        </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -344,14 +353,22 @@ export default function CommentsPage() {
                     />
                   </div>
                 </div>
-                <Select value={selectedProject} onValueChange={(v) => { setSelectedProject(v); setSelectedTask('all'); }}>
+                <Select
+                  value={selectedProject}
+                  onValueChange={(v) => {
+                    setSelectedProject(v);
+                    setSelectedTask('all');
+                  }}
+                >
                   <SelectTrigger className="w-full lg:w-48">
                     <SelectValue placeholder="Tous les projets" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les projets</SelectItem>
-                    {projects.map(p => (
-                      <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p._id} value={p._id}>
+                        {p.nom}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -362,11 +379,12 @@ export default function CommentsPage() {
                   <SelectContent>
                     <SelectItem value="all">Toutes les tâches</SelectItem>
                     {tasks
-                      .filter(t => selectedProject === 'all' || t.projet_id === selectedProject)
-                      .map(t => (
-                        <SelectItem key={t._id} value={t._id}>{t.titre}</SelectItem>
-                      ))
-                    }
+                      .filter((t) => selectedProject === 'all' || t.projet_id === selectedProject)
+                      .map((t) => (
+                        <SelectItem key={t._id} value={t._id}>
+                          {t.titre}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -399,7 +417,7 @@ export default function CommentsPage() {
                 />
                 {showMentions && filteredUsers.length > 0 && (
                   <div className="absolute bottom-full left-0 mb-1 w-64 bg-white rounded-lg shadow-lg border overflow-hidden z-10">
-                    {filteredUsers.map(user => (
+                    {filteredUsers.map((user) => (
                       <button
                         key={user._id}
                         onClick={() => insertMention(user)}
@@ -421,7 +439,11 @@ export default function CommentsPage() {
               </div>
               <div className="flex items-center justify-between mt-3">
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setShowMentions(!showMentions)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowMentions(!showMentions)}
+                  >
                     <AtSign className="w-4 h-4" />
                   </Button>
                 </div>
@@ -429,14 +451,20 @@ export default function CommentsPage() {
                   <Button
                     className="bg-indigo-600 hover:bg-indigo-700"
                     onClick={handlePostComment}
-                    disabled={submitting || !newComment.trim() || (selectedProject === 'all' && selectedTask === 'all')}
+                    disabled={
+                      submitting ||
+                      !newComment.trim() ||
+                      (selectedProject === 'all' && selectedTask === 'all')
+                    }
                   >
                     <Send className="w-4 h-4 mr-2" />
                     {submitting ? 'Publication...' : 'Publier'}
                   </Button>
                 )}
                 {!canComment && (
-                  <p className="text-sm text-gray-500 italic">Vous n'avez pas la permission de commenter</p>
+                  <p className="text-sm text-gray-500 italic">
+                    Vous n'avez pas la permission de commenter
+                  </p>
                 )}
               </div>
               {selectedProject === 'all' && selectedTask === 'all' && (
@@ -495,7 +523,8 @@ export default function CommentsPage() {
                                   Répondre
                                 </DropdownMenuItem>
                               )}
-                              {(comment.auteur?._id === currentUserId || userPermissions.adminConfig) && (
+                              {(comment.auteur?._id === currentUserId ||
+                                userPermissions.adminConfig) && (
                                 <DropdownMenuItem
                                   onClick={() => handleDeleteComment(comment._id)}
                                   className="text-red-600"
@@ -508,10 +537,14 @@ export default function CommentsPage() {
                           </DropdownMenu>
                         </div>
                         <p className="text-gray-700 whitespace-pre-wrap">
-                          {comment.contenu?.split(/(@\w+)/g).map((part, idx) => 
+                          {comment.contenu?.split(/(@\w+)/g).map((part, idx) =>
                             part.startsWith('@') ? (
-                              <span key={idx} className="text-indigo-600 font-medium">{part}</span>
-                            ) : part
+                              <span key={idx} className="text-indigo-600 font-medium">
+                                {part}
+                              </span>
+                            ) : (
+                              part
+                            )
                           )}
                         </p>
                       </div>
@@ -552,7 +585,9 @@ export default function CommentsPage() {
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="font-medium text-gray-900">
-                                {activity.utilisateur_nom || activity.utilisateur?.nom_complet || 'Système'}
+                                {activity.utilisateur_nom ||
+                                  activity.utilisateur?.nom_complet ||
+                                  'Système'}
                               </p>
                               <p className="text-sm text-gray-600">{activity.description}</p>
                             </div>

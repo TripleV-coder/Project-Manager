@@ -2,35 +2,52 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import dynamic from 'next/dynamic';
 import KanbanColumn from '@/components/kanban/KanbanColumn';
 import TaskCard from '@/components/kanban/TaskCard';
 import { toast } from 'sonner';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import { useItemFormData } from '@/hooks/useItemFormData';
-import ItemFormDialog from '@/components/ItemFormDialog';
+const ItemFormDialog = dynamic(() => import('@/components/ItemFormDialog'));
 import { useTranslation } from '@/contexts/AppSettingsContext';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
+import { extractApiData } from '@/lib/utils';
 
-/**
- * Extrait les données d'une réponse API de manière sécurisée
- */
-function extractApiData(response, keys = ['data']) {
-  if (!response) return [];
-  if (Array.isArray(response)) return response;
-  for (const key of keys) {
-    if (response[key] && Array.isArray(response[key])) {
-      return response[key];
-    }
-  }
-  return [];
+const STATUT_TO_COLUMN = {
+  Backlog: 'backlog',
+  'À faire': 'todo',
+  'En cours': 'in_progress',
+  Review: 'review',
+  Terminé: 'done',
+};
+
+function taskBelongsToColumn(task, column) {
+  if (!task || !column) return false;
+  if (task.colonne_kanban) return String(task.colonne_kanban) === String(column.id);
+  return STATUT_TO_COLUMN[task.statut] === column.id;
 }
 
 export default function KanbanPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const searchParams = useSearchParams();
   const projectId = searchParams.get('project');
   const { t } = useTranslation();
@@ -58,14 +75,14 @@ export default function KanbanPage() {
     loading: formDataLoading,
     dataReady,
     errors: dataErrors,
-    refresh: refreshFormData
+    refresh: refreshFormData,
   } = useItemFormData({
     projectId: selectedProject || null,
     loadProjects: true,
     loadUsers: true,
     loadSprints: true,
     loadDeliverables: false,
-    onUnauthorized: handleUnauthorized
+    onUnauthorized: handleUnauthorized,
   });
 
   const permissions = useRBACPermissions(user);
@@ -98,34 +115,25 @@ export default function KanbanPage() {
     }
 
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       setLoading(true);
 
       // Load tasks and project data in parallel
       const [tasksRes, projectRes, userRes] = await Promise.all([
-        fetch(`/api/tasks?projet_id=${selectedProject}&limit=200`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(10000)
+        authFetch(`/api/tasks?projet_id=${selectedProject}&limit=200`, {
+          signal: AbortSignal.timeout(10000),
         }),
-        fetch(`/api/projects/${selectedProject}`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(10000)
+        authFetch(`/api/projects/${selectedProject}`, {
+          signal: AbortSignal.timeout(10000),
         }),
-        fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(10000)
-        })
+        authFetch('/api/auth/me', {
+          signal: AbortSignal.timeout(10000),
+        }),
       ]);
 
       const [tasksData, projectData, userData] = await Promise.all([
         tasksRes.json(),
         projectRes.json(),
-        userRes.json()
+        userRes.json(),
       ]);
 
       if (userRes.ok) {
@@ -148,7 +156,7 @@ export default function KanbanPage() {
       }
 
       if (projectRes.ok) {
-        const project = projectData.data || projectData.project || projectData;
+        const project = projectData.project || projectData.data || projectData;
         const kanbanColumns = project?.colonnes_kanban;
 
         // Vérification que les colonnes sont valides
@@ -161,7 +169,7 @@ export default function KanbanPage() {
             { id: 'todo', nom: 'À faire', couleur: '#60a5fa' },
             { id: 'in_progress', nom: 'En cours', couleur: '#f59e0b' },
             { id: 'review', nom: 'Review', couleur: '#8b5cf6' },
-            { id: 'done', nom: 'Terminé', couleur: '#10b981' }
+            { id: 'done', nom: 'Terminé', couleur: '#10b981' },
           ]);
         }
       }
@@ -174,6 +182,7 @@ export default function KanbanPage() {
         setLoading(false);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, router]);
 
   useEffect(() => {
@@ -184,72 +193,85 @@ export default function KanbanPage() {
 
   const handleDragStart = (event) => {
     const { active } = event;
-    const task = tasks.find(t => t._id === active.id);
+    const task = tasks.find((t) => t._id === active.id);
     setActiveTask(task);
   };
 
-  const handleDragEnd = useCallback(async (event) => {
-    const { active, over } = event;
+  const handleDragEnd = useCallback(
+    async (event) => {
+      const { active, over } = event;
 
-    if (!over) {
-      setActiveTask(null);
-      return;
-    }
+      if (!over) {
+        setActiveTask(null);
+        return;
+      }
 
-    const taskId = active.id;
-    const newColumnId = over.id;
+      const taskId = active.id;
+      const newColumnId = over.id;
 
-    const task = tasks.find(t => t._id === taskId);
-    if (!task || task.colonne_kanban === newColumnId) {
-      setActiveTask(null);
-      return;
-    }
+      const task = tasks.find((t) => t._id === taskId);
+      if (!task || task.colonne_kanban === newColumnId) {
+        setActiveTask(null);
+        return;
+      }
 
-    // Check permission before moving
-    if (!canMoveTasks('deplacerTaches')) {
-      toast.error('Vous n\'avez pas la permission de déplacer les tâches');
-      setActiveTask(null);
-      return;
-    }
+      const assigneeId = task.assigné_à?._id || task.assigné_à;
+      const currentUserId = user?.id || user?._id;
+      const isAssignee = Boolean(
+        assigneeId && currentUserId && String(assigneeId) === String(currentUserId)
+      );
 
-    // Update locally first for instant feedback
-    setTasks(tasks.map(t =>
-      t._id === taskId
-        ? { ...t, colonne_kanban: newColumnId, statut: columns.find(c => c.id === newColumnId)?.nom || t.statut }
-        : t
-    ));
+      if (!canMoveTasks('deplacerTaches') && !isAssignee) {
+        toast.error("Vous n'avez pas la permission de déplacer les tâches");
+        setActiveTask(null);
+        return;
+      }
 
-    // Update on server
-    try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/tasks/${taskId}/move`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          nouvelle_colonne: newColumnId,
-          nouveau_statut: columns.find(c => c.id === newColumnId)?.nom
-        }),
-        signal: AbortSignal.timeout(8000)
-      });
+      // Update locally first for instant feedback
+      setTasks(
+        tasks.map((t) =>
+          t._id === taskId
+            ? {
+                ...t,
+                colonne_kanban: newColumnId,
+                statut: columns.find((c) => c.id === newColumnId)?.nom || t.statut,
+              }
+            : t
+        )
+      );
 
-      if (response.ok) {
-        toast.success('Tâche déplacée avec succès');
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Erreur lors du déplacement');
+      // Update on server
+      try {
+        const response = await authFetch(`/api/tasks/${taskId}/move`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nouvelle_colonne: newColumnId,
+            nouveau_statut: columns.find((c) => c.id === newColumnId)?.nom,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (response.ok) {
+          toast.success('Tâche déplacée avec succès');
+        } else {
+          const data = await response.json();
+          toast.error(data.error || 'Erreur lors du déplacement');
+          loadProjectData();
+        }
+      } catch (error) {
+        console.error('Error moving task:', error);
+        toast.error('Erreur lors du déplacement');
         loadProjectData();
       }
-    } catch (error) {
-      console.error('Error moving task:', error);
-      toast.error('Erreur lors du déplacement');
-      loadProjectData();
-    }
 
-    setActiveTask(null);
-  }, [tasks, columns, loadProjectData, canMoveTasks]);
+      setActiveTask(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, columns, loadProjectData, canMoveTasks, user]
+  );
 
   // Callback après création réussie
   const handleFormSuccess = useCallback(async () => {
@@ -274,9 +296,7 @@ export default function KanbanPage() {
         <Card className="p-12 text-center">
           <h2 className="text-2xl font-bold mb-4 dark:text-white">{t('noProjects')}</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-6">{t('createProjectForKanban')}</p>
-          <Button onClick={() => router.push('/dashboard/projects')}>
-            {t('createProject')}
-          </Button>
+          <Button onClick={() => router.push('/dashboard/projects')}>{t('createProject')}</Button>
         </Card>
       </div>
     );
@@ -289,16 +309,21 @@ export default function KanbanPage() {
         <div className="flex items-center justify-between max-w-full">
           <div className="flex items-center gap-4 flex-1">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('kanban')}</h1>
-            <Select value={selectedProject} onValueChange={(value) => {
-              setSelectedProject(value);
-              setLoading(true);
-            }}>
+            <Select
+              value={selectedProject}
+              onValueChange={(value) => {
+                setSelectedProject(value);
+                setLoading(true);
+              }}
+            >
               <SelectTrigger className="w-64">
-                <SelectValue placeholder="Sélectionner un projet" />
+                <SelectValue placeholder={t('selectProject')} />
               </SelectTrigger>
               <SelectContent>
-                {projects.map(p => (
-                  <SelectItem key={p._id} value={p._id}>{p.nom}</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p._id} value={p._id}>
+                    {p.nom}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -310,7 +335,7 @@ export default function KanbanPage() {
               onClick={() => setCreateDialogOpen(true)}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Nouvelle tâche
+              {t('newTask')}
             </Button>
           )}
         </div>
@@ -321,7 +346,7 @@ export default function KanbanPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="space-y-4 text-center">
             <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-gray-600">Chargement du tableau...</p>
+            <p className="text-gray-600">{t('loading')}</p>
           </div>
         </div>
       ) : (
@@ -333,18 +358,16 @@ export default function KanbanPage() {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 min-w-min">
-              {columns.map(column => (
+              {columns.map((column) => (
                 <KanbanColumn
                   key={column.id}
                   column={column}
-                  tasks={tasks.filter(t => t.colonne_kanban === column.id)}
+                  tasks={tasks.filter((task) => taskBelongsToColumn(task, column))}
                 />
               ))}
             </div>
             <DragOverlay>
-              {activeTask ? (
-                <TaskCard task={activeTask} isDragging />
-              ) : null}
+              {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
             </DragOverlay>
           </DndContext>
         </div>

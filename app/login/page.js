@@ -6,10 +6,18 @@ import { Briefcase, Mail, Lock, Eye, EyeOff, CheckCircle, Shield, Key } from 'lu
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Footer from '@/components/Footer';
 import { useTranslation } from '@/contexts/AppSettingsContext';
+import { markAuthSession } from '@/lib/client-auth';
 
 function LoginContent() {
   const router = useRouter();
@@ -27,6 +35,7 @@ function LoginContent() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [twoFactorEmail, setTwoFactorEmail] = useState('');
+  const [twoFactorTempToken, setTwoFactorTempToken] = useState('');
 
   useEffect(() => {
     if (searchParams.get('firstAdmin') === 'true') {
@@ -43,8 +52,9 @@ function LoginContent() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ email, password }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(15000),
       });
 
       if (!response.ok) {
@@ -63,29 +73,26 @@ function LoginContent() {
       const data = await response.json();
 
       // Check if 2FA is required
-      if (data.requires2FA) {
+      if (data.requires2FA || data.require2FA) {
         setRequires2FA(true);
-        setTwoFactorEmail(data.email);
+        setTwoFactorEmail(data.email || email);
+        setTwoFactorTempToken(data.tempToken || '');
         setLoading(false);
         return;
       }
 
-      // Validate response structure
-      if (!data.token || !data.user) {
+      if (!data.user) {
         setError(t('invalidAuthResponse'));
         setLoading(false);
         return;
       }
 
-      localStorage.setItem('pm_token', data.token);
-      localStorage.setItem('pm_user', JSON.stringify(data.user));
+      markAuthSession(data.user);
 
-      // Stop loading before redirect
       setLoading(false);
 
-      // Navigate after a brief delay to allow UI update
       setTimeout(() => {
-        if (data.user.first_login || data.user.must_change_password) {
+        if (data.requirePasswordChange || data.user.first_login || data.user.must_change_password) {
           router.push('/first-login');
         } else {
           router.push('/dashboard');
@@ -105,13 +112,16 @@ function LoginContent() {
     try {
       const response = await fetch('/api/auth/2fa/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(twoFactorTempToken ? { Authorization: `Bearer ${twoFactorTempToken}` } : {}),
+        },
+        credentials: 'same-origin',
         body: JSON.stringify({
-          email: twoFactorEmail,
           token: twoFactorCode.replace(/\s/g, ''),
-          isBackupCode: useBackupCode
+          isBackupCode: useBackupCode,
         }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(15000),
       });
 
       const data = await response.json();
@@ -122,15 +132,14 @@ function LoginContent() {
         return;
       }
 
-      // Validate response structure
-      if (!data.data?.token || !data.data?.user) {
+      const sessionUser = data.user || data.data?.user;
+      if (!sessionUser) {
         setError(t('invalidAuthResponse'));
         setLoading(false);
         return;
       }
 
-      localStorage.setItem('pm_token', data.data.token);
-      localStorage.setItem('pm_user', JSON.stringify(data.data.user));
+      markAuthSession(sessionUser);
 
       // Show warning if backup codes are running low
       if (data.data.backupCodesRemaining !== undefined && data.data.backupCodesRemaining <= 3) {
@@ -140,7 +149,7 @@ function LoginContent() {
       setLoading(false);
 
       setTimeout(() => {
-        if (data.data.user.first_login || data.data.user.must_change_password) {
+        if (sessionUser.first_login || sessionUser.must_change_password) {
           router.push('/first-login');
         } else {
           router.push('/dashboard');
@@ -157,34 +166,136 @@ function LoginContent() {
     setTwoFactorCode('');
     setUseBackupCode(false);
     setTwoFactorEmail('');
+    setTwoFactorTempToken('');
     setError('');
   };
 
   // 2FA verification screen
   if (requires2FA) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 p-4">
+      <div className="absolute inset-0 overflow-hidden bg-slate-950 auth-page-bg p-4">
+        <div className="absolute inset-0 bg-slate-950/20" />
+        <div className="relative z-10 flex h-full items-center justify-center">
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
+                <Shield className="w-10 h-10 text-white" />
+              </div>
+              <h1 className="text-3xl font-bold text-white mb-2">{t('twoFactorVerification')}</h1>
+              <p className="text-slate-200">
+                {t('enterAuthCode')}
+                {twoFactorEmail ? ` (${twoFactorEmail})` : ''}
+              </p>
+            </div>
+
+            <Card className="auth-card-shell shadow-xl border-0">
+              <CardHeader>
+                <CardTitle>{t('twoFactorTitle')}</CardTitle>
+                <CardDescription>
+                  {useBackupCode ? t('enterBackupCode') : t('enter6DigitCode')}
+                </CardDescription>
+              </CardHeader>
+
+              <form onSubmit={handle2FASubmit}>
+                <CardContent className="space-y-4">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="twoFactorCode">
+                      {useBackupCode ? t('backupCode') : t('verificationCode')}
+                    </Label>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="twoFactorCode"
+                        type="text"
+                        value={twoFactorCode}
+                        onChange={(e) =>
+                          setTwoFactorCode(
+                            useBackupCode
+                              ? e.target.value
+                                  .toUpperCase()
+                                  .replace(/[^A-Z0-9]/g, '')
+                                  .slice(0, 8)
+                              : e.target.value.replace(/\D/g, '').slice(0, 6)
+                          )
+                        }
+                        className="pl-10 text-center text-xl tracking-widest"
+                        placeholder={useBackupCode ? 'ABCD1234' : '000000'}
+                        maxLength={useBackupCode ? 8 : 6}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseBackupCode(!useBackupCode);
+                      setTwoFactorCode('');
+                    }}
+                    className="text-sm text-indigo-600 hover:text-indigo-800"
+                  >
+                    {useBackupCode ? t('useAuthApp') : t('useBackupCode')}
+                  </button>
+                </CardContent>
+
+                <CardFooter className="flex flex-col gap-2">
+                  <Button
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                    disabled={
+                      loading ||
+                      (useBackupCode ? twoFactorCode.length !== 8 : twoFactorCode.length !== 6)
+                    }
+                  >
+                    {loading ? t('verifying') : t('verify')}
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={resetToLogin}>
+                    {t('backToLogin')}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-slate-950 auth-page-bg p-4">
+      <div className="absolute inset-0 bg-slate-950/20" />
+      <div className="relative z-10 flex h-full items-center justify-center">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
-              <Shield className="w-10 h-10 text-white" />
+              <Briefcase className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('twoFactorVerification')}</h1>
-            <p className="text-gray-600 dark:text-gray-400">{t('enterAuthCode')}</p>
+            <h1 className="text-3xl font-bold text-white mb-2">{t('projectManagementPlatform')}</h1>
+            <p className="text-slate-200">{t('connectToAccessSpace')}</p>
           </div>
 
-          <Card className="shadow-xl border-0">
+          <Card className="auth-card-shell shadow-xl border-0">
             <CardHeader>
-              <CardTitle>{t('twoFactorTitle')}</CardTitle>
-              <CardDescription>
-                {useBackupCode
-                  ? t('enterBackupCode')
-                  : t('enter6DigitCode')}
-              </CardDescription>
+              <CardTitle>{t('login')}</CardTitle>
+              <CardDescription>{t('enterCredentials')}</CardDescription>
             </CardHeader>
 
-            <form onSubmit={handle2FASubmit}>
+            <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
+                {successMessage && (
+                  <Alert className="bg-green-50 border-green-200">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
+                  </Alert>
+                )}
+
                 {error && (
                   <Alert variant="destructive">
                     <AlertDescription>{error}</AlertDescription>
@@ -192,152 +303,57 @@ function LoginContent() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="twoFactorCode">
-                    {useBackupCode ? t('backupCode') : t('verificationCode')}
-                  </Label>
+                  <Label htmlFor="email">{t('email')}</Label>
                   <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
-                      id="twoFactorCode"
-                      type="text"
-                      value={twoFactorCode}
-                      onChange={(e) => setTwoFactorCode(useBackupCode
-                        ? e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-                        : e.target.value.replace(/\D/g, '').slice(0, 6)
-                      )}
-                      className="pl-10 text-center text-xl tracking-widest"
-                      placeholder={useBackupCode ? 'ABCD1234' : '000000'}
-                      maxLength={useBackupCode ? 8 : 6}
-                      autoFocus
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10"
+                      placeholder="votre@email.com"
                       required
                     />
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUseBackupCode(!useBackupCode);
-                    setTwoFactorCode('');
-                  }}
-                  className="text-sm text-indigo-600 hover:text-indigo-800"
-                >
-                  {useBackupCode
-                    ? t('useAuthApp')
-                    : t('useBackupCode')}
-                </button>
+                <div className="space-y-2">
+                  <Label htmlFor="password">{t('password')}</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pl-10 pr-10"
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               </CardContent>
 
-              <CardFooter className="flex flex-col gap-2">
+              <CardFooter>
                 <Button
                   type="submit"
                   className="w-full bg-indigo-600 hover:bg-indigo-700"
-                  disabled={loading || (useBackupCode ? twoFactorCode.length !== 8 : twoFactorCode.length !== 6)}
+                  disabled={loading}
                 >
-                  {loading ? t('verifying') : t('verify')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="w-full"
-                  onClick={resetToLogin}
-                >
-                  {t('backToLogin')}
+                  {loading ? t('loggingIn') : t('loginButton')}
                 </Button>
               </CardFooter>
             </form>
           </Card>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
-            <Briefcase className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('projectManagementPlatform')}</h1>
-          <p className="text-gray-600 dark:text-gray-400">{t('connectToAccessSpace')}</p>
-        </div>
-
-        <Card className="shadow-xl border-0">
-          <CardHeader>
-            <CardTitle>{t('login')}</CardTitle>
-            <CardDescription>
-              {t('enterCredentials')}
-            </CardDescription>
-          </CardHeader>
-
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              {successMessage && (
-                <Alert className="bg-green-50 border-green-200">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
-                </Alert>
-              )}
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">{t('email')}</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    placeholder="votre@email.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">{t('password')}</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-
-            <CardFooter>
-              <Button
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700"
-                disabled={loading}
-              >
-                {loading ? t('loggingIn') : t('loginButton')}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-
       </div>
     </div>
   );
@@ -345,15 +361,13 @@ function LoginContent() {
 
 function LoadingFallback() {
   const { t } = useTranslation();
-  return (
-    <div className="min-h-screen flex items-center justify-center">{t('loading')}</div>
-  );
+  return <div className="h-full flex items-center justify-center">{t('loading')}</div>;
 }
 
 export default function Login() {
   return (
-    <div className="flex flex-col min-h-screen">
-      <div className="flex-1">
+    <div className="relative h-dvh overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden">
         <Suspense fallback={<LoadingFallback />}>
           <LoginContent />
         </Suspense>
