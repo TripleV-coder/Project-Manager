@@ -6,9 +6,12 @@ import { firstLoginResetSchema } from '@/lib/requestValidation';
 import { verifyPassword, hashPassword, validatePassword } from '@/lib/auth';
 import {
   authenticateRequest,
+  getBearerToken,
   issueAuthTokens,
   serializeAuthenticatedUser,
 } from '@/lib/requestAuth';
+import { verifyStepUpToken, STEP_UP_SCOPE } from '@/lib/auth/stepUp';
+import { mustChangePassword } from '@/lib/userState';
 import { revokeUserSessions } from '@/lib/userSecurity';
 import { logActivity } from '@/lib/auditService';
 import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
@@ -34,12 +37,24 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: passwordCheck.message }, { status: 422 });
     }
 
-    const sessionUser = await authenticateRequest(request);
-    if (!sessionUser) {
+    // Accept either a pwd-scoped step-up token (normal path) or an existing
+    // full session (back-compat — only reachable while must-change is true).
+    let userId = null;
+    const bearer = getBearerToken(request);
+    const challenge = bearer
+      ? await verifyStepUpToken(bearer, STEP_UP_SCOPE.PASSWORD_CHANGE)
+      : null;
+    if (challenge) {
+      userId = challenge.userId;
+    } else {
+      const sessionUser = await authenticateRequest(request);
+      if (sessionUser) userId = sessionUser._id;
+    }
+    if (!userId) {
       return NextResponse.json({ success: false, error: 'Non authentifié' }, { status: 401 });
     }
 
-    const user = await User.findById(sessionUser._id).select('+password').populate('role_id');
+    const user = await User.findById(userId).select('+password').populate('role_id');
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Utilisateur introuvable' },
@@ -47,11 +62,7 @@ export async function POST(request) {
       );
     }
 
-    const mustChange =
-      user.must_change_password === true ||
-      user.mustChangePassword === true ||
-      user.first_login === true;
-    if (!mustChange) {
+    if (!mustChangePassword(user)) {
       return NextResponse.json(
         { success: false, error: 'Changement de mot de passe non requis' },
         { status: 400 }

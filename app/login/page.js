@@ -87,6 +87,14 @@ function LoginContent() {
         return;
       }
 
+      if (data.requirePasswordChange && data.tempToken) {
+        try {
+          sessionStorage.setItem('pm_pwd_stepup', data.tempToken);
+        } catch {
+          /* ignore */
+        }
+      }
+
       markAuthSession(data.user);
 
       setLoading(false);
@@ -129,6 +137,17 @@ function LoginContent() {
       if (!response.ok) {
         setError(data.error || t('invalidCode'));
         setLoading(false);
+        return;
+      }
+
+      if (data.requirePasswordChange && data.tempToken) {
+        try {
+          sessionStorage.setItem('pm_pwd_stepup', data.tempToken);
+        } catch {
+          /* ignore */
+        }
+        setLoading(false);
+        router.push('/first-login');
         return;
       }
 

@@ -33,7 +33,14 @@ export default function FirstLogin() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!hasAuthSessionMarker()) {
+    const hasStepUp = (() => {
+      try {
+        return !!sessionStorage.getItem('pm_pwd_stepup');
+      } catch {
+        return false;
+      }
+    })();
+    if (!hasAuthSessionMarker() && !hasStepUp) {
       router.push('/login');
     }
   }, [router]);
@@ -44,10 +51,19 @@ export default function FirstLogin() {
     setLoading(true);
 
     try {
+      const stepUp = (() => {
+        try {
+          return sessionStorage.getItem('pm_pwd_stepup');
+        } catch {
+          return null;
+        }
+      })();
+
       const response = await fetch('/api/auth/first-login-reset', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(stepUp ? { Authorization: `Bearer ${stepUp}` } : {}),
         },
         credentials: 'same-origin',
         body: JSON.stringify(formData),
@@ -69,6 +85,12 @@ export default function FirstLogin() {
       const data = await response.json();
       if (data?.user) {
         markAuthSession(data.user);
+      }
+
+      try {
+        sessionStorage.removeItem('pm_pwd_stepup');
+      } catch {
+        /* ignore */
       }
 
       // Succès, rediriger vers dashboard
