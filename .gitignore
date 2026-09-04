@@ -30,6 +30,7 @@ next-env.d.ts
 *.tsbuildinfo
 .swc/
 build.log
+lint_results.txt
 
 # Local MongoDB runtime data (created by scripts/start-dev.js --dbpath)
 /data/
