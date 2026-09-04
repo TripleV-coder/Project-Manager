@@ -1,4 +1,4 @@
-import { authenticateRequest, getTokenFromRequest } from '@/lib/requestAuth';
+import { authenticateRequest, getTokenFromRequest, verifyRequestToken } from '@/lib/requestAuth';
 import connectDB from '@/lib/mongodb';
 import { verifyToken } from '@/lib/auth';
 import User from '@/models/User';
@@ -113,5 +113,22 @@ describe('requestAuth', () => {
 
     expect(user).toBeNull();
     expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  test('verifyRequestToken rejects a step-up token even with a valid signature', async () => {
+    verifyToken.mockResolvedValue({
+      userId: 'user-1',
+      tokenVersion: 0,
+      stepUp: true,
+      scope: '2fa',
+    });
+
+    const request = {
+      headers: { get: (name) => (name === 'authorization' ? 'Bearer a.b.c' : null) },
+    };
+
+    const payload = await verifyRequestToken(request);
+
+    expect(payload).toBeNull();
   });
 });
