@@ -227,26 +227,22 @@ if (!process.env.JWT_SECRET) {
 
 // Polyfill for TextEncoder (Node.js test environment)
 if (typeof global.TextEncoder === 'undefined') {
-  const { TextEncoder, TextDecoder } = require('util');
-  global.TextEncoder = TextEncoder;
+  const { TextEncoder: UtilTextEncoder, TextDecoder } = require('util');
+  // Wrap TextEncoder to ensure it returns proper Uint8Array
+  global.TextEncoder = class TextEncoder {
+    encode(input) {
+      const encoded = new UtilTextEncoder().encode(input);
+      // Ensure it's a proper Uint8Array for jose
+      return new Uint8Array(encoded);
+    }
+  };
   global.TextDecoder = TextDecoder;
 }
 
-// Mock jose library for JWT
-jest.mock(
-  'jose',
-  () => ({
-    __esModule: true,
-    SignJWT: jest.fn().mockImplementation(() => ({
-      setProtectedHeader: jest.fn().mockReturnThis(),
-      setIssuedAt: jest.fn().mockReturnThis(),
-      setExpirationTime: jest.fn().mockReturnThis(),
-      sign: jest.fn().mockResolvedValue('mock.jwt.token'),
-    })),
-    jwtVerify: jest.fn().mockResolvedValue({ payload: {} }),
-  }),
-  { virtual: true }
-);
+// Setup TransformStream polyfill for jose (required in jsdom)
+if (typeof global.TransformStream === 'undefined') {
+  global.TransformStream = class TransformStream {};
+}
 
 // Mock mongodb package
 jest.mock(
