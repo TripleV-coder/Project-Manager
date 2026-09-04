@@ -18,12 +18,25 @@ node_modules/
 
 # Testing
 /coverage
+/playwright-report/
+/test-results/
+/playwright/.cache/
 
 # Next.js
 /.next/
+/.next-prod/
 /out/
 next-env.d.ts
 *.tsbuildinfo
+.swc/
+build.log
+
+# Local MongoDB runtime data (created by scripts/start-dev.js --dbpath)
+/data/
+
+# User-uploaded files (runtime, written by app/api/files/upload)
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # Production builds
 /build

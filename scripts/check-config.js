@@ -21,8 +21,10 @@ console.log('─'.repeat(60));
 const checkEnv = (name, required = true) => {
   const value = process.env[name];
   const exists = !!value;
-  const status = exists ? checkMark : (required ? crossMark : warningMark);
-  console.log(`${status} ${name.padEnd(35)} ${exists ? '✓ Configuré' : (required ? '✗ REQUIS' : '○ Optionnel')}`);
+  const status = exists ? checkMark : required ? crossMark : warningMark;
+  console.log(
+    `${status} ${name.padEnd(35)} ${exists ? '✓ Configuré' : required ? '✗ REQUIS' : '○ Optionnel'}`
+  );
   return exists;
 };
 
@@ -46,7 +48,9 @@ const hasSmtpPass = checkEnv('SMTP_PASS', false);
 checkEnv('SMTP_FROM', false);
 
 const emailConfigured = hasSmtpHost && hasSmtpUser && hasSmtpPass;
-console.log(`\n   ${emailConfigured ? checkMark : warningMark} Service Email: ${emailConfigured ? 'Configuré' : 'Non configuré (emails désactivés)'}`);
+console.log(
+  `\n   ${emailConfigured ? checkMark : warningMark} Service Email: ${emailConfigured ? 'Configuré' : 'Non configuré (emails désactivés)'}`
+);
 
 console.log('\n🔔 PUSH NOTIFICATIONS');
 console.log('─'.repeat(60));
@@ -55,7 +59,9 @@ const hasVapidPrivate = checkEnv('VAPID_PRIVATE_KEY', false);
 checkEnv('VAPID_SUBJECT', false);
 
 const pushConfigured = hasVapidPublic && hasVapidPrivate;
-console.log(`\n   ${pushConfigured ? checkMark : warningMark} Push Notifications: ${pushConfigured ? 'Configurées' : 'Non configurées (push désactivé)'}`);
+console.log(
+  `\n   ${pushConfigured ? checkMark : warningMark} Push Notifications: ${pushConfigured ? 'Configurées' : 'Non configurées (push désactivé)'}`
+);
 
 console.log('\n☁️ SHAREPOINT');
 console.log('─'.repeat(60));
@@ -67,7 +73,9 @@ const hasSpSite = checkEnv('SHAREPOINT_SITE_ID', false);
 
 const sharePointConfigured = hasSpTenant && hasSpClient && hasSpSecret && hasSpSite;
 const sharePointEnabled = process.env.SHAREPOINT_ENABLED === 'true';
-console.log(`\n   ${sharePointConfigured && sharePointEnabled ? checkMark : warningMark} SharePoint: ${sharePointEnabled ? (sharePointConfigured ? 'Configuré et activé' : 'Activé mais incomplet') : 'Désactivé'}`);
+console.log(
+  `\n   ${sharePointConfigured && sharePointEnabled ? checkMark : warningMark} SharePoint: ${sharePointEnabled ? (sharePointConfigured ? 'Configuré et activé' : 'Activé mais incomplet') : 'Désactivé'}`
+);
 
 // Résumé
 console.log('\n╔═══════════════════════════════════════════════════════════════╗');
@@ -75,10 +83,18 @@ console.log('║                         RÉSUMÉ                               
 console.log('╠═══════════════════════════════════════════════════════════════╣');
 
 const baseOk = hasMongoUrl && hasJwtSecret && hasBaseUrl;
-console.log(`║  Configuration de base:    ${baseOk ? checkMark + ' Prête' : crossMark + ' Incomplète'}                         ║`);
-console.log(`║  Email SMTP:               ${emailConfigured ? checkMark + ' Activé' : warningMark + ' Désactivé'}                        ║`);
-console.log(`║  Push Notifications:       ${pushConfigured ? checkMark + ' Activées' : warningMark + ' Désactivées'}                      ║`);
-console.log(`║  SharePoint:               ${sharePointConfigured && sharePointEnabled ? checkMark + ' Connecté' : warningMark + ' Désactivé'}                       ║`);
+console.log(
+  `║  Configuration de base:    ${baseOk ? checkMark + ' Prête' : crossMark + ' Incomplète'}                         ║`
+);
+console.log(
+  `║  Email SMTP:               ${emailConfigured ? checkMark + ' Activé' : warningMark + ' Désactivé'}                        ║`
+);
+console.log(
+  `║  Push Notifications:       ${pushConfigured ? checkMark + ' Activées' : warningMark + ' Désactivées'}                      ║`
+);
+console.log(
+  `║  SharePoint:               ${sharePointConfigured && sharePointEnabled ? checkMark + ' Connecté' : warningMark + ' Désactivé'}                       ║`
+);
 console.log('╚═══════════════════════════════════════════════════════════════╝');
 
 if (!baseOk) {

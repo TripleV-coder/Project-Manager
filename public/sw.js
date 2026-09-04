@@ -13,14 +13,11 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching offline page');
-      return cache.addAll([
-        '/',
-        '/login',
-        '/icons/icon-192x192.png',
-        '/icons/icon-512x512.png'
-      ]).catch(err => {
-        console.warn('[SW] Cache addAll failed:', err);
-      });
+      return cache
+        .addAll(['/', '/login', '/icons/icon-192x192.png', '/icons/icon-512x512.png'])
+        .catch((err) => {
+          console.warn('[SW] Cache addAll failed:', err);
+        });
     })
   );
 
@@ -57,7 +54,7 @@ self.addEventListener('push', (event) => {
     title: 'PM - Notification',
     body: 'Vous avez une nouvelle notification',
     icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge.png'
+    badge: '/icons/badge.png',
   };
 
   if (event.data) {
@@ -78,12 +75,10 @@ self.addEventListener('push', (event) => {
     actions: data.actions || [],
     requireInteraction: data.requireInteraction || false,
     vibrate: [200, 100, 200],
-    timestamp: data.timestamp || Date.now()
+    timestamp: data.timestamp || Date.now(),
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+  event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
 // Gestion des clics sur les notifications
@@ -101,22 +96,21 @@ self.addEventListener('notificationclick', (event) => {
   const urlToOpen = event.notification.data?.url || '/dashboard';
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Chercher une fenêtre déjà ouverte
-        for (const client of clientList) {
-          if (client.url.includes('/dashboard') && 'focus' in client) {
-            // Naviguer vers l'URL et focus
-            client.navigate(urlToOpen);
-            return client.focus();
-          }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Chercher une fenêtre déjà ouverte
+      for (const client of clientList) {
+        if (client.url.includes('/dashboard') && 'focus' in client) {
+          // Naviguer vers l'URL et focus
+          client.navigate(urlToOpen);
+          return client.focus();
         }
+      }
 
-        // Sinon ouvrir une nouvelle fenêtre
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
+      // Sinon ouvrir une nouvelle fenêtre
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
 });
 
@@ -138,20 +132,18 @@ self.addEventListener('fetch', (event) => {
   // Pour les navigations, essayer le réseau d'abord
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-          return caches.match(OFFLINE_URL) || caches.match('/');
-        })
+      fetch(event.request).catch(() => {
+        return caches.match(OFFLINE_URL) || caches.match('/');
+      })
     );
     return;
   }
 
   // Pour les autres ressources, cache first
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        return response || fetch(event.request);
-      })
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
+    })
   );
 });
 

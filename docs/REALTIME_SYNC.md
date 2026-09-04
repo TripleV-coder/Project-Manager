@@ -42,17 +42,20 @@ SOCKET_SERVER_URL=http://localhost:4000
 ### 2. Lancer le serveur Socket.io
 
 **En développement (terminal séparé):**
+
 ```bash
 npm run socket
 ```
 
 **Ou avec concurrently (dans un seul terminal):**
+
 ```bash
 npm install --save-dev concurrently
 npm run dev:socket
 ```
 
 Le serveur écoute sur le port 4000 par défaut. Pour changer:
+
 ```bash
 SOCKET_PORT=5000 npm run socket
 ```
@@ -93,21 +96,19 @@ export default function TasksPage({ projectId }) {
   // Setup real-time synchronization
   useTaskSync(projectId, {
     onTaskCreated: (data) => {
-      setTasks(prev => [...prev, data.task]);
+      setTasks((prev) => [...prev, data.task]);
     },
     onTaskUpdated: (data) => {
-      setTasks(prev => 
-        prev.map(t => t._id === data.task._id ? data.task : t)
-      );
+      setTasks((prev) => prev.map((t) => (t._id === data.task._id ? data.task : t)));
     },
     onTaskDeleted: (data) => {
-      setTasks(prev => prev.filter(t => t._id !== data.taskId));
-    }
+      setTasks((prev) => prev.filter((t) => t._id !== data.taskId));
+    },
   });
 
   return (
     <div>
-      {tasks.map(task => (
+      {tasks.map((task) => (
         <div key={task._id}>{task.titre}</div>
       ))}
     </div>
@@ -125,21 +126,19 @@ export default function CommentsSection({ projectId }) {
 
   useCommentSync(projectId, {
     onCommentCreated: (data) => {
-      setComments(prev => [...prev, data.comment]);
+      setComments((prev) => [...prev, data.comment]);
     },
     onCommentUpdated: (data) => {
-      setComments(prev =>
-        prev.map(c => c._id === data.comment._id ? data.comment : c)
-      );
+      setComments((prev) => prev.map((c) => (c._id === data.comment._id ? data.comment : c)));
     },
     onCommentDeleted: (data) => {
-      setComments(prev => prev.filter(c => c._id !== data.commentId));
-    }
+      setComments((prev) => prev.filter((c) => c._id !== data.commentId));
+    },
   });
 
   return (
     <div>
-      {comments.map(comment => (
+      {comments.map((comment) => (
         <div key={comment._id}>{comment.contenu}</div>
       ))}
     </div>
@@ -157,9 +156,9 @@ export default function NotificationBell() {
 
   useNotificationSync({
     onNotificationCreated: (data) => {
-      setUnreadCount(prev => prev + 1);
+      setUnreadCount((prev) => prev + 1);
       showToast(data.notification.titre);
-    }
+    },
   });
 
   return <Bell badge={unreadCount} />;
@@ -169,7 +168,7 @@ export default function NotificationBell() {
 #### 4. Utiliser le hook `useSocket` directement
 
 ```javascript
-import { useSocket } from '@/context/SocketContext';
+import { useSocket } from '@/contexts/SocketContext';
 
 export default function MyComponent() {
   const { on, off, emit, joinProject, isConnected } = useSocket();
@@ -184,17 +183,14 @@ export default function MyComponent() {
     return () => off('my:custom:event', handler);
   }, [isConnected, on, off]);
 
-  return (
-    <div>
-      Socket connecté: {isConnected ? '✓' : '✗'}
-    </div>
-  );
+  return <div>Socket connecté: {isConnected ? '✓' : '✗'}</div>;
 }
 ```
 
 ## Événements disponibles
 
 ### Tâches
+
 - `task:created` - Tâche créée
 - `task:updated` - Tâche modifiée
 - `task:deleted` - Tâche supprimée
@@ -202,27 +198,32 @@ export default function MyComponent() {
 - `task:assigned` - Tâche assignée
 
 ### Commentaires
+
 - `comment:created` - Commentaire créé
 - `comment:updated` - Commentaire modifié
 - `comment:deleted` - Commentaire supprimé
 
 ### Notifications
+
 - `notification:created` - Notification reçue
 - `notification:read` - Notification marquée comme lue
 
 ### Projets
+
 - `project:created` - Projet créé
 - `project:updated` - Projet modifié
 - `project:deleted` - Projet supprimé
 - `project:members_changed` - Membres du projet changés
 
 ### Sprints
+
 - `sprint:created` - Sprint créé
 - `sprint:updated` - Sprint modifié
 - `sprint:started` - Sprint démarré
 - `sprint:completed` - Sprint terminé
 
 ### Présence utilisateur
+
 - `user:online` - Utilisateur connecté
 - `user:offline` - Utilisateur déconnecté
 - `user:viewing` - Utilisateur consulte une page
@@ -236,6 +237,7 @@ Les événements sont **automatiquement filtrés** par le serveur Socket.io selo
 3. **Accès au projet**: L'utilisateur ne voit que les événements des projets dont il est membre
 
 **Exemple:**
+
 - Un utilisateur avec permission `deplacerTaches: true` verra les événements `task:moved`
 - Un utilisateur sans permission `modifierBudget: false` ne verra pas les événements `budget:updated`
 
@@ -248,30 +250,43 @@ Les événements sont émis automatiquement après chaque action:
 
 // Après création de tâche
 await emitToProject(projectId, SOCKET_EVENTS.TASK_CREATED, {
-  task: { /* données */ },
-  createdBy: { /* utilisateur */ }
+  task: {
+    /* données */
+  },
+  createdBy: {
+    /* utilisateur */
+  },
 });
 
 // Après modification
 await emitToProject(projectId, SOCKET_EVENTS.TASK_UPDATED, {
-  task: { /* données */ },
-  updatedBy: { /* utilisateur */ }
+  task: {
+    /* données */
+  },
+  updatedBy: {
+    /* utilisateur */
+  },
 });
 
 // Notification personnelle
 await emitToUser(userId, SOCKET_EVENTS.NOTIFICATION_CREATED, {
-  notification: { /* données */ }
+  notification: {
+    /* données */
+  },
 });
 
 // Broadcast global
 await emitToAll(SOCKET_EVENTS.PROJECT_CREATED, {
-  project: { /* données */ }
+  project: {
+    /* données */
+  },
 });
 ```
 
 ## Dépannage
 
 ### Le serveur Socket.io ne démarre pas
+
 ```bash
 # Vérifier la variable d'environnement MONGO_URL
 echo $MONGO_URL
@@ -281,6 +296,7 @@ NODE_DEBUG=* npm run socket
 ```
 
 ### Les événements ne sont pas reçus
+
 ```javascript
 // Vérifier la connexion Socket
 const { isConnected } = useSocket();
@@ -291,6 +307,7 @@ console.log('Socket connecté:', isConnected);
 ```
 
 ### Performance: trop d'événements
+
 - Implémenter le debouncing côté client
 - Limiter la fréquence d'émission
 - Utiliser un système de queue pour les événements critiques
@@ -298,12 +315,14 @@ console.log('Socket connecté:', isConnected);
 ## Architecture de sécurité
 
 ✅ **Points forts:**
+
 - Authentification JWT obligatoire
 - Filtrage des événements par permissions RBAC
 - Validation du membership du projet
 - Logs d'audit de toutes les actions
 
 ⚠️ **À implémenter en production:**
+
 - Rate limiting sur le serveur Socket.io
 - Monitoring et alerting pour anomalies
 - Chiffrement SSL/TLS pour les connexions
@@ -328,7 +347,7 @@ export default function KanbanBoard({ projectId }) {
     const fetchTasks = async () => {
       const token = localStorage.getItem('pm_token');
       const res = await fetch(`/api/tasks?projet_id=${projectId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setTasks(data.tasks || []);
@@ -342,30 +361,28 @@ export default function KanbanBoard({ projectId }) {
   useTaskSync(projectId, {
     onTaskCreated: (data) => {
       console.log('📌 Nouvelle tâche:', data.task.titre);
-      setTasks(prev => [...prev, data.task]);
+      setTasks((prev) => [...prev, data.task]);
     },
     onTaskUpdated: (data) => {
       console.log('✏️  Tâche modifiée:', data.task.titre);
-      setTasks(prev =>
-        prev.map(t => t._id === data.task._id ? data.task : t)
-      );
+      setTasks((prev) => prev.map((t) => (t._id === data.task._id ? data.task : t)));
     },
     onTaskDeleted: (data) => {
       console.log('🗑️ Tâche supprimée');
-      setTasks(prev => prev.filter(t => t._id !== data.taskId));
-    }
+      setTasks((prev) => prev.filter((t) => t._id !== data.taskId));
+    },
   });
 
   if (loading) return <div>Chargement...</div>;
 
   return (
     <div className="grid grid-cols-4 gap-4">
-      {['Backlog', 'À faire', 'En cours', 'Terminé'].map(column => (
+      {['Backlog', 'À faire', 'En cours', 'Terminé'].map((column) => (
         <div key={column} className="bg-gray-100 p-4 rounded">
           <h3 className="font-bold mb-4">{column}</h3>
           {tasks
-            .filter(t => t.statut === column)
-            .map(task => (
+            .filter((t) => t.statut === column)
+            .map((task) => (
               <div key={task._id} className="bg-white p-3 rounded mb-2">
                 {task.titre}
               </div>
@@ -380,6 +397,7 @@ export default function KanbanBoard({ projectId }) {
 ## Support
 
 Pour de l'aide:
+
 - Consultez les logs: `npm run socket` (terminal)
 - Vérifiez les variables d'environnement
 - Testez la connexion: vérifiez la console du navigateur (DevTools)

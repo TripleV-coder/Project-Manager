@@ -20,7 +20,7 @@ async function getAccessToken(tenantId, clientId, clientSecret) {
       grant_type: 'client_credentials',
       client_id: clientId,
       client_secret: clientSecret,
-      scope: 'https://graph.microsoft.com/.default'
+      scope: 'https://graph.microsoft.com/.default',
     }).toString();
 
     const options = {
@@ -29,13 +29,13 @@ async function getAccessToken(tenantId, clientId, clientSecret) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      }
+        'Content-Length': Buffer.byteLength(postData),
+      },
     };
 
     const req = https.request(options, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
@@ -58,22 +58,20 @@ async function getAccessToken(tenantId, clientId, clientSecret) {
 
 async function getSiteId(accessToken, hostname, sitePath) {
   return new Promise((resolve, reject) => {
-    const path = sitePath
-      ? `/v1.0/sites/${hostname}:/${sitePath}`
-      : `/v1.0/sites/${hostname}`;
+    const path = sitePath ? `/v1.0/sites/${hostname}:/${sitePath}` : `/v1.0/sites/${hostname}`;
 
     const options = {
       hostname: 'graph.microsoft.com',
       path: path,
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
+        Authorization: `Bearer ${accessToken}`,
+      },
     };
 
     const req = https.request(options, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
@@ -125,7 +123,7 @@ async function main() {
 
   const [tenantId, clientId, clientSecret, hostname, sitePath] = args;
 
-  console.log('\n🔐 Obtention du token d\'accès...');
+  console.log("\n🔐 Obtention du token d'accès...");
 
   try {
     const token = await getAccessToken(tenantId, clientId, clientSecret);
@@ -148,7 +146,6 @@ async function main() {
     console.log('\n📋 Ajoutez cette ligne dans votre fichier .env:\n');
     console.log(`SHAREPOINT_SITE_ID=${site.id}`);
     console.log('');
-
   } catch (error) {
     console.error('\n❌ Erreur:', error.message);
     process.exit(1);

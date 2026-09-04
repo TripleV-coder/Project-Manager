@@ -41,14 +41,14 @@ async function createFirstAdmin() {
     const response = await fetch('http://localhost:3000/api/auth/first-admin', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         nom_complet: 'Administrator',
         email: email,
         password: password,
-        password_confirm: password
-      })
+        password_confirm: password,
+      }),
     });
 
     const data = await response.json();

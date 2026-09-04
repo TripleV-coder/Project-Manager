@@ -4,7 +4,7 @@
 
 ![Logo](https://img.shields.io/badge/PM-Gestion_de_Projets-4f46e5?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0yMiAxOUgybS0yIDBoNGw0LTEwIDQgNSA0LTkgNiAxNHoiLz48L3N2Zz4=)
 
-![Version](https://img.shields.io/badge/version-1.0.7-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-14.2.33-black.svg)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green.svg)
 ![React](https://img.shields.io/badge/React-18-61DAFB.svg)
@@ -113,19 +113,20 @@
 
 ### Sécurité des Comptes
 
-| Fonctionnalité | Description | Configuration |
-|----------------|-------------|---------------|
-| **Verrouillage automatique** | Après 5 tentatives échouées | 15 minutes |
-| **Hachage mot de passe** | bcryptjs avec salt | 12 rounds |
-| **Longueur minimum** | Mot de passe | 8 caractères |
-| **Historique mots de passe** | Empêche réutilisation | 5 derniers |
-| **Token JWT** | Algorithme HS256 | 24h expiration |
-| **Première connexion** | Changement obligatoire | must_change_password: true |
+| Fonctionnalité               | Description                 | Configuration              |
+| ---------------------------- | --------------------------- | -------------------------- |
+| **Verrouillage automatique** | Après 5 tentatives échouées | 15 minutes                 |
+| **Hachage mot de passe**     | bcryptjs avec salt          | 12 rounds                  |
+| **Longueur minimum**         | Mot de passe                | 8 caractères               |
+| **Historique mots de passe** | Empêche réutilisation       | 5 derniers                 |
+| **Token JWT**                | Algorithme HS256            | 24h expiration             |
+| **Première connexion**       | Changement obligatoire      | must_change_password: true |
 
 ### Création d'Utilisateur
 
 Quand un administrateur crée un utilisateur :
-1. Mot de passe temporaire généré : `00000000`
+
+1. Mot de passe temporaire sécurisé généré dynamiquement
 2. `first_login: true` et `must_change_password: true`
 3. À la première connexion → redirection `/first-login`
 4. L'utilisateur DOIT changer son mot de passe
@@ -166,50 +167,50 @@ Le système RBAC (Role-Based Access Control) fonctionne sur **deux niveaux** :
 
 ### Les 23 Permissions Atomiques
 
-| Permission | Description | Qui l'a par défaut |
-|------------|-------------|-------------------|
-| `voirTousProjets` | Voir TOUS les projets (même non membre) | Admin, Super Admin |
-| `voirSesProjets` | Voir les projets où on est membre | Tous les rôles |
-| `creerProjet` | Créer de nouveaux projets | Chef Projet, Admin, Super Admin |
-| `supprimerProjet` | Supprimer des projets | Admin, Super Admin |
-| `modifierCharteProjet` | Modifier les infos du projet | Chef Projet, Admin, Super Admin |
-| `gererMembresProjet` | Ajouter/retirer des membres | Chef Projet, Admin, Super Admin |
-| `changerRoleMembre` | Changer le rôle d'un membre | Chef Projet, Admin, Super Admin |
-| `gererTaches` | Créer/modifier/supprimer des tâches | PO, Resp. Équipe, Chef Projet, Admin |
-| `deplacerTaches` | Déplacer les tâches (Kanban) | Membre, Consultant, PO, Resp, Chef, Admin |
-| `prioriserBacklog` | Réordonner le backlog | PO, Resp. Équipe, Chef Projet, Admin |
-| `gererSprints` | Créer/démarrer/terminer sprints | Resp. Équipe, Chef Projet, Admin |
-| `modifierBudget` | Modifier le budget, ajouter dépenses | Chef Projet, Admin, Super Admin |
-| `voirBudget` | Voir les informations budgétaires | PO, Consultant, Stakeholder, Observateur, Resp, Chef, Admin |
-| `voirTempsPasses` | Voir les timesheets de tous | PO, Membre, Consultant, Observateur, Resp, Chef, Admin |
-| `saisirTemps` | Saisir son temps de travail | Membre, Consultant, Resp, Chef, Admin |
-| `validerLivrable` | Valider/refuser les livrables | PO, Admin, Super Admin |
-| `gererFichiers` | Upload/supprimer des fichiers | Membre, Consultant, PO, Resp, Chef, Admin |
-| `commenter` | Écrire des commentaires | Invité, Stakeholder, Membre, Consultant, PO, Resp, Chef, Admin |
-| `recevoirNotifications` | Recevoir les notifications | Tous les rôles |
-| `genererRapports` | Générer et exporter des rapports | PO, Resp. Équipe, Chef Projet, Admin |
-| `voirAudit` | Voir les logs d'audit | Admin, Super Admin |
-| `gererUtilisateurs` | Créer/modifier/désactiver utilisateurs | Super Admin uniquement |
-| `adminConfig` | Accès configuration système | Admin, Super Admin |
+| Permission              | Description                             | Qui l'a par défaut                                             |
+| ----------------------- | --------------------------------------- | -------------------------------------------------------------- |
+| `voirTousProjets`       | Voir TOUS les projets (même non membre) | Admin, Super Admin                                             |
+| `voirSesProjets`        | Voir les projets où on est membre       | Tous les rôles                                                 |
+| `creerProjet`           | Créer de nouveaux projets               | Chef Projet, Admin, Super Admin                                |
+| `supprimerProjet`       | Supprimer des projets                   | Admin, Super Admin                                             |
+| `modifierCharteProjet`  | Modifier les infos du projet            | Chef Projet, Admin, Super Admin                                |
+| `gererMembresProjet`    | Ajouter/retirer des membres             | Chef Projet, Admin, Super Admin                                |
+| `changerRoleMembre`     | Changer le rôle d'un membre             | Chef Projet, Admin, Super Admin                                |
+| `gererTaches`           | Créer/modifier/supprimer des tâches     | PO, Resp. Équipe, Chef Projet, Admin                           |
+| `deplacerTaches`        | Déplacer les tâches (Kanban)            | Membre, Consultant, PO, Resp, Chef, Admin                      |
+| `prioriserBacklog`      | Réordonner le backlog                   | PO, Resp. Équipe, Chef Projet, Admin                           |
+| `gererSprints`          | Créer/démarrer/terminer sprints         | Resp. Équipe, Chef Projet, Admin                               |
+| `modifierBudget`        | Modifier le budget, ajouter dépenses    | Chef Projet, Admin, Super Admin                                |
+| `voirBudget`            | Voir les informations budgétaires       | PO, Consultant, Stakeholder, Observateur, Resp, Chef, Admin    |
+| `voirTempsPasses`       | Voir les timesheets de tous             | PO, Membre, Consultant, Observateur, Resp, Chef, Admin         |
+| `saisirTemps`           | Saisir son temps de travail             | Membre, Consultant, Resp, Chef, Admin                          |
+| `validerLivrable`       | Valider/refuser les livrables           | PO, Admin, Super Admin                                         |
+| `gererFichiers`         | Upload/supprimer des fichiers           | Membre, Consultant, PO, Resp, Chef, Admin                      |
+| `commenter`             | Écrire des commentaires                 | Invité, Stakeholder, Membre, Consultant, PO, Resp, Chef, Admin |
+| `recevoirNotifications` | Recevoir les notifications              | Tous les rôles                                                 |
+| `genererRapports`       | Générer et exporter des rapports        | PO, Resp. Équipe, Chef Projet, Admin                           |
+| `voirAudit`             | Voir les logs d'audit                   | Admin, Super Admin                                             |
+| `gererUtilisateurs`     | Créer/modifier/désactiver utilisateurs  | Super Admin uniquement                                         |
+| `adminConfig`           | Accès configuration système             | Admin, Super Admin                                             |
 
 ### Les 14 Menus et leurs Permissions Requises
 
-| Menu | Clé | Permission Requise | URL |
-|------|-----|-------------------|-----|
-| Dashboard | `portfolio` | `voirSesProjets` | `/dashboard` |
-| Projets | `projects` | `voirSesProjets` | `/dashboard/projects` |
-| Kanban | `kanban` | `deplacerTaches` | `/dashboard/kanban` |
-| Backlog | `backlog` | `prioriserBacklog` | `/dashboard/backlog` |
-| Sprints | `sprints` | `gererSprints` | `/dashboard/sprints` |
-| Roadmap | `roadmap` | `voirSesProjets` | `/dashboard/roadmap` |
-| Tâches | `tasks` | `gererTaches` | `/dashboard/tasks` |
-| Fichiers | `files` | `gererFichiers` | `/dashboard/files` |
-| Commentaires | `comments` | `commenter` | `/dashboard/comments` |
-| Timesheets | `timesheets` | `saisirTemps` | `/dashboard/timesheets` |
-| Budget | `budget` | `voirBudget` | `/dashboard/budget` |
-| Rapports | `reports` | `genererRapports` | `/dashboard/reports` |
-| Notifications | `notifications` | `recevoirNotifications` | `/dashboard/notifications` |
-| Administration | `admin` | `adminConfig` | `/dashboard/admin/*` |
+| Menu           | Clé             | Permission Requise      | URL                        |
+| -------------- | --------------- | ----------------------- | -------------------------- |
+| Dashboard      | `portfolio`     | `voirSesProjets`        | `/dashboard`               |
+| Projets        | `projects`      | `voirSesProjets`        | `/dashboard/projects`      |
+| Kanban         | `kanban`        | `deplacerTaches`        | `/dashboard/kanban`        |
+| Backlog        | `backlog`       | `prioriserBacklog`      | `/dashboard/backlog`       |
+| Sprints        | `sprints`       | `gererSprints`          | `/dashboard/sprints`       |
+| Roadmap        | `roadmap`       | `voirSesProjets`        | `/dashboard/roadmap`       |
+| Tâches         | `tasks`         | `gererTaches`           | `/dashboard/tasks`         |
+| Fichiers       | `files`         | `gererFichiers`         | `/dashboard/files`         |
+| Commentaires   | `comments`      | `commenter`             | `/dashboard/comments`      |
+| Timesheets     | `timesheets`    | `saisirTemps`           | `/dashboard/timesheets`    |
+| Budget         | `budget`        | `voirBudget`            | `/dashboard/budget`        |
+| Rapports       | `reports`       | `genererRapports`       | `/dashboard/reports`       |
+| Notifications  | `notifications` | `recevoirNotifications` | `/dashboard/notifications` |
+| Administration | `admin`         | `adminConfig`           | `/dashboard/admin/*`       |
 
 ---
 
@@ -257,18 +258,19 @@ Le système RBAC (Role-Based Access Control) fonctionne sur **deux niveaux** :
 
 **Cas d'usage**: Propriétaire de l'application, administrateur système principal
 
-| Ce qu'il peut faire | Ce qu'il peut voir |
-|--------------------|--------------------|
-| ✅ Tout créer | ✅ Tous les projets |
-| ✅ Tout modifier | ✅ Tous les menus (14/14) |
-| ✅ Tout supprimer | ✅ Logs d'audit complets |
-| ✅ Gérer les utilisateurs | ✅ Configuration système |
-| ✅ Gérer les rôles | ✅ Tous les budgets |
-| ✅ Configurer le système | ✅ Tous les timesheets |
+| Ce qu'il peut faire       | Ce qu'il peut voir        |
+| ------------------------- | ------------------------- |
+| ✅ Tout créer             | ✅ Tous les projets       |
+| ✅ Tout modifier          | ✅ Tous les menus (14/14) |
+| ✅ Tout supprimer         | ✅ Logs d'audit complets  |
+| ✅ Gérer les utilisateurs | ✅ Configuration système  |
+| ✅ Gérer les rôles        | ✅ Tous les budgets       |
+| ✅ Configurer le système  | ✅ Tous les timesheets    |
 
 **Menus visibles**: Dashboard, Projets, Kanban, Backlog, Sprints, Roadmap, Tâches, Fichiers, Commentaires, Timesheets, Budget, Rapports, Notifications, Admin
 
 **Permissions activées** (23/23):
+
 ```
 voirTousProjets, voirSesProjets, creerProjet, supprimerProjet,
 modifierCharteProjet, gererMembresProjet, changerRoleMembre,
@@ -286,16 +288,17 @@ genererRapports, voirAudit, gererUtilisateurs, adminConfig
 
 **Cas d'usage**: Responsable technique, gestionnaire de l'application
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Créer/supprimer projets | ❌ Créer des utilisateurs |
-| ✅ Configurer le système | ❌ Modifier des utilisateurs |
-| ✅ Voir les audits | ❌ Désactiver des comptes |
-| ✅ Tout le reste | ❌ Réinitialiser mots de passe |
+| Ce qu'il peut faire        | Ce qu'il NE peut PAS faire     |
+| -------------------------- | ------------------------------ |
+| ✅ Créer/supprimer projets | ❌ Créer des utilisateurs      |
+| ✅ Configurer le système   | ❌ Modifier des utilisateurs   |
+| ✅ Voir les audits         | ❌ Désactiver des comptes      |
+| ✅ Tout le reste           | ❌ Réinitialiser mots de passe |
 
 **Menus visibles**: Tous (14/14)
 
 **Permissions activées** (22/23 - sans `gererUtilisateurs`):
+
 ```
 voirTousProjets, voirSesProjets, creerProjet, supprimerProjet,
 modifierCharteProjet, gererMembresProjet, changerRoleMembre,
@@ -313,18 +316,19 @@ genererRapports, voirAudit, adminConfig
 
 **Cas d'usage**: Project Manager, responsable d'un ou plusieurs projets
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Créer des projets | ❌ Supprimer des projets |
-| ✅ Modifier ses projets | ❌ Accès administration |
-| ✅ Gérer son équipe | ❌ Voir les audits |
-| ✅ Gérer les sprints | ❌ Valider les livrables |
-| ✅ Modifier le budget | ❌ Voir tous les projets |
-| ✅ Générer des rapports | |
+| Ce qu'il peut faire     | Ce qu'il NE peut PAS faire |
+| ----------------------- | -------------------------- |
+| ✅ Créer des projets    | ❌ Supprimer des projets   |
+| ✅ Modifier ses projets | ❌ Accès administration    |
+| ✅ Gérer son équipe     | ❌ Voir les audits         |
+| ✅ Gérer les sprints    | ❌ Valider les livrables   |
+| ✅ Modifier le budget   | ❌ Voir tous les projets   |
+| ✅ Générer des rapports |                            |
 
 **Menus visibles** (13/14 - sans Admin): Dashboard, Projets, Kanban, Backlog, Sprints, Roadmap, Tâches, Fichiers, Commentaires, Timesheets, Budget, Rapports, Notifications
 
 **Permissions activées** (17/23):
+
 ```
 voirSesProjets, creerProjet, modifierCharteProjet, gererMembresProjet,
 changerRoleMembre, gererTaches, deplacerTaches, prioriserBacklog,
@@ -340,18 +344,19 @@ gererFichiers, commenter, recevoirNotifications, genererRapports
 
 **Cas d'usage**: Team Lead, Scrum Master
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Gérer les tâches | ❌ Créer des projets |
-| ✅ Gérer les sprints | ❌ Modifier le budget |
-| ✅ Prioriser le backlog | ❌ Gérer les membres |
-| ✅ Générer des rapports | ❌ Valider les livrables |
-| ✅ Voir le budget (lecture) | ❌ Accès administration |
-| ✅ Saisir son temps | |
+| Ce qu'il peut faire         | Ce qu'il NE peut PAS faire |
+| --------------------------- | -------------------------- |
+| ✅ Gérer les tâches         | ❌ Créer des projets       |
+| ✅ Gérer les sprints        | ❌ Modifier le budget      |
+| ✅ Prioriser le backlog     | ❌ Gérer les membres       |
+| ✅ Générer des rapports     | ❌ Valider les livrables   |
+| ✅ Voir le budget (lecture) | ❌ Accès administration    |
+| ✅ Saisir son temps         |                            |
 
 **Menus visibles** (12/14): Projets, Kanban, Backlog, Sprints, Roadmap, Tâches, Fichiers, Commentaires, Timesheets, Budget, Rapports, Notifications
 
 **Permissions activées** (12/23):
+
 ```
 voirSesProjets, gererTaches, deplacerTaches, prioriserBacklog,
 gererSprints, voirBudget, voirTempsPasses, saisirTemps,
@@ -366,17 +371,18 @@ gererFichiers, commenter, recevoirNotifications, genererRapports
 
 **Cas d'usage**: Product Owner Scrum, responsable produit
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Gérer les tâches | ❌ Gérer les sprints |
-| ✅ Prioriser le backlog | ❌ Modifier le budget |
-| ✅ Valider les livrables | ❌ Saisir du temps |
-| ✅ Générer des rapports | ❌ Accès administration |
-| ✅ Voir le budget | |
+| Ce qu'il peut faire      | Ce qu'il NE peut PAS faire |
+| ------------------------ | -------------------------- |
+| ✅ Gérer les tâches      | ❌ Gérer les sprints       |
+| ✅ Prioriser le backlog  | ❌ Modifier le budget      |
+| ✅ Valider les livrables | ❌ Saisir du temps         |
+| ✅ Générer des rapports  | ❌ Accès administration    |
+| ✅ Voir le budget        |                            |
 
 **Menus visibles** (10/14): Projets, Kanban, Backlog, Roadmap, Tâches, Fichiers, Commentaires, Budget, Rapports, Notifications
 
 **Permissions activées** (11/23):
+
 ```
 voirSesProjets, gererTaches, deplacerTaches, prioriserBacklog,
 voirBudget, voirTempsPasses, validerLivrable, gererFichiers,
@@ -391,17 +397,18 @@ commenter, recevoirNotifications, genererRapports
 
 **Cas d'usage**: Développeur, designer, analyste - membres actifs de l'équipe
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
+| Ce qu'il peut faire             | Ce qu'il NE peut PAS faire    |
+| ------------------------------- | ----------------------------- |
 | ✅ Déplacer les tâches (Kanban) | ❌ Créer/supprimer des tâches |
-| ✅ Saisir son temps | ❌ Gérer les sprints |
-| ✅ Upload des fichiers | ❌ Prioriser le backlog |
-| ✅ Commenter | ❌ Voir le budget |
-| ✅ Voir les timesheets | ❌ Générer des rapports |
+| ✅ Saisir son temps             | ❌ Gérer les sprints          |
+| ✅ Upload des fichiers          | ❌ Prioriser le backlog       |
+| ✅ Commenter                    | ❌ Voir le budget             |
+| ✅ Voir les timesheets          | ❌ Générer des rapports       |
 
 **Menus visibles** (7/14): Projets, Kanban, Roadmap, Fichiers, Commentaires, Timesheets, Notifications
 
 **Permissions activées** (7/23):
+
 ```
 voirSesProjets, deplacerTaches, voirTempsPasses, saisirTemps,
 gererFichiers, commenter, recevoirNotifications
@@ -415,17 +422,18 @@ gererFichiers, commenter, recevoirNotifications
 
 **Cas d'usage**: Consultant externe, prestataire, freelance
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Déplacer les tâches | ❌ Créer/modifier des tâches |
-| ✅ Saisir son temps | ❌ Créer des projets |
-| ✅ Voir le budget (lecture) | ❌ Supprimer des projets |
-| ✅ Upload des fichiers | ❌ Gérer les sprints |
-| ✅ Commenter | ❌ Générer des rapports |
+| Ce qu'il peut faire         | Ce qu'il NE peut PAS faire   |
+| --------------------------- | ---------------------------- |
+| ✅ Déplacer les tâches      | ❌ Créer/modifier des tâches |
+| ✅ Saisir son temps         | ❌ Créer des projets         |
+| ✅ Voir le budget (lecture) | ❌ Supprimer des projets     |
+| ✅ Upload des fichiers      | ❌ Gérer les sprints         |
+| ✅ Commenter                | ❌ Générer des rapports      |
 
 **Menus visibles** (8/14): Projets, Kanban, Roadmap, Fichiers, Commentaires, Timesheets, Budget, Notifications
 
 **Permissions activées** (8/23):
+
 ```
 voirSesProjets, deplacerTaches, voirBudget, voirTempsPasses,
 saisirTemps, gererFichiers, commenter, recevoirNotifications
@@ -441,17 +449,18 @@ saisirTemps, gererFichiers, commenter, recevoirNotifications
 
 **Cas d'usage**: Sponsor, manager externe, client interne
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Voir ses projets | ❌ Modifier quoi que ce soit |
-| ✅ Voir le budget | ❌ Upload des fichiers |
-| ✅ Voir les fichiers | ❌ Gérer des tâches |
-| ✅ Commenter | ❌ Saisir du temps |
-| ✅ Recevoir des notifications | ❌ Voir les timesheets |
+| Ce qu'il peut faire           | Ce qu'il NE peut PAS faire   |
+| ----------------------------- | ---------------------------- |
+| ✅ Voir ses projets           | ❌ Modifier quoi que ce soit |
+| ✅ Voir le budget             | ❌ Upload des fichiers       |
+| ✅ Voir les fichiers          | ❌ Gérer des tâches          |
+| ✅ Commenter                  | ❌ Saisir du temps           |
+| ✅ Recevoir des notifications | ❌ Voir les timesheets       |
 
 **Menus visibles** (5/14): Projets, Roadmap, Commentaires, Budget, Notifications
 
 **Permissions activées** (5/23):
+
 ```
 voirSesProjets, voirBudget, voirFichiers, commenter, recevoirNotifications
 ```
@@ -464,17 +473,18 @@ voirSesProjets, voirBudget, voirFichiers, commenter, recevoirNotifications
 
 **Cas d'usage**: Auditeur, contrôleur financier, observateur externe
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Voir ses projets | ❌ Commenter |
-| ✅ Voir le budget | ❌ Modifier quoi que ce soit |
-| ✅ Voir les timesheets | ❌ Upload des fichiers |
-| ✅ Voir les fichiers | ❌ Interagir |
-| ✅ Recevoir des notifications | |
+| Ce qu'il peut faire           | Ce qu'il NE peut PAS faire   |
+| ----------------------------- | ---------------------------- |
+| ✅ Voir ses projets           | ❌ Commenter                 |
+| ✅ Voir le budget             | ❌ Modifier quoi que ce soit |
+| ✅ Voir les timesheets        | ❌ Upload des fichiers       |
+| ✅ Voir les fichiers          | ❌ Interagir                 |
+| ✅ Recevoir des notifications |                              |
 
 **Menus visibles** (4/14): Projets, Roadmap, Budget, Notifications
 
 **Permissions activées** (5/23):
+
 ```
 voirSesProjets, voirBudget, voirTempsPasses, voirFichiers, recevoirNotifications
 ```
@@ -487,16 +497,17 @@ voirSesProjets, voirBudget, voirTempsPasses, voirFichiers, recevoirNotifications
 
 **Cas d'usage**: Client externe, partenaire temporaire, visiteur
 
-| Ce qu'il peut faire | Ce qu'il NE peut PAS faire |
-|--------------------|---------------------------|
-| ✅ Voir ses projets | ❌ Tout modifier |
-| ✅ Voir les fichiers | ❌ Voir le budget |
-| ✅ Commenter | ❌ Voir les timesheets |
-| ✅ Recevoir des notifications | ❌ Upload des fichiers |
+| Ce qu'il peut faire           | Ce qu'il NE peut PAS faire |
+| ----------------------------- | -------------------------- |
+| ✅ Voir ses projets           | ❌ Tout modifier           |
+| ✅ Voir les fichiers          | ❌ Voir le budget          |
+| ✅ Commenter                  | ❌ Voir les timesheets     |
+| ✅ Recevoir des notifications | ❌ Upload des fichiers     |
 
 **Menus visibles** (4/14): Projets, Roadmap, Commentaires, Notifications
 
 **Permissions activées** (4/23):
+
 ```
 voirSesProjets, voirFichiers, commenter, recevoirNotifications
 ```
@@ -505,32 +516,32 @@ voirSesProjets, voirFichiers, commenter, recevoirNotifications
 
 ### Matrice Complète des Permissions par Rôle
 
-| Permission | Invité | Observateur | Stakeholder | Membre | Consultant | PO | Resp. Équipe | Chef Projet | Admin | Super Admin |
-|------------|:------:|:-----------:|:-----------:|:------:|:----------:|:--:|:------------:|:-----------:|:-----:|:-----------:|
-| voirTousProjets | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| voirSesProjets | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| creerProjet | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| supprimerProjet | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| modifierCharteProjet | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| gererMembresProjet | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| changerRoleMembre | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| gererTaches | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| deplacerTaches | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| prioriserBacklog | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| gererSprints | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| modifierBudget | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| voirBudget | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| voirTempsPasses | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| saisirTemps | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| validerLivrable | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| gererFichiers | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| voirFichiers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| commenter | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| recevoirNotifications | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| genererRapports | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| voirAudit | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| gererUtilisateurs | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| adminConfig | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Permission            | Invité | Observateur | Stakeholder | Membre | Consultant | PO  | Resp. Équipe | Chef Projet | Admin | Super Admin |
+| --------------------- | :----: | :---------: | :---------: | :----: | :--------: | :-: | :----------: | :---------: | :---: | :---------: |
+| voirTousProjets       |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ❌      |  ✅   |     ✅      |
+| voirSesProjets        |   ✅   |     ✅      |     ✅      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| creerProjet           |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ✅      |  ✅   |     ✅      |
+| supprimerProjet       |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ❌      |  ✅   |     ✅      |
+| modifierCharteProjet  |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ✅      |  ✅   |     ✅      |
+| gererMembresProjet    |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ✅      |  ✅   |     ✅      |
+| changerRoleMembre     |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ✅      |  ✅   |     ✅      |
+| gererTaches           |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| deplacerTaches        |   ❌   |     ❌      |     ❌      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| prioriserBacklog      |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| gererSprints          |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ✅      |     ✅      |  ✅   |     ✅      |
+| modifierBudget        |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ✅      |  ✅   |     ✅      |
+| voirBudget            |   ❌   |     ✅      |     ✅      |   ❌   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| voirTempsPasses       |   ❌   |     ✅      |     ❌      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| saisirTemps           |   ❌   |     ❌      |     ❌      |   ✅   |     ✅     | ❌  |      ✅      |     ✅      |  ✅   |     ✅      |
+| validerLivrable       |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ✅  |      ❌      |     ❌      |  ✅   |     ✅      |
+| gererFichiers         |   ❌   |     ❌      |     ❌      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| voirFichiers          |   ✅   |     ✅      |     ✅      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| commenter             |   ✅   |     ❌      |     ✅      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| recevoirNotifications |   ✅   |     ✅      |     ✅      |   ✅   |     ✅     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| genererRapports       |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ✅  |      ✅      |     ✅      |  ✅   |     ✅      |
+| voirAudit             |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ❌      |  ✅   |     ✅      |
+| gererUtilisateurs     |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ❌      |  ❌   |     ✅      |
+| adminConfig           |   ❌   |     ❌      |     ❌      |   ❌   |     ❌     | ❌  |      ❌      |     ❌      |  ✅   |     ✅      |
 
 ---
 
@@ -542,15 +553,16 @@ voirSesProjets, voirFichiers, commenter, recevoirNotifications
 
 Le tableau de bord central offre une vue d'ensemble personnalisée selon votre rôle :
 
-| Élément | Description | Données affichées |
-|---------|-------------|-------------------|
-| **Statistiques** | Cartes avec chiffres clés | Projets actifs, tâches en cours, sprints actifs |
-| **Projets récents** | 5 derniers projets consultés | Nom, statut, progression % |
-| **Mes tâches** | Tâches assignées à moi | Titre, priorité, date échéance |
-| **Activité récente** | Fil des dernières actions | Qui, quoi, quand |
-| **Graphique vélocité** | Performance de l'équipe | Points complétés par sprint |
+| Élément                | Description                  | Données affichées                               |
+| ---------------------- | ---------------------------- | ----------------------------------------------- |
+| **Statistiques**       | Cartes avec chiffres clés    | Projets actifs, tâches en cours, sprints actifs |
+| **Projets récents**    | 5 derniers projets consultés | Nom, statut, progression %                      |
+| **Mes tâches**         | Tâches assignées à moi       | Titre, priorité, date échéance                  |
+| **Activité récente**   | Fil des dernières actions    | Qui, quoi, quand                                |
+| **Graphique vélocité** | Performance de l'équipe      | Points complétés par sprint                     |
 
 **Fonctionnement**:
+
 - Les données sont filtrées selon les projets accessibles à l'utilisateur
 - Actualisation automatique via Socket.io
 - Clic sur un élément → navigation directe
@@ -563,12 +575,12 @@ Le tableau de bord central offre une vue d'ensemble personnalisée selon votre r
 
 #### Liste des Projets
 
-| Fonctionnalité | Comment ça marche |
-|----------------|-------------------|
-| **Affichage** | Liste paginée (50/page) avec nom, statut, progression, chef de projet |
-| **Filtrage** | Filtre par `voirTousProjets` ou projets où l'utilisateur est membre |
-| **Recherche** | Recherche textuelle sur nom et description |
-| **Tri** | Par date de création (plus récent en premier) |
+| Fonctionnalité | Comment ça marche                                                     |
+| -------------- | --------------------------------------------------------------------- |
+| **Affichage**  | Liste paginée (50/page) avec nom, statut, progression, chef de projet |
+| **Filtrage**   | Filtre par `voirTousProjets` ou projets où l'utilisateur est membre   |
+| **Recherche**  | Recherche textuelle sur nom et description                            |
+| **Tri**        | Par date de création (plus récent en premier)                         |
 
 #### Création de Projet (permission: `creerProjet`)
 
@@ -599,14 +611,14 @@ Le tableau de bord central offre une vue d'ensemble personnalisée selon votre r
 
 **Sections affichées**:
 
-| Section | Contenu | Permissions pour modifier |
-|---------|---------|--------------------------|
-| **Informations** | Nom, description, statut, priorité, dates | `modifierCharteProjet` |
-| **Progression** | Barre de progression, stats tâches | Auto-calculé |
-| **Équipe** | Liste des membres avec rôles projet | `gererMembresProjet` |
-| **Budget** | Prévisionnel, réel, reste | `modifierBudget` |
-| **Sprints** | Liste des sprints du projet | `gererSprints` |
-| **Fichiers** | Fichiers liés au projet | `gererFichiers` |
+| Section          | Contenu                                   | Permissions pour modifier |
+| ---------------- | ----------------------------------------- | ------------------------- |
+| **Informations** | Nom, description, statut, priorité, dates | `modifierCharteProjet`    |
+| **Progression**  | Barre de progression, stats tâches        | Auto-calculé              |
+| **Équipe**       | Liste des membres avec rôles projet       | `gererMembresProjet`      |
+| **Budget**       | Prévisionnel, réel, reste                 | `modifierBudget`          |
+| **Sprints**      | Liste des sprints du projet               | `gererSprints`            |
+| **Fichiers**     | Fichiers liés au projet                   | `gererFichiers`           |
 
 ---
 
@@ -642,16 +654,17 @@ Le tableau de bord central offre une vue d'ensemble personnalisée selon votre r
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-| Fonctionnalité | Description |
-|----------------|-------------|
+| Fonctionnalité          | Description                                 |
+| ----------------------- | ------------------------------------------- |
 | **Colonnes par défaut** | Backlog, À faire, En cours, Review, Terminé |
-| **Drag & Drop** | Bibliothèque @dnd-kit pour fluidité |
-| **Filtres** | Par projet, assigné, priorité, type, sprint |
-| **Création rapide** | Bouton + dans chaque colonne |
-| **Limites WIP** | Configurable par colonne (Work In Progress) |
-| **Vue sprint** | Filtrer par sprint actif |
+| **Drag & Drop**         | Bibliothèque @dnd-kit pour fluidité         |
+| **Filtres**             | Par projet, assigné, priorité, type, sprint |
+| **Création rapide**     | Bouton + dans chaque colonne                |
+| **Limites WIP**         | Configurable par colonne (Work In Progress) |
+| **Vue sprint**          | Filtrer par sprint actif                    |
 
 **Carte Kanban affiche**:
+
 - Titre de la tâche
 - Type (Épic/Story/Tâche/Bug) avec couleur
 - Priorité (badge coloré)
@@ -679,22 +692,22 @@ Le tableau de bord central offre une vue d'ensemble personnalisée selon votre r
 └── Bug direct sur l'Épic
 ```
 
-| Type | Description | Story Points | Couleur |
-|------|-------------|--------------|---------|
-| **Épic** | Grande fonctionnalité (plusieurs sprints) | Somme des enfants | Violet |
-| **Story** | User Story (1 sprint max) | 1-13 (Fibonacci) | Bleu |
-| **Tâche** | Travail technique | 1-8 | Gris |
-| **Bug** | Correction d'anomalie | 1-5 | Rouge |
+| Type      | Description                               | Story Points      | Couleur |
+| --------- | ----------------------------------------- | ----------------- | ------- |
+| **Épic**  | Grande fonctionnalité (plusieurs sprints) | Somme des enfants | Violet  |
+| **Story** | User Story (1 sprint max)                 | 1-13 (Fibonacci)  | Bleu    |
+| **Tâche** | Travail technique                         | 1-8               | Gris    |
+| **Bug**   | Correction d'anomalie                     | 1-5               | Rouge   |
 
 **Fonctionnalités du Backlog**:
 
-| Action | Comment | Permission |
-|--------|---------|------------|
-| Réordonner | Drag & drop pour changer la priorité | `prioriserBacklog` |
-| Créer un item | Bouton + en haut | `gererTaches` |
-| Assigner au sprint | Dropdown sprint sur chaque item | `gererSprints` |
-| Estimer | Clic sur story points | `gererTaches` |
-| Critères d'acceptation | Onglet dans le détail | `gererTaches` |
+| Action                 | Comment                              | Permission         |
+| ---------------------- | ------------------------------------ | ------------------ |
+| Réordonner             | Drag & drop pour changer la priorité | `prioriserBacklog` |
+| Créer un item          | Bouton + en haut                     | `gererTaches`      |
+| Assigner au sprint     | Dropdown sprint sur chaque item      | `gererSprints`     |
+| Estimer                | Clic sur story points                | `gererTaches`      |
+| Critères d'acceptation | Onglet dans le détail                | `gererTaches`      |
 
 ---
 
@@ -727,23 +740,25 @@ Le tableau de bord central offre une vue d'ensemble personnalisée selon votre r
 
 #### Création d'un Sprint
 
-| Champ | Description | Obligatoire |
-|-------|-------------|-------------|
-| Nom | Ex: "Sprint 1", "Sprint Mars" | Oui |
-| Objectif | Ce qu'on veut accomplir | Non |
-| Date début | Premier jour du sprint | Oui |
-| Date fin | Dernier jour (généralement 2 semaines) | Oui |
-| Capacité équipe | Heures disponibles totales | Non |
+| Champ           | Description                            | Obligatoire |
+| --------------- | -------------------------------------- | ----------- |
+| Nom             | Ex: "Sprint 1", "Sprint Mars"          | Oui         |
+| Objectif        | Ce qu'on veut accomplir                | Non         |
+| Date début      | Premier jour du sprint                 | Oui         |
+| Date fin        | Dernier jour (généralement 2 semaines) | Oui         |
+| Capacité équipe | Heures disponibles totales             | Non         |
 
 #### Burndown Chart
 
 Le graphique burndown montre:
+
 - **Ligne idéale**: Progression théorique linéaire
 - **Ligne réelle**: Points réellement complétés
 - **Axe X**: Jours du sprint
 - **Axe Y**: Story points restants
 
 **Calcul de la vélocité**:
+
 ```
 Vélocité = Story Points complétés / Nombre de sprints terminés
 ```
@@ -756,15 +771,16 @@ Vélocité = Story Points complétés / Nombre de sprints terminés
 
 #### Vue Timeline
 
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Vue Gantt** | Timeline horizontale des épics et sprints |
-| **Zoom** | Jour, Semaine, Mois, Trimestre |
-| **Jalons** | Points clés (dates importantes) |
-| **Dépendances** | Lignes entre items liés |
-| **Filtrage** | Par projet (accessible selon permissions) |
+| Fonctionnalité  | Description                               |
+| --------------- | ----------------------------------------- |
+| **Vue Gantt**   | Timeline horizontale des épics et sprints |
+| **Zoom**        | Jour, Semaine, Mois, Trimestre            |
+| **Jalons**      | Points clés (dates importantes)           |
+| **Dépendances** | Lignes entre items liés                   |
+| **Filtrage**    | Par projet (accessible selon permissions) |
 
 **Données affichées**:
+
 - Sprints (barres bleues)
 - Épics (barres violettes)
 - Livrables (diamants)
@@ -780,22 +796,22 @@ Vélocité = Story Points complétés / Nombre de sprints terminés
 
 #### Gestion Complète des Tâches
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `titre` | String | Titre de la tâche (obligatoire) |
-| `description` | Text | Description détaillée |
-| `type` | Enum | Épic, Story, Tâche, Bug |
-| `statut` | Enum | Backlog, À faire, En cours, Review, Terminé |
-| `priorité` | Enum | Basse, Moyenne, Haute, Critique |
-| `story_points` | Number | Estimation (Fibonacci: 1,2,3,5,8,13) |
-| `estimation_heures` | Number | Heures estimées |
-| `assigné_à` | User | Membre assigné |
-| `sprint_id` | Sprint | Sprint associé |
-| `parent_id` | Task | Tâche parente (pour hiérarchie) |
-| `date_début` | Date | Date de début prévue |
-| `date_échéance` | Date | Date limite |
-| `labels` | Array | Tags personnalisés |
-| `checklist` | Array | Liste de sous-éléments à cocher |
+| Champ               | Type   | Description                                 |
+| ------------------- | ------ | ------------------------------------------- |
+| `titre`             | String | Titre de la tâche (obligatoire)             |
+| `description`       | Text   | Description détaillée                       |
+| `type`              | Enum   | Épic, Story, Tâche, Bug                     |
+| `statut`            | Enum   | Backlog, À faire, En cours, Review, Terminé |
+| `priorité`          | Enum   | Basse, Moyenne, Haute, Critique             |
+| `story_points`      | Number | Estimation (Fibonacci: 1,2,3,5,8,13)        |
+| `estimation_heures` | Number | Heures estimées                             |
+| `assigné_à`         | User   | Membre assigné                              |
+| `sprint_id`         | Sprint | Sprint associé                              |
+| `parent_id`         | Task   | Tâche parente (pour hiérarchie)             |
+| `date_début`        | Date   | Date de début prévue                        |
+| `date_échéance`     | Date   | Date limite                                 |
+| `labels`            | Array  | Tags personnalisés                          |
+| `checklist`         | Array  | Liste de sous-éléments à cocher             |
 
 #### Workflow des Tâches
 
@@ -807,6 +823,7 @@ Backlog → À faire → En cours → Review → Terminé
 ```
 
 **Règles de transition**:
+
 - `En cours` → `Terminé` : Doit passer par `Review` d'abord
 - Toute tâche peut revenir à `Backlog`
 - Les transitions sont vérifiées côté API
@@ -817,22 +834,24 @@ Backlog → À faire → En cours → Review → Terminé
 
 **Accès**: Utilisateurs avec `gererFichiers` ET menu `files` activé
 
-| Fonctionnalité | Description | Permission |
-|----------------|-------------|------------|
-| **Upload** | Drag & drop ou bouton | `gererFichiers` |
-| **Dossiers** | Créer des dossiers hiérarchiques | `gererFichiers` |
-| **Preview** | Aperçu images et documents | Lecture |
-| **Téléchargement** | Download direct | Lecture |
-| **Suppression** | Supprimer fichiers/dossiers | `gererFichiers` |
-| **Lien projet** | Associer à un projet | `gererFichiers` |
+| Fonctionnalité     | Description                      | Permission      |
+| ------------------ | -------------------------------- | --------------- |
+| **Upload**         | Drag & drop ou bouton            | `gererFichiers` |
+| **Dossiers**       | Créer des dossiers hiérarchiques | `gererFichiers` |
+| **Preview**        | Aperçu images et documents       | Lecture         |
+| **Téléchargement** | Download direct                  | Lecture         |
+| **Suppression**    | Supprimer fichiers/dossiers      | `gererFichiers` |
+| **Lien projet**    | Associer à un projet             | `gererFichiers` |
 
 **Types supportés**:
+
 - Images: jpg, png, gif, svg, webp
 - Documents: pdf, doc, docx, xls, xlsx, ppt, pptx
 - Code: js, ts, py, java, etc.
 - Archives: zip, rar, 7z
 
 **Métadonnées stockées**:
+
 - Nom original
 - Taille
 - Type MIME
@@ -846,20 +865,22 @@ Backlog → À faire → En cours → Review → Terminé
 
 **Accès**: Utilisateurs avec `commenter` ET menu `comments` activé
 
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Commentaire sur tâche** | Discussion contextuelle |
-| **@mentions** | Notifier un utilisateur |
-| **Édition** | Modifier ses propres commentaires |
-| **Suppression** | Supprimer ses propres commentaires |
-| **Fil d'activité** | Historique chronologique |
+| Fonctionnalité            | Description                        |
+| ------------------------- | ---------------------------------- |
+| **Commentaire sur tâche** | Discussion contextuelle            |
+| **@mentions**             | Notifier un utilisateur            |
+| **Édition**               | Modifier ses propres commentaires  |
+| **Suppression**           | Supprimer ses propres commentaires |
+| **Fil d'activité**        | Historique chronologique           |
 
 **Format des mentions**:
+
 ```
 @nom_utilisateur sera notifié par notification in-app
 ```
 
 **Données d'un commentaire**:
+
 - Contenu (texte)
 - Auteur
 - Date création
@@ -875,13 +896,13 @@ Backlog → À faire → En cours → Review → Terminé
 
 #### Saisie du Temps
 
-| Champ | Description |
-|-------|-------------|
-| Projet | Projet concerné |
-| Tâche | Tâche travaillée |
-| Date | Jour de travail |
-| Heures | Durée (décimales acceptées: 1.5h) |
-| Description | Ce qui a été fait |
+| Champ       | Description                       |
+| ----------- | --------------------------------- |
+| Projet      | Projet concerné                   |
+| Tâche       | Tâche travaillée                  |
+| Date        | Jour de travail                   |
+| Heures      | Durée (décimales acceptées: 1.5h) |
+| Description | Ce qui a été fait                 |
 
 #### Workflow des Timesheets
 
@@ -897,12 +918,12 @@ BROUILLON ──────> SOUMIS ──────> VALIDÉ
                  (correction et resoumettre)
 ```
 
-| Statut | Description | Actions possibles |
-|--------|-------------|-------------------|
-| **Brouillon** | En cours de saisie | Soumettre, Modifier |
-| **Soumis** | Envoyé pour validation | Retirer, (Valider/Refuser par manager) |
-| **Validé** | Approuvé | Aucune (terminal) |
-| **Refusé** | Rejeté | Corriger et resoumettre |
+| Statut        | Description            | Actions possibles                      |
+| ------------- | ---------------------- | -------------------------------------- |
+| **Brouillon** | En cours de saisie     | Soumettre, Modifier                    |
+| **Soumis**    | Envoyé pour validation | Retirer, (Valider/Refuser par manager) |
+| **Validé**    | Approuvé               | Aucune (terminal)                      |
+| **Refusé**    | Rejeté                 | Corriger et resoumettre                |
 
 **Auto-soumission**: Les timesheets en brouillon sont automatiquement soumis 5 jours avant la fin du mois.
 
@@ -939,26 +960,29 @@ BROUILLON ──────> SOUMIS ──────> VALIDÉ
 
 #### Champs de Temps
 
-| Niveau | Champ | Description | Mise à jour |
-|--------|-------|-------------|-------------|
-| **Tâche** | `estimation_heures` | Heures estimées pour la tâche | Manuel |
-| **Tâche** | `temps_réel` | Heures réellement passées | Auto (validation timesheet) |
-| **Projet** | `stats.heures_estimées` | Somme estimations tâches | Auto (agrégation) |
-| **Projet** | `stats.heures_réelles` | Somme temps réels tâches | Auto (agrégation) |
-| **Sprint** | `capacité_équipe` | Heures disponibles équipe | Manuel |
-| **Sprint** | `burndown_data.heures_restantes` | Heures restantes jour J | Auto |
+| Niveau     | Champ                            | Description                   | Mise à jour                 |
+| ---------- | -------------------------------- | ----------------------------- | --------------------------- |
+| **Tâche**  | `estimation_heures`              | Heures estimées pour la tâche | Manuel                      |
+| **Tâche**  | `temps_réel`                     | Heures réellement passées     | Auto (validation timesheet) |
+| **Projet** | `stats.heures_estimées`          | Somme estimations tâches      | Auto (agrégation)           |
+| **Projet** | `stats.heures_réelles`           | Somme temps réels tâches      | Auto (agrégation)           |
+| **Sprint** | `capacité_équipe`                | Heures disponibles équipe     | Manuel                      |
+| **Sprint** | `burndown_data.heures_restantes` | Heures restantes jour J       | Auto                        |
 
 #### Affichage des Statistiques
 
 **Dashboard Timesheets** :
+
 - **Heures mensuelles** : Total des heures saisies sur le mois
 - **Moyenne/jour** : Heures totales / nombre d'entrées
 
 **Page Projet** :
+
 - **Heures estimées** : Somme des `estimation_heures` de toutes les tâches
 - **Heures réelles** : Somme des `temps_réel` de toutes les tâches
 
 **Sprint Burndown** :
+
 - Affiche uniquement les heures réelles validées (pas de fallback sur estimations)
 
 ---
@@ -969,25 +993,25 @@ BROUILLON ──────> SOUMIS ──────> VALIDÉ
 
 #### Gestion Budgétaire
 
-| Élément | Description | Permission pour modifier |
-|---------|-------------|-------------------------|
-| **Budget prévisionnel** | Montant total alloué | `modifierBudget` |
-| **Dépenses** | Liste des dépenses | `modifierBudget` |
-| **Catégories** | Groupement des dépenses | `modifierBudget` |
-| **Alertes** | Notifications de dépassement | Automatique |
+| Élément                 | Description                  | Permission pour modifier |
+| ----------------------- | ---------------------------- | ------------------------ |
+| **Budget prévisionnel** | Montant total alloué         | `modifierBudget`         |
+| **Dépenses**            | Liste des dépenses           | `modifierBudget`         |
+| **Catégories**          | Groupement des dépenses      | `modifierBudget`         |
+| **Alertes**             | Notifications de dépassement | Automatique              |
 
 **Devise**: FCFA par défaut
 
 #### Structure d'une Dépense
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `description` | String | Libellé de la dépense |
-| `montant` | Number | Montant en FCFA |
-| `catégorie` | String | Personnel, Matériel, Logiciel, etc. |
-| `date` | Date | Date de la dépense |
-| `statut` | Enum | en_attente, validé, refusé, payé |
-| `pièce_jointe` | File | Justificatif |
+| Champ          | Type   | Description                         |
+| -------------- | ------ | ----------------------------------- |
+| `description`  | String | Libellé de la dépense               |
+| `montant`      | Number | Montant en FCFA                     |
+| `catégorie`    | String | Personnel, Matériel, Logiciel, etc. |
+| `date`         | Date   | Date de la dépense                  |
+| `statut`       | Enum   | en_attente, validé, refusé, payé    |
+| `pièce_jointe` | File   | Justificatif                        |
 
 #### Workflow des Dépenses
 
@@ -1000,6 +1024,7 @@ EN_ATTENTE ──────> VALIDÉ ──────> PAYÉ
 ```
 
 **Alertes automatiques**:
+
 - 🟡 Orange: Budget consommé à 80%
 - 🔴 Rouge: Budget consommé à 100%
 
@@ -1011,28 +1036,31 @@ EN_ATTENTE ──────> VALIDÉ ──────> PAYÉ
 
 #### Types de Rapports
 
-| Rapport | Contenu | Formats |
-|---------|---------|---------|
-| **Avancement** | Progression des projets, tâches par statut, burndown | PDF, Excel, CSV |
-| **Budget** | Dépenses, écarts, graphiques consommation | PDF, Excel, CSV |
-| **Temps** | Heures par projet, par personne, par période | PDF, Excel, CSV |
-| **Performance** | Vélocité équipe, métriques Agile, tendances | PDF, Excel, CSV |
+| Rapport         | Contenu                                              | Formats         |
+| --------------- | ---------------------------------------------------- | --------------- |
+| **Avancement**  | Progression des projets, tâches par statut, burndown | PDF, Excel, CSV |
+| **Budget**      | Dépenses, écarts, graphiques consommation            | PDF, Excel, CSV |
+| **Temps**       | Heures par projet, par personne, par période         | PDF, Excel, CSV |
+| **Performance** | Vélocité équipe, métriques Agile, tendances          | PDF, Excel, CSV |
 
 #### Caractéristiques des Exports
 
 **PDF**:
+
 - En-tête avec logo
 - Date et heure de génération
 - Numérotation des pages
 - Mise en page professionnelle
 
 **Excel**:
+
 - Styles et couleurs entreprise
 - Formules de calcul
 - Graphiques intégrés
 - Feuilles multiples
 
 **CSV**:
+
 - Export brut des données
 - Compatible tous tableurs
 - Encodage UTF-8
@@ -1045,24 +1073,24 @@ EN_ATTENTE ──────> VALIDÉ ──────> PAYÉ
 
 #### Types de Notifications
 
-| Type | Déclencheur |
-|------|-------------|
-| **Assignation** | Tâche assignée à l'utilisateur |
-| **Mention** | @mention dans un commentaire |
-| **Deadline** | Tâche arrivant à échéance |
+| Type            | Déclencheur                            |
+| --------------- | -------------------------------------- |
+| **Assignation** | Tâche assignée à l'utilisateur         |
+| **Mention**     | @mention dans un commentaire           |
+| **Deadline**    | Tâche arrivant à échéance              |
 | **Commentaire** | Nouveau commentaire sur tâche assignée |
-| **Statut** | Changement de statut d'une tâche |
-| **Sprint** | Début/fin de sprint |
-| **Budget** | Alerte budget (80%, 100%) |
+| **Statut**      | Changement de statut d'une tâche       |
+| **Sprint**      | Début/fin de sprint                    |
+| **Budget**      | Alerte budget (80%, 100%)              |
 
 #### Fonctionnalités
 
-| Action | Description |
-|--------|-------------|
+| Action               | Description                        |
+| -------------------- | ---------------------------------- |
 | **Marquer comme lu** | Clic sur notification individuelle |
-| **Tout marquer lu** | Bouton en haut |
-| **Supprimer** | Icône poubelle |
-| **Filtrer** | Toutes, Non lues, Lues |
+| **Tout marquer lu**  | Bouton en haut                     |
+| **Supprimer**        | Icône poubelle                     |
+| **Filtrer**          | Toutes, Non lues, Lues             |
 
 **Badge compteur**: Le nombre de notifications non lues s'affiche sur l'icône cloche dans le header et la sidebar. Ce compteur se met à jour en temps réel quand vous marquez les notifications comme lues.
 
@@ -1074,13 +1102,13 @@ EN_ATTENTE ──────> VALIDÉ ──────> PAYÉ
 
 **Accès**: `adminConfig`
 
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Liste des rôles** | Tableau avec tous les rôles |
+| Fonctionnalité               | Description                     |
+| ---------------------------- | ------------------------------- |
+| **Liste des rôles**          | Tableau avec tous les rôles     |
 | **Modifier les permissions** | Checkbox pour chaque permission |
-| **Modifier les menus** | Checkbox pour chaque menu |
-| **Créer un rôle** | Nouveau rôle personnalisé |
-| **Supprimer un rôle** | Uniquement rôles personnalisés |
+| **Modifier les menus**       | Checkbox pour chaque menu       |
+| **Créer un rôle**            | Nouveau rôle personnalisé       |
+| **Supprimer un rôle**        | Uniquement rôles personnalisés  |
 
 **Note**: Les 10 rôles prédéfinis ne peuvent pas être supprimés.
 
@@ -1088,24 +1116,24 @@ EN_ATTENTE ──────> VALIDÉ ──────> PAYÉ
 
 **Accès**: `gererUtilisateurs` (Super Admin uniquement)
 
-| Action | Description |
-|--------|-------------|
-| **Créer utilisateur** | Nom, email, rôle |
-| **Modifier** | Changer rôle, statut |
-| **Désactiver** | Statut = "Désactivé" |
-| **Réinitialiser MDP** | Remet à "00000000" + first_login: true |
+| Action                | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| **Créer utilisateur** | Nom, email, rôle                                                 |
+| **Modifier**          | Changer rôle, statut                                             |
+| **Désactiver**        | Statut = "Désactivé"                                             |
+| **Réinitialiser MDP** | Génère un mot de passe temporaire sécurisé + `first_login: true` |
 
 #### 14.3 Templates Projets (`/dashboard/admin/templates`)
 
 **Accès**: `adminConfig`
 
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Templates prédéfinis** | Web, Mobile, Marketing, etc. |
-| **Créer template** | Nom, description, champs personnalisés |
-| **Champs dynamiques** | Texte, Nombre, Date, Liste, Checkbox |
-| **Dupliquer** | Copier un template existant |
-| **Activer/Désactiver** | Rendre disponible ou non |
+| Fonctionnalité           | Description                            |
+| ------------------------ | -------------------------------------- |
+| **Templates prédéfinis** | Web, Mobile, Marketing, etc.           |
+| **Créer template**       | Nom, description, champs personnalisés |
+| **Champs dynamiques**    | Texte, Nombre, Date, Liste, Checkbox   |
+| **Dupliquer**            | Copier un template existant            |
+| **Activer/Désactiver**   | Rendre disponible ou non               |
 
 #### 14.4 Types de Livrables (`/dashboard/admin/deliverable-types`)
 
@@ -1117,19 +1145,20 @@ Types par défaut: Document, Code Source, Design, Rapport, Prototype
 
 **Accès**: `voirAudit`
 
-| Information | Description |
-|-------------|-------------|
-| **Qui** | Utilisateur ayant fait l'action |
-| **Quoi** | Type d'action (CREATE, UPDATE, DELETE) |
-| **Quand** | Date et heure précise |
-| **Où** | Entité concernée (Project, Task, etc.) |
-| **Détails** | Anciennes et nouvelles valeurs |
+| Information | Description                            |
+| ----------- | -------------------------------------- |
+| **Qui**     | Utilisateur ayant fait l'action        |
+| **Quoi**    | Type d'action (CREATE, UPDATE, DELETE) |
+| **Quand**   | Date et heure précise                  |
+| **Où**      | Entité concernée (Project, Task, etc.) |
+| **Détails** | Anciennes et nouvelles valeurs         |
 
 #### 14.6 SharePoint (`/dashboard/admin/sharepoint`)
 
 **Accès**: `adminConfig`
 
 Configuration de l'intégration Microsoft SharePoint (voir [Section 19](#19-intégration-sharepoint) pour les détails complets) :
+
 - Configuration des identifiants Azure AD (Tenant ID, Client ID, Client Secret, Site ID)
 - Test de connexion réel via Microsoft Graph API
 - Activation/désactivation de la synchronisation automatique
@@ -1187,33 +1216,34 @@ Un livrable représente un élément concret à produire dans le cadre d'un proj
 
 #### Structure d'un Livrable
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `nom` | String | Nom du livrable |
-| `description` | Text | Description détaillée |
-| `type` | DeliverableType | Type (Document, Code, Design, etc.) |
-| `statut_global` | Enum | À produire, En validation, Validé, Refusé, Archivé |
-| `assigné_à` | User | Responsable de la production |
-| `date_échéance` | Date | Date limite de livraison |
-| `fichiers` | Array | Fichiers attachés avec versions |
-| `metadata` | Object | Métadonnées personnalisées selon le type |
+| Champ           | Type            | Description                                        |
+| --------------- | --------------- | -------------------------------------------------- |
+| `nom`           | String          | Nom du livrable                                    |
+| `description`   | Text            | Description détaillée                              |
+| `type`          | DeliverableType | Type (Document, Code, Design, etc.)                |
+| `statut_global` | Enum            | À produire, En validation, Validé, Refusé, Archivé |
+| `assigné_à`     | User            | Responsable de la production                       |
+| `date_échéance` | Date            | Date limite de livraison                           |
+| `fichiers`      | Array           | Fichiers attachés avec versions                    |
+| `metadata`      | Object          | Métadonnées personnalisées selon le type           |
 
 #### Types de Livrables Personnalisés
 
 L'administrateur peut créer des types de livrables avec :
 
-| Configuration | Description |
-|---------------|-------------|
-| **Étapes workflow** | Définir les étapes de validation (séquentiel ou parallèle) |
-| **Approbateurs** | Par rôle ou utilisateur spécifique |
-| **Délais** | Délai maximum par étape |
-| **Signature électronique** | Obligatoire ou optionnelle |
-| **Champs métadonnées** | Champs personnalisés (texte, nombre, date, liste) |
-| **Dépendances** | Livrables prérequis |
+| Configuration              | Description                                                |
+| -------------------------- | ---------------------------------------------------------- |
+| **Étapes workflow**        | Définir les étapes de validation (séquentiel ou parallèle) |
+| **Approbateurs**           | Par rôle ou utilisateur spécifique                         |
+| **Délais**                 | Délai maximum par étape                                    |
+| **Signature électronique** | Obligatoire ou optionnelle                                 |
+| **Champs métadonnées**     | Champs personnalisés (texte, nombre, date, liste)          |
+| **Dépendances**            | Livrables prérequis                                        |
 
 #### Historique et Traçabilité
 
 Chaque action sur un livrable est tracée :
+
 - Étape actuelle et précédentes
 - Action (validé, refusé, demande_modification)
 - Utilisateur et date
@@ -1228,19 +1258,20 @@ Chaque action sur un livrable est tracée :
 
 #### Informations Personnelles
 
-| Section | Champs modifiables |
-|---------|-------------------|
-| **Identité** | Nom complet, avatar |
-| **Contact** | Email (lecture seule), téléphone |
-| **Professionnel** | Poste, département/équipe |
-| **Compétences** | Liste de compétences (tags) |
+| Section           | Champs modifiables                 |
+| ----------------- | ---------------------------------- |
+| **Identité**      | Nom complet, avatar                |
+| **Contact**       | Email (lecture seule), téléphone   |
+| **Professionnel** | Poste, département/équipe          |
+| **Compétences**   | Liste de compétences (tags)        |
 | **Disponibilité** | Heures hebdomadaires (défaut: 35h) |
-| **Localisation** | Fuseau horaire |
-| **Facturation** | Taux journalier (FCFA) |
+| **Localisation**  | Fuseau horaire                     |
+| **Facturation**   | Taux journalier (FCFA)             |
 
 #### Statistiques Personnelles
 
 Le profil affiche vos métriques :
+
 - **Projets actifs** : Nombre de projets où vous êtes membre
 - **Tâches complétées** : Total des tâches terminées
 - **Tâches en cours** : Tâches actuellement assignées
@@ -1278,6 +1309,7 @@ Le profil affiche vos métriques :
 #### Codes de Secours 2FA
 
 Lors de l'activation de la 2FA, 10 codes de secours sont générés :
+
 - Format : `XXXX-XXXX` (8 caractères alphanumériques)
 - Usage unique : chaque code ne peut être utilisé qu'une fois
 - À conserver en lieu sûr (hors de l'appareil principal)
@@ -1323,12 +1355,12 @@ Lors de l'activation de la 2FA, 10 codes de secours sont générés :
 
 #### Formats Localisés
 
-| Élément | Français (FR) | English (EN) |
-|---------|---------------|--------------|
-| **Date** | 17/12/2025 | 12/17/2025 |
-| **Heure** | 14:30 | 2:30 PM |
-| **Nombre** | 1 234,56 | 1,234.56 |
-| **Devise** | 50 000 FCFA | 50,000 FCFA |
+| Élément    | Français (FR) | English (EN) |
+| ---------- | ------------- | ------------ |
+| **Date**   | 17/12/2025    | 12/17/2025   |
+| **Heure**  | 14:30         | 2:30 PM      |
+| **Nombre** | 1 234,56      | 1,234.56     |
+| **Devise** | 50 000 FCFA   | 50,000 FCFA  |
 
 #### Utilisation dans le Code
 
@@ -1337,10 +1369,10 @@ Lors de l'activation de la 2FA, 10 codes de secours sont générés :
 const { t, language, setLanguage } = useAppSettings();
 
 // Utiliser une traduction
-<h1>{t('dashboard')}</h1>  // "Tableau de bord" ou "Dashboard"
+<h1>{t('dashboard')}</h1>; // "Tableau de bord" ou "Dashboard"
 
 // Changer la langue
-setLanguage('en');  // Passe en anglais
+setLanguage('en'); // Passe en anglais
 ```
 
 ---
@@ -1349,11 +1381,11 @@ setLanguage('en');  // Passe en anglais
 
 #### Modes de Thème
 
-| Mode | Description |
-|------|-------------|
-| **Clair (Light)** | Fond blanc, texte sombre |
-| **Sombre (Dark)** | Fond sombre, texte clair |
-| **Système (System)** | Suit les préférences OS |
+| Mode                 | Description              |
+| -------------------- | ------------------------ |
+| **Clair (Light)**    | Fond blanc, texte sombre |
+| **Sombre (Dark)**    | Fond sombre, texte clair |
+| **Système (System)** | Suit les préférences OS  |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1388,6 +1420,7 @@ setLanguage('en');  // Passe en anglais
 #### Application du Thème
 
 Le thème s'applique via des variables CSS personnalisées :
+
 - Les composants shadcn/ui s'adaptent automatiquement
 - Les graphiques Recharts suivent le thème
 - Les exports PDF utilisent un style neutre professionnel
@@ -1402,14 +1435,14 @@ L'intégration SharePoint permet de synchroniser automatiquement les fichiers de
 
 #### Fonctionnalités
 
-| Fonctionnalité | Description |
-|----------------|-------------|
-| **Configuration persistante** | Les identifiants sont stockés de manière sécurisée en base de données |
-| **Test de connexion réel** | Validation via Microsoft Graph API |
-| **Upload automatique** | Les fichiers uploadés sont automatiquement synchronisés vers SharePoint |
-| **Suppression synchronisée** | La suppression locale supprime aussi le fichier SharePoint |
-| **Synchronisation manuelle** | Bouton pour synchroniser tous les projets d'un coup |
-| **Statistiques de sync** | Suivi des fichiers synchronisés et des erreurs |
+| Fonctionnalité                | Description                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| **Configuration persistante** | Les identifiants sont stockés de manière sécurisée en base de données   |
+| **Test de connexion réel**    | Validation via Microsoft Graph API                                      |
+| **Upload automatique**        | Les fichiers uploadés sont automatiquement synchronisés vers SharePoint |
+| **Suppression synchronisée**  | La suppression locale supprime aussi le fichier SharePoint              |
+| **Synchronisation manuelle**  | Bouton pour synchroniser tous les projets d'un coup                     |
+| **Statistiques de sync**      | Suivi des fichiers synchronisés et des erreurs                          |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1450,12 +1483,12 @@ L'intégration SharePoint permet de synchroniser automatiquement les fichiers de
 
 #### Configuration
 
-| Paramètre | Description | Format |
-|-----------|-------------|--------|
-| `Tenant ID` | Identifiant Azure AD de l'organisation | UUID |
-| `Client ID` | ID de l'application enregistrée | UUID |
-| `Client Secret` | Secret de l'application | String |
-| `Site ID` | Identifiant du site SharePoint | String |
+| Paramètre       | Description                            | Format |
+| --------------- | -------------------------------------- | ------ |
+| `Tenant ID`     | Identifiant Azure AD de l'organisation | UUID   |
+| `Client ID`     | ID de l'application enregistrée        | UUID   |
+| `Client Secret` | Secret de l'application                | String |
+| `Site ID`       | Identifiant du site SharePoint         | String |
 
 #### Guide de Configuration Azure AD
 
@@ -1488,21 +1521,21 @@ node scripts/get-sharepoint-site-id.js \
 
 Chaque fichier synchronisé contient :
 
-| Champ | Description |
-|-------|-------------|
-| `sharepoint_id` | ID unique du fichier sur SharePoint |
-| `sharepoint_url` | URL directe vers le fichier |
-| `sharepoint_synced` | Statut de synchronisation (true/false) |
-| `last_sync_sharepoint` | Date de dernière synchronisation |
+| Champ                  | Description                            |
+| ---------------------- | -------------------------------------- |
+| `sharepoint_id`        | ID unique du fichier sur SharePoint    |
+| `sharepoint_url`       | URL directe vers le fichier            |
+| `sharepoint_synced`    | Statut de synchronisation (true/false) |
+| `last_sync_sharepoint` | Date de dernière synchronisation       |
 
 #### Endpoints API
 
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| `GET` | `/api/sharepoint/config` | Récupérer la configuration |
-| `PUT` | `/api/sharepoint/config` | Sauvegarder la configuration |
-| `POST` | `/api/sharepoint/test` | Tester la connexion |
-| `POST` | `/api/sharepoint/sync` | Lancer une synchronisation manuelle |
+| Méthode | Endpoint                 | Description                         |
+| ------- | ------------------------ | ----------------------------------- |
+| `GET`   | `/api/sharepoint/config` | Récupérer la configuration          |
+| `PUT`   | `/api/sharepoint/config` | Sauvegarder la configuration        |
+| `POST`  | `/api/sharepoint/test`   | Tester la connexion                 |
+| `POST`  | `/api/sharepoint/sync`   | Lancer une synchronisation manuelle |
 
 ---
 
@@ -1510,11 +1543,11 @@ Chaque fichier synchronisé contient :
 
 #### Types de Dépendances
 
-| Type | Signification |
-|------|---------------|
-| `bloque` | Cette tâche bloque une autre tâche |
+| Type         | Signification                         |
+| ------------ | ------------------------------------- |
+| `bloque`     | Cette tâche bloque une autre tâche    |
 | `bloqué_par` | Cette tâche est bloquée par une autre |
-| `lié_à` | Relation simple sans blocage |
+| `lié_à`      | Relation simple sans blocage          |
 
 #### Comportement
 
@@ -1551,28 +1584,28 @@ Chaque fichier synchronisé contient :
 
 #### Création de Template
 
-| Élément | Description |
-|---------|-------------|
-| **Nom et description** | Identification du template |
-| **Catégorie** | Web, Mobile, Marketing, Infrastructure, etc. |
-| **Champs personnalisés** | Champs spécifiques au type de projet |
-| **Colonnes Kanban** | Configuration par défaut des colonnes |
-| **Rôles projet** | Rôles prédéfinis pour ce type |
-| **Livrables auto** | Livrables créés automatiquement |
+| Élément                  | Description                                  |
+| ------------------------ | -------------------------------------------- |
+| **Nom et description**   | Identification du template                   |
+| **Catégorie**            | Web, Mobile, Marketing, Infrastructure, etc. |
+| **Champs personnalisés** | Champs spécifiques au type de projet         |
+| **Colonnes Kanban**      | Configuration par défaut des colonnes        |
+| **Rôles projet**         | Rôles prédéfinis pour ce type                |
+| **Livrables auto**       | Livrables créés automatiquement              |
 
 #### Types de Champs Dynamiques
 
-| Type | Usage | Options |
-|------|-------|---------|
-| `texte` | Texte libre | min/max length, pattern regex |
-| `nombre` | Valeur numérique | min, max, décimales |
-| `date` | Date | min/max date, format |
-| `sélecteur` | Liste déroulante | options prédéfinies |
-| `utilisateur` | Sélection user | filtres par rôle |
-| `fichier` | Upload fichier | types acceptés, taille max |
-| `budget` | Montant devise | devise, format |
-| `url` | Lien web | validation URL |
-| `checkbox` | Oui/Non | valeur par défaut |
+| Type          | Usage            | Options                       |
+| ------------- | ---------------- | ----------------------------- |
+| `texte`       | Texte libre      | min/max length, pattern regex |
+| `nombre`      | Valeur numérique | min, max, décimales           |
+| `date`        | Date             | min/max date, format          |
+| `sélecteur`   | Liste déroulante | options prédéfinies           |
+| `utilisateur` | Sélection user   | filtres par rôle              |
+| `fichier`     | Upload fichier   | types acceptés, taille max    |
+| `budget`      | Montant devise   | devise, format                |
+| `url`         | Lien web         | validation URL                |
+| `checkbox`    | Oui/Non          | valeur par défaut             |
 
 #### Champs Conditionnels
 
@@ -1700,12 +1733,12 @@ Chaque fichier synchronisé contient :
 
 ### Prérequis
 
-| Logiciel | Version | Téléchargement |
-|----------|---------|----------------|
-| **Node.js** | 18+ | [nodejs.org](https://nodejs.org/) |
-| **MongoDB** | 6+ | [mongodb.com](https://www.mongodb.com/try/download/community) |
-| **Yarn** | 1.22+ | `npm install -g yarn` |
-| **Docker** (optionnel) | 20+ | [docker.com](https://www.docker.com/) |
+| Logiciel               | Version | Téléchargement                                                |
+| ---------------------- | ------- | ------------------------------------------------------------- |
+| **Node.js**            | 18+     | [nodejs.org](https://nodejs.org/)                             |
+| **MongoDB**            | 6+      | [mongodb.com](https://www.mongodb.com/try/download/community) |
+| **Yarn**               | 1.22+   | `npm install -g yarn`                                         |
+| **Docker** (optionnel) | 20+     | [docker.com](https://www.docker.com/)                         |
 
 ### Option 1 : Installation Locale
 
@@ -1880,72 +1913,72 @@ Authorization: Bearer <votre_token_jwt>
 
 #### Authentification
 
-| Méthode | Endpoint | Description | Auth |
-|---------|----------|-------------|------|
-| `GET` | `/api/check` | État de l'API | Non |
-| `POST` | `/api/auth/first-admin` | Créer premier admin | Non |
-| `POST` | `/api/auth/login` | Connexion | Non |
-| `POST` | `/api/auth/first-login-reset` | Reset première connexion | Non |
-| `GET` | `/api/auth/me` | Profil connecté | Oui |
+| Méthode | Endpoint                      | Description              | Auth |
+| ------- | ----------------------------- | ------------------------ | ---- |
+| `GET`   | `/api/check`                  | État de l'API            | Non  |
+| `POST`  | `/api/auth/first-admin`       | Créer premier admin      | Non  |
+| `POST`  | `/api/auth/login`             | Connexion                | Non  |
+| `POST`  | `/api/auth/first-login-reset` | Reset première connexion | Non  |
+| `GET`   | `/api/auth/me`                | Profil connecté          | Oui  |
 
 #### Projets
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/projects` | Liste projets | `voirSesProjets` |
-| `POST` | `/api/projects` | Créer projet | `creerProjet` |
-| `GET` | `/api/projects/:id` | Détails projet | `voirSesProjets` |
-| `PUT` | `/api/projects/:id` | Modifier projet | `modifierCharteProjet` |
-| `DELETE` | `/api/projects/:id` | Supprimer projet | `supprimerProjet` |
-| `POST` | `/api/projects/:id/members` | Ajouter membre | `gererMembresProjet` |
+| Méthode  | Endpoint                    | Description      | Permission             |
+| -------- | --------------------------- | ---------------- | ---------------------- |
+| `GET`    | `/api/projects`             | Liste projets    | `voirSesProjets`       |
+| `POST`   | `/api/projects`             | Créer projet     | `creerProjet`          |
+| `GET`    | `/api/projects/:id`         | Détails projet   | `voirSesProjets`       |
+| `PUT`    | `/api/projects/:id`         | Modifier projet  | `modifierCharteProjet` |
+| `DELETE` | `/api/projects/:id`         | Supprimer projet | `supprimerProjet`      |
+| `POST`   | `/api/projects/:id/members` | Ajouter membre   | `gererMembresProjet`   |
 
 #### Tâches
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/tasks` | Liste tâches | `voirSesProjets` |
-| `POST` | `/api/tasks` | Créer tâche | `gererTaches` |
-| `PUT` | `/api/tasks/:id` | Modifier tâche | `gererTaches` |
-| `PUT` | `/api/tasks/:id/move` | Déplacer (Kanban) | `deplacerTaches` |
-| `DELETE` | `/api/tasks/:id` | Supprimer tâche | `gererTaches` |
+| Méthode  | Endpoint              | Description       | Permission       |
+| -------- | --------------------- | ----------------- | ---------------- |
+| `GET`    | `/api/tasks`          | Liste tâches      | `voirSesProjets` |
+| `POST`   | `/api/tasks`          | Créer tâche       | `gererTaches`    |
+| `PUT`    | `/api/tasks/:id`      | Modifier tâche    | `gererTaches`    |
+| `PUT`    | `/api/tasks/:id/move` | Déplacer (Kanban) | `deplacerTaches` |
+| `DELETE` | `/api/tasks/:id`      | Supprimer tâche   | `gererTaches`    |
 
 #### Sprints
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/sprints` | Liste sprints | `voirSesProjets` |
-| `POST` | `/api/sprints` | Créer sprint | `gererSprints` |
-| `PUT` | `/api/sprints/:id` | Modifier sprint | `gererSprints` |
-| `PUT` | `/api/sprints/:id/start` | Démarrer sprint | `gererSprints` |
-| `PUT` | `/api/sprints/:id/complete` | Terminer sprint | `gererSprints` |
+| Méthode | Endpoint                    | Description     | Permission       |
+| ------- | --------------------------- | --------------- | ---------------- |
+| `GET`   | `/api/sprints`              | Liste sprints   | `voirSesProjets` |
+| `POST`  | `/api/sprints`              | Créer sprint    | `gererSprints`   |
+| `PUT`   | `/api/sprints/:id`          | Modifier sprint | `gererSprints`   |
+| `PUT`   | `/api/sprints/:id/start`    | Démarrer sprint | `gererSprints`   |
+| `PUT`   | `/api/sprints/:id/complete` | Terminer sprint | `gererSprints`   |
 
 #### Utilisateurs & Rôles
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/users` | Liste utilisateurs | `adminConfig` |
-| `POST` | `/api/users` | Créer utilisateur | `gererUtilisateurs` |
-| `PUT` | `/api/users/:id` | Modifier utilisateur | `gererUtilisateurs` |
-| `GET` | `/api/roles` | Liste rôles | - |
-| `PUT` | `/api/roles/:id` | Modifier rôle | `adminConfig` |
+| Méthode | Endpoint         | Description          | Permission          |
+| ------- | ---------------- | -------------------- | ------------------- |
+| `GET`   | `/api/users`     | Liste utilisateurs   | `adminConfig`       |
+| `POST`  | `/api/users`     | Créer utilisateur    | `gererUtilisateurs` |
+| `PUT`   | `/api/users/:id` | Modifier utilisateur | `gererUtilisateurs` |
+| `GET`   | `/api/roles`     | Liste rôles          | -                   |
+| `PUT`   | `/api/roles/:id` | Modifier rôle        | `adminConfig`       |
 
 #### Budget & Dépenses
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/expenses?projet_id=X` | Dépenses projet | `voirBudget` |
-| `POST` | `/api/expenses` | Ajouter dépense | `modifierBudget` |
-| `PUT` | `/api/expenses/:id` | Modifier dépense | `modifierBudget` |
-| `DELETE` | `/api/expenses/:id` | Supprimer dépense | `modifierBudget` |
+| Méthode  | Endpoint                    | Description       | Permission       |
+| -------- | --------------------------- | ----------------- | ---------------- |
+| `GET`    | `/api/expenses?projet_id=X` | Dépenses projet   | `voirBudget`     |
+| `POST`   | `/api/expenses`             | Ajouter dépense   | `modifierBudget` |
+| `PUT`    | `/api/expenses/:id`         | Modifier dépense  | `modifierBudget` |
+| `DELETE` | `/api/expenses/:id`         | Supprimer dépense | `modifierBudget` |
 
 #### Notifications
 
-| Méthode | Endpoint | Description | Permission |
-|---------|----------|-------------|------------|
-| `GET` | `/api/notifications` | Liste notifications | `recevoirNotifications` |
-| `PUT` | `/api/notifications/:id/read` | Marquer lue | `recevoirNotifications` |
-| `PUT` | `/api/notifications/read-all` | Tout marquer lu | `recevoirNotifications` |
-| `DELETE` | `/api/notifications/:id` | Supprimer | `recevoirNotifications` |
+| Méthode  | Endpoint                      | Description         | Permission              |
+| -------- | ----------------------------- | ------------------- | ----------------------- |
+| `GET`    | `/api/notifications`          | Liste notifications | `recevoirNotifications` |
+| `PUT`    | `/api/notifications/:id/read` | Marquer lue         | `recevoirNotifications` |
+| `PUT`    | `/api/notifications/read-all` | Tout marquer lu     | `recevoirNotifications` |
+| `DELETE` | `/api/notifications/:id`      | Supprimer           | `recevoirNotifications` |
 
 ---
 
@@ -2165,45 +2198,101 @@ Authorization: Bearer <votre_token_jwt>
 
 ## 🏗️ Architecture Technique
 
+### Diagramme d'Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                      CLIENT (Browser)                     │
+│  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌───────────┐  │
+│  │  Pages   │  │Components│  │  Hooks  │  │ Contexts  │  │
+│  │(App Dir) │  │(shadcn/  │  │(13 cust)│  │(5 global) │  │
+│  │ 25+ pgs  │  │ Radix UI)│  │         │  │           │  │
+│  └────┬─────┘  └────┬─────┘  └────┬────┘  └─────┬─────┘  │
+│       └──────────────┼────────────┼──────────────┘        │
+│                      ▼            ▼                        │
+│              ┌──────────────────────┐                      │
+│              │   authFetch / SWR    │  ◄── Socket.io Client│
+│              └──────────┬───────────┘                      │
+└─────────────────────────┼────────────────────────────────┘
+                          │ HTTPS / WSS
+┌─────────────────────────┼────────────────────────────────┐
+│                   MIDDLEWARE (Edge)                        │
+│  JWT Verify │ CORS │ CSP Headers │ Rate Limit │ HTTPS    │
+└─────────────────────────┼────────────────────────────────┘
+                          ▼
+┌──────────────────────────────────────────────────────────┐
+│                    API LAYER (49 routes)                   │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │           withApiProtection() wrapper             │    │
+│  │  Auth │ Rate Limit │ Size Check │ RBAC Perms     │    │
+│  └──────────────────────┬───────────────────────────┘    │
+│                         ▼                                 │
+│  ┌─────────────┐  ┌──────────┐  ┌───────────────────┐   │
+│  │  Validation  │  │ Services │  │   Audit Service   │   │
+│  │  (Zod/Joi)   │  │(10 svc) │  │  (Activity Log)   │   │
+│  └─────────────┘  └────┬─────┘  └───────────────────┘   │
+└─────────────────────────┼────────────────────────────────┘
+                          ▼
+┌──────────────────────────────────────────────────────────┐
+│                    DATA LAYER                              │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐              │
+│  │ MongoDB   │  │ NodeCache│  │ Socket.io │              │
+│  │(Mongoose) │  │(in-mem)  │  │ Server    │              │
+│  │ 18 models │  │ TTL:10m  │  │ :4000     │              │
+│  └──────────┘  └──────────┘  └───────────┘              │
+└──────────────────────────────────────────────────────────┘
+```
+
 ### Structure du Projet
 
 ```
 Project-Manager/
-├── app/                              # Next.js App Router
-│   ├── api/[[...path]]/route.js      # API Backend (70+ endpoints)
-│   ├── dashboard/                    # Pages dashboard (25 pages)
-│   ├── first-admin/                  # Création premier admin
-│   ├── first-login/                  # Première connexion
-│   ├── login/                        # Connexion
-│   └── layout.js                     # Layout racine + Toaster
-├── components/                       # Composants React (40+)
-│   ├── ui/                           # shadcn/ui
-│   └── kanban/                       # Composants Kanban
-├── models/                           # Modèles Mongoose (17)
-├── lib/                              # Utilitaires et services
-│   ├── menuConfig.js                 # Config menus/permissions
-│   ├── workflows.js                  # Transitions de statut
-│   ├── permissions.js                # Gestion RBAC
-│   └── services/                     # Services métier
-├── hooks/                            # Hooks React personnalisés
-├── context/                          # Contextes React
-└── scripts/                          # Scripts utilitaires
+├── app/                              # Next.js 14 App Router
+│   ├── api/                          # 49 API endpoints (REST)
+│   │   ├── auth/                     # Auth (login, logout, 2FA)
+│   │   ├── projects/                 # Projects CRUD
+│   │   ├── tasks/                    # Tasks CRUD
+│   │   ├── sprints/                  # Sprints lifecycle
+│   │   └── ...                       # 15+ resource endpoints
+│   ├── dashboard/                    # 25+ protected pages
+│   │   ├── admin/                    # Admin section (audit, roles, etc.)
+│   │   ├── kanban/                   # Kanban board (drag-and-drop)
+│   │   └── ...                       # Projects, tasks, reports, etc.
+│   ├── login/                        # Login page
+│   └── layout.js                     # Root layout + providers
+├── components/                       # 62+ React components
+│   ├── ui/                           # shadcn/ui (40+ primitives)
+│   ├── kanban/                       # TaskCard, KanbanColumn
+│   └── charts/                       # BurndownChart, VelocityChart
+├── models/                           # 18 Mongoose schemas
+├── lib/                              # Business logic & utilities
+│   ├── services/                     # 10+ service modules
+│   ├── withApiProtection.js          # API security wrapper
+│   ├── permissions.js                # Two-tier RBAC (23 perms)
+│   ├── sanitize.js                   # DOMPurify HTML sanitization
+│   ├── logger.js                     # Structured logging
+│   └── ...                           # Auth, cache, validation, etc.
+├── hooks/                            # 13 custom React hooks
+├── contexts/                         # 5 context providers
+├── types/                            # TypeScript declarations (.d.ts)
+├── tests/                            # Integration & security tests
+└── scripts/                          # Dev/deploy scripts
 ```
 
 ### Stack Technique
 
-| Couche | Technologies |
-|--------|-------------|
-| **Frontend** | Next.js 14, React 18, Tailwind CSS 3.4 |
-| **UI** | shadcn/ui, Radix UI, Lucide Icons |
-| **Drag & Drop** | @dnd-kit/core, @dnd-kit/sortable |
-| **Graphiques** | Recharts |
-| **Backend** | Next.js API Routes |
-| **Auth** | JWT (jose), bcryptjs |
-| **Base de données** | MongoDB 7+, Mongoose 8 |
-| **Temps réel** | Socket.io 4.8 |
-| **Export** | jsPDF, ExcelJS, PapaParse |
-| **Notifications** | Sonner (toast) |
+| Couche              | Technologies                           |
+| ------------------- | -------------------------------------- |
+| **Frontend**        | Next.js 14, React 18, Tailwind CSS 3.4 |
+| **UI**              | shadcn/ui, Radix UI, Lucide Icons      |
+| **Drag & Drop**     | @dnd-kit/core, @dnd-kit/sortable       |
+| **Graphiques**      | Recharts                               |
+| **Backend**         | Next.js API Routes                     |
+| **Auth**            | JWT (jose), bcryptjs                   |
+| **Base de données** | MongoDB 7+, Mongoose 8                 |
+| **Temps réel**      | Socket.io 4.8                          |
+| **Export**          | jsPDF, ExcelJS, PapaParse              |
+| **Notifications**   | Sonner (toast)                         |
 
 ---
 
@@ -2211,16 +2300,22 @@ Project-Manager/
 
 ### Mesures Implémentées
 
-| Mesure | Description |
-|--------|-------------|
-| **JWT** | Tokens signés HS256, expiration 24h |
-| **Hachage MDP** | bcryptjs, 12 salt rounds |
-| **Verrouillage compte** | 5 tentatives → 15 min lock |
-| **Rate Limiting** | 100 req/min par IP |
-| **CORS** | Origines configurables |
-| **Validation** | Joi/Zod sur toutes entrées |
-| **RBAC** | 23 permissions, 14 menus |
-| **Audit** | Logging de toutes les actions |
+| Mesure                      | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| **JWT HttpOnly**            | Tokens signés HS256, cookies HttpOnly + SameSite       |
+| **Hachage MDP**             | bcryptjs, 12 salt rounds                               |
+| **2FA (TOTP)**              | Authentification deux facteurs avec QR code            |
+| **Verrouillage compte**     | 5 tentatives → 15 min lock                             |
+| **Rate Limiting**           | Configurable par endpoint (login, upload, global)      |
+| **withApiProtection**       | Wrapper sécurité sur tous les endpoints mutants        |
+| **Request Size Validation** | Validation taille body sur POST/PUT/PATCH              |
+| **CORS**                    | Origines configurables, credentials mode               |
+| **CSP + Security Headers**  | CSP, HSTS, X-Frame-Options, Permissions-Policy         |
+| **Validation**              | Joi/Zod sur toutes entrées API                         |
+| **HTML Sanitization**       | DOMPurify sur contenu riche (commentaires)             |
+| **NoSQL Injection**         | sanitizeQuery() bloque les opérateurs MongoDB          |
+| **RBAC**                    | 23 permissions atomiques, 14 menus, 2-tier merging     |
+| **Audit Trail**             | Logging complet (21 types d'actions, IP, device, etc.) |
 
 ### Vulnérabilités Corrigées
 

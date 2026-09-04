@@ -3,12 +3,13 @@
 /**
  * Standalone Socket.io server for real-time synchronization
  * Run separately from Next.js dev server
- * 
+ *
  * Usage: node scripts/socket-server.js
  * Or in package.json: "socket": "node scripts/socket-server.js"
  */
 
 const { createServer } = require('http');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 require('dotenv').config();
@@ -28,7 +29,7 @@ const connectDB = async () => {
 };
 
 // Load models
-let User, Project, _ProjectRole, _Role;
+let User, Project, Task, _ProjectRole, _Role;
 
 const loadModels = async () => {
   try {
@@ -36,10 +37,12 @@ const loadModels = async () => {
     const projectModule = require('../models/Project');
     const projectRoleModule = require('../models/ProjectRole');
     const roleModule = require('../models/Role');
+    const taskModule = require('../models/Task');
 
     // Handle both ES6 default exports and CommonJS
     User = userModule.default || userModule;
     Project = projectModule.default || projectModule;
+    Task = taskModule.default || taskModule;
     _ProjectRole = projectRoleModule.default || projectRoleModule;
     _Role = roleModule.default || roleModule;
 
@@ -54,15 +57,32 @@ const getMergedPermissions = (systemRole, projectRole) => {
   const permissions = {};
 
   const ALL_PERMISSIONS = [
-    'voirTousProjets', 'voirSesProjets', 'creerProjet', 'supprimerProjet',
-    'modifierCharteProjet', 'gererMembresProjet', 'changerRoleMembre',
-    'gererTaches', 'deplacerTaches', 'prioriserBacklog', 'gererSprints',
-    'modifierBudget', 'voirBudget', 'voirTempsPasses', 'saisirTemps',
-    'validerLivrable', 'gererFichiers', 'commenter', 'recevoirNotifications',
-    'genererRapports', 'voirAudit', 'gererUtilisateurs', 'adminConfig'
+    'voirTousProjets',
+    'voirSesProjets',
+    'creerProjet',
+    'supprimerProjet',
+    'modifierCharteProjet',
+    'gererMembresProjet',
+    'changerRoleMembre',
+    'gererTaches',
+    'deplacerTaches',
+    'prioriserBacklog',
+    'gererSprints',
+    'modifierBudget',
+    'voirBudget',
+    'voirTempsPasses',
+    'saisirTemps',
+    'validerLivrable',
+    'gererFichiers',
+    'commenter',
+    'recevoirNotifications',
+    'genererRapports',
+    'voirAudit',
+    'gererUtilisateurs',
+    'adminConfig',
   ];
 
-  ALL_PERMISSIONS.forEach(permission => {
+  ALL_PERMISSIONS.forEach((permission) => {
     const systemAllows = systemRole?.permissions?.[permission] === true;
     let projectAllows = true;
 
@@ -74,6 +94,67 @@ const getMergedPermissions = (systemRole, projectRole) => {
   });
 
   return permissions;
+};
+
+const AUTH_COOKIE_NAME = 'auth_token';
+const INTERNAL_EMIT_SECRET = process.env.SOCKET_EMIT_SECRET || process.env.JWT_SECRET;
+
+const isJwtLike = (token) => typeof token === 'string' && token.split('.').length === 3;
+
+const getTokenFromCookieHeader = (cookieHeader) => {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader
+    .split(';')
+    .map((entry) => entry.trim().split('='))
+    .reduce((acc, [name, value]) => {
+      acc[name] = value;
+      return acc;
+    }, {});
+
+  return cookies[AUTH_COOKIE_NAME] || null;
+};
+
+const compareSecrets = (receivedSecret) => {
+  const normalizedSecret = Array.isArray(receivedSecret) ? receivedSecret[0] : receivedSecret;
+
+  if (!normalizedSecret || !INTERNAL_EMIT_SECRET) {
+    return false;
+  }
+
+  const received = Buffer.from(normalizedSecret);
+  const expected = Buffer.from(INTERNAL_EMIT_SECRET);
+
+  if (received.length !== expected.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(received, expected);
+};
+
+const getSocketAuthToken = (socket) => {
+  const handshakeToken = socket.handshake.auth?.token;
+  if (isJwtLike(handshakeToken)) {
+    return handshakeToken;
+  }
+
+  const cookieToken = getTokenFromCookieHeader(socket.handshake.headers?.cookie);
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  return null;
+};
+
+const disconnectUserSockets = (userId, reason = 'revoked') => {
+  io.sockets.sockets.forEach((socket) => {
+    if (socket.userId === userId) {
+      socket.emit('auth:revoked', { reason });
+      socket.disconnect(true);
+    }
+  });
 };
 
 // Create HTTP server with event emission endpoint
@@ -88,23 +169,36 @@ const httpServer = createServer(async (req, res) => {
   // Event emission endpoint
   if (req.url === '/emit' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => {
+    req.on('data', (chunk) => {
       body += chunk.toString();
     });
 
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
+        const secret = req.headers['x-socket-secret'];
+        if (!compareSecrets(secret)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized emit request' }));
+          return;
+        }
+
         const { type, projectId, userId, permission, event, data } = JSON.parse(body);
+
+        if (!type) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing emit type' }));
+          return;
+        }
 
         switch (type) {
           case 'project':
-            if (projectId) {
+            if (projectId && typeof event === 'string') {
               io.to(`project:${projectId}`).emit(event, data);
             }
             break;
 
           case 'user':
-            if (userId) {
+            if (userId && typeof event === 'string') {
               io.to(`user:${userId}`).emit(event, data);
             }
             break;
@@ -118,7 +212,15 @@ const httpServer = createServer(async (req, res) => {
             break;
 
           case 'broadcast':
-            io.emit(event, data);
+            if (typeof event === 'string') {
+              io.emit(event, data);
+            }
+            break;
+
+          case 'disconnect-user':
+            if (userId) {
+              disconnectUserSockets(userId, data?.reason || 'revoked');
+            }
             break;
         }
 
@@ -143,9 +245,50 @@ const io = new Server(httpServer, {
   cors: {
     origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
     methods: ['GET', 'POST'],
-    credentials: true
+    credentials: true,
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  maxHttpBufferSize: 1e6, // 1MB limite par message
+});
+
+// ==================== RATE LIMITING ====================
+
+const ipRequests = new Map();
+const IP_RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS_PER_IP = 100;
+
+// Nettoyage périodique de la Map des IPs
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of ipRequests.entries()) {
+    if (record.resetTime < now) {
+      ipRequests.delete(ip);
+    }
+  }
+}, IP_RATE_LIMIT_WINDOW);
+
+const checkIpRateLimit = (ip) => {
+  if (!ip) return true;
+  const now = Date.now();
+  let record = ipRequests.get(ip);
+  if (!record || record.resetTime < now) {
+    record = { count: 1, resetTime: now + IP_RATE_LIMIT_WINDOW };
+    ipRequests.set(ip, record);
+    return true;
+  }
+  record.count++;
+  return record.count <= MAX_REQUESTS_PER_IP;
+};
+
+// Middleware IP Rate Limiting (au niveau du handshake Engine.IO)
+io.engine.use((req, res, next) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  if (!checkIpRateLimit(ip)) {
+    res.writeHead(429, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Too Many Requests' }));
+    return;
+  }
+  next();
 });
 
 // Import jwt verification
@@ -170,7 +313,7 @@ const verifyToken = async (token) => {
 // Socket.io middleware
 io.use(async (socket, next) => {
   try {
-    const token = socket.handshake.auth.token;
+    const token = getSocketAuthToken(socket);
 
     if (!token) {
       return next(new Error('Authentication error: missing token'));
@@ -181,12 +324,18 @@ io.use(async (socket, next) => {
       return next(new Error('Authentication error: invalid token'));
     }
 
-    const user = await User.findById(payload.userId)
-      .populate('role_id')
-      .lean();
+    const user = await User.findById(payload.userId).populate('role_id').lean();
 
     if (!user) {
       return next(new Error('Authentication error: user not found'));
+    }
+
+    if (user.status !== 'Actif') {
+      return next(new Error('Authentication error: inactive user'));
+    }
+
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      return next(new Error('Authentication error: revoked token'));
     }
 
     socket.userId = user._id.toString();
@@ -206,7 +355,35 @@ io.use(async (socket, next) => {
 
 // Connection event
 io.on('connection', (socket) => {
-  console.log(`✓ User connected: ${socket.userEmail} (${socket.userId}) - Socket: ${socket.id}`);
+  console.log(`✓ User connected: ${socket.userId} - Socket: ${socket.id}`);
+
+  // Rate Limiting par Socket / Événement
+  const EVENT_RATE_LIMIT_WINDOW = 10000; // 10 secondes
+  const MAX_EVENTS_PER_WINDOW = 50;
+
+  socket.use((packet, next) => {
+    const now = Date.now();
+    if (!socket.rateLimit) {
+      socket.rateLimit = { count: 1, resetTime: now + EVENT_RATE_LIMIT_WINDOW };
+      return next();
+    }
+
+    if (socket.rateLimit.resetTime < now) {
+      socket.rateLimit = { count: 1, resetTime: now + EVENT_RATE_LIMIT_WINDOW };
+      return next();
+    }
+
+    socket.rateLimit.count++;
+    if (socket.rateLimit.count > MAX_EVENTS_PER_WINDOW) {
+      console.warn(
+        `[Rate Limit] Socket ${socket.id} (User: ${socket.userId}) a dépassé la limite d'événements.`
+      );
+      socket.emit('error', { message: 'Trop de requêtes détectées. Ralentissez.' });
+      return next(new Error('Rate limit exceeded'));
+    }
+
+    next();
+  });
 
   // Join user's private room
   socket.join(`user:${socket.userId}`);
@@ -215,9 +392,9 @@ io.on('connection', (socket) => {
   socket.on('join:project', async (projectId) => {
     try {
       const project = await Project.findById(projectId)
-        .select('chef_projet product_owner membres')
+        .select('chef_projet product_owner créé_par membres')
         .populate({
-          path: 'membres.project_role_id'
+          path: 'membres.project_role_id',
         })
         .lean();
 
@@ -226,20 +403,23 @@ io.on('connection', (socket) => {
       }
 
       // Find member data
-      const memberData = project.membres?.find(m =>
-        m.user_id?.toString() === socket.userId
-      );
+      const memberData = project.membres?.find((m) => m.user_id?.toString() === socket.userId);
 
       // Check access to project
-      const hasSystemAccess = socket.userRole?.permissions?.voirTousProjets ||
-        socket.userRole?.permissions?.adminConfig;
+      const hasSystemAccess =
+        socket.userRole?.permissions?.voirTousProjets || socket.userRole?.permissions?.adminConfig;
 
       const isMember =
         project.chef_projet?.toString() === socket.userId ||
         project.product_owner?.toString() === socket.userId ||
+        project.créé_par?.toString() === socket.userId ||
         memberData !== undefined;
 
-      const canAccessProject = hasSystemAccess || isMember;
+      const assignedHere = Task
+        ? Boolean(await Task.exists({ projet_id: projectId, assigné_à: socket.userId }))
+        : false;
+
+      const canAccessProject = hasSystemAccess || isMember || assignedHere;
 
       if (!canAccessProject) {
         return socket.emit('error', { message: 'Accès refusé au projet' });
@@ -249,18 +429,18 @@ io.on('connection', (socket) => {
       // CRITICAL: Extract only the permissions object (not the visibleMenus)
       const projectRole = memberData?.project_role_id;
       const merged = getMergedPermissions(socket.userRole, projectRole);
-      socket.mergedPermissions = merged.permissions;  // ← Only permissions, not visibleMenus
+      socket.mergedPermissions = merged;
       socket.projectId = projectId;
       socket.memberData = memberData;
 
       socket.join(`project:${projectId}`);
-      console.log(`✓ User ${socket.userEmail} joined project ${projectId} with merged permissions`);
+      console.log(`✓ User ${socket.userId} joined project ${projectId} with merged permissions`);
 
       // Notify others that user is online
       socket.to(`project:${projectId}`).emit('user:online', {
         userId: socket.userId,
         userEmail: socket.userEmail,
-        userName: socket.userName
+        userName: socket.userName,
       });
     } catch (error) {
       console.error('Error joining project:', error);
@@ -271,44 +451,45 @@ io.on('connection', (socket) => {
   // Leave project room
   socket.on('leave:project', (projectId) => {
     socket.leave(`project:${projectId}`);
-    console.log(`✓ User ${socket.userEmail} left project ${projectId}`);
+    socket.mergedPermissions = socket.userPermissions;
+    console.log(`✓ User ${socket.userId} left project ${projectId}`);
 
     socket.to(`project:${projectId}`).emit('user:offline', {
       userId: socket.userId,
-      userEmail: socket.userEmail
+      userEmail: socket.userEmail,
     });
   });
 
   // Generic event relay for non-confidential data
-  socket.on('forward:event', (eventName, data) => {
-    if (data.projectId) {
-      socket.to(`project:${data.projectId}`).emit(eventName, data);
-    } else {
-      socket.broadcast.emit(eventName, data);
+  socket.on('forward:event', (_eventName, _data, ack) => {
+    if (typeof ack === 'function') {
+      ack({ error: 'Client-side event forwarding is disabled' });
     }
   });
 
   // Handle disconnect
   socket.on('disconnect', () => {
-    console.log(`✗ User disconnected: ${socket.userEmail}`);
+    console.log(`✗ User disconnected: ${socket.userId}`);
   });
 });
 
 // Start server
 const PORT = process.env.SOCKET_PORT || 4000;
 
-connectDB().then(() => {
-  loadModels();
+connectDB()
+  .then(() => {
+    loadModels();
 
-  httpServer.listen(PORT, () => {
-    console.log(`\n🚀 Socket.io server listening on port ${PORT}`);
-    console.log(`   URL: ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}`);
-    console.log(`   Transport: websocket, polling\n`);
+    httpServer.listen(PORT, () => {
+      console.log(`\n🚀 Socket.io server listening on port ${PORT}`);
+      console.log(`   URL: ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}`);
+      console.log(`   Transport: websocket, polling\n`);
+    });
+  })
+  .catch((error) => {
+    console.error('✗ Failed to start socket server:', error.message);
+    process.exit(1);
   });
-}).catch((error) => {
-  console.error('✗ Failed to start socket server:', error.message);
-  process.exit(1);
-});
 
 // Graceful shutdown
 process.on('SIGINT', () => {
