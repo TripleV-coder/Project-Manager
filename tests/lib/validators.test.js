@@ -1,4 +1,10 @@
-import { validate, userValidation, projectValidation, taskValidation, sanitizeQuery } from '@/lib/validators';
+import {
+  validate,
+  userValidation,
+  projectValidation,
+  taskValidation,
+  sanitizeQuery,
+} from '@/lib/validators';
 
 describe('Input validators', () => {
   describe('User validation', () => {
@@ -6,7 +12,7 @@ describe('Input validators', () => {
       const validData = {
         nom_complet: 'John Doe',
         email: 'john@example.com',
-        password: 'TestPassword123!'
+        password: 'TestPassword123!',
       };
 
       const result = validate(userValidation, validData);
@@ -18,7 +24,7 @@ describe('Input validators', () => {
       const invalidData = {
         nom_complet: 'John Doe',
         email: 'invalid-email',
-        password: 'TestPassword123!'
+        password: 'TestPassword123!',
       };
 
       expect(() => {
@@ -30,7 +36,7 @@ describe('Input validators', () => {
       const invalidData = {
         nom_complet: 'John Doe',
         email: 'john@example.com',
-        password: 'weak'
+        password: 'weak',
       };
 
       expect(() => {
@@ -42,7 +48,7 @@ describe('Input validators', () => {
       const invalidData = {
         nom_complet: 'Jo',
         email: 'john@example.com',
-        password: 'TestPassword123!'
+        password: 'TestPassword123!',
       };
 
       expect(() => {
@@ -58,7 +64,7 @@ describe('Input validators', () => {
       template_id: '507f1f77bcf86cd799439011',
       date_début: new Date(),
       date_fin_prévue: new Date(Date.now() + 86400000),
-      chef_projet: '507f1f77bcf86cd799439011'
+      chef_projet: '507f1f77bcf86cd799439011',
     };
 
     test('should validate correct project data', () => {
@@ -69,7 +75,7 @@ describe('Input validators', () => {
     test('should reject missing template_id', () => {
       const invalidData = {
         nom: 'Test Project',
-        description: 'A test project'
+        description: 'A test project',
       };
 
       expect(() => {
@@ -80,7 +86,7 @@ describe('Input validators', () => {
     test('should reject invalid chef_projet ID', () => {
       const invalidData = {
         ...validProjectData,
-        chef_projet: 'invalid-id'
+        chef_projet: 'invalid-id',
       };
 
       expect(() => {
@@ -91,7 +97,7 @@ describe('Input validators', () => {
     test('should reject invalid template_id', () => {
       const invalidData = {
         ...validProjectData,
-        template_id: 'invalid-id'
+        template_id: 'invalid-id',
       };
 
       expect(() => {
@@ -104,7 +110,7 @@ describe('Input validators', () => {
     const validTaskData = {
       titre: 'Test Task',
       description: 'Task description',
-      projet_id: '507f1f77bcf86cd799439011'
+      projet_id: '507f1f77bcf86cd799439011',
     };
 
     test('should validate correct task data', () => {
@@ -115,7 +121,7 @@ describe('Input validators', () => {
     test('should reject short title', () => {
       const invalidData = {
         ...validTaskData,
-        titre: 'T'
+        titre: 'T',
       };
 
       expect(() => {
@@ -136,7 +142,7 @@ describe('Input validators', () => {
     test('should reject invalid priority', () => {
       const invalidData = {
         ...validTaskData,
-        priorité: 'invalid'
+        priorité: 'invalid',
       };
 
       expect(() => {
@@ -155,7 +161,7 @@ describe('Input validators', () => {
       const query = {
         nom: 'Test',
         $where: 'this.price < 100',
-        $ne: 'value'
+        $ne: 'value',
       };
 
       const sanitized = sanitizeQuery(query);
@@ -168,8 +174,8 @@ describe('Input validators', () => {
       const query = {
         user: {
           email: 'test@example.com',
-          $exists: true
-        }
+          $exists: true,
+        },
       };
 
       const sanitized = sanitizeQuery(query);
@@ -181,7 +187,7 @@ describe('Input validators', () => {
       const query = {
         nom: 'Test',
         email: 'test@example.com',
-        age: 25
+        age: 25,
       };
 
       const sanitized = sanitizeQuery(query);

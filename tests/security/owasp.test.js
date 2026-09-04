@@ -40,7 +40,8 @@ describe('OWASP A02:2021 — Cryptographic Failures', () => {
 
   test('AEAD: tampered ciphertext is rejected (no silent decryption)', () => {
     const ct = encryptSecret('payload');
-    const tampered = ct.slice(0, -2) + (ct.endsWith('A') ? 'B=' : 'A=');
+    const charToFlip = ct[10] === 'a' ? 'b' : 'a';
+    const tampered = ct.slice(0, 10) + charToFlip + ct.slice(11);
     expect(() => decryptSecret(tampered)).toThrow();
   });
 
@@ -74,7 +75,7 @@ describe('OWASP A04:2021 — Insecure Design', () => {
     const src = await import('fs').then((fs) =>
       fs.readFileSync('app/api/auth/login/route.js', 'utf8')
     );
-    expect(src).toMatch(/loginAttempts\s*>=\s*5/);
+    expect(src).toMatch(/failedLoginAttempts\s*>=\s*5/);
     expect(src).toMatch(/15\s*\*\s*60\s*\*\s*1000/); // 15-minute lockout
   });
 });

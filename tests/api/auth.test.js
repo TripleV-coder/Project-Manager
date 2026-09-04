@@ -12,11 +12,28 @@ jest.mock('@/lib/auth', () => ({
 jest.mock('@/lib/requestAuth', () => ({
   createUserAccessToken: jest.fn(),
   issueAuthTokens: jest.fn(),
+  serializeAuthenticatedUser: jest.fn((user) => ({
+    _id: user._id,
+    nom_complet: user.nom_complet,
+    email: user.email,
+  })),
 }));
 
 // Mock auditService
 jest.mock('@/lib/auditService', () => ({
   logActivity: jest.fn(),
+}));
+
+jest.mock('@/lib/auditNotificationService', () => ({
+  notifyAboutFailedLogins: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('@/lib/apiMiddleware', () => ({
+  applyRateLimit: jest.fn(() => ({ allowed: true })),
+  handleRateLimitError: jest.fn((_result) => ({
+    body: { error: 'Too many requests' },
+    status: 429,
+  })),
 }));
 
 // Mock NextResponse
@@ -50,7 +67,10 @@ describe('POST /api/auth/login', () => {
 
   it("devrait rejeter une requête si l'utilisateur n'existe pas", async () => {
     User.findOne.mockImplementation(() => {
-      return { populate: jest.fn().mockResolvedValue(null) };
+      const chain = {};
+      chain.select = jest.fn().mockReturnValue(chain);
+      chain.populate = jest.fn().mockResolvedValue(null);
+      return chain;
     });
 
     const req = createMockRequest({ email: 'test@example.com', password: 'Password123!' });
@@ -62,13 +82,14 @@ describe('POST /api/auth/login', () => {
 
   it('devrait rejeter un utilisateur inactif avec un message générique (anti-énumération)', async () => {
     User.findOne.mockImplementation(() => {
-      return {
-        populate: jest.fn().mockResolvedValue({
-          email: 'test@example.com',
-          status: 'Inactif',
-          password: 'hashedpassword',
-        }),
-      };
+      const chain = {};
+      chain.select = jest.fn().mockReturnValue(chain);
+      chain.populate = jest.fn().mockResolvedValue({
+        email: 'test@example.com',
+        status: 'Inactif',
+        password: 'hashedpassword',
+      });
+      return chain;
     });
 
     const req = createMockRequest({ email: 'test@example.com', password: 'Password123!' });
@@ -90,7 +111,10 @@ describe('POST /api/auth/login', () => {
     };
 
     User.findOne.mockImplementation(() => {
-      return { populate: jest.fn().mockResolvedValue(mockUser) };
+      const chain = {};
+      chain.select = jest.fn().mockReturnValue(chain);
+      chain.populate = jest.fn().mockResolvedValue(mockUser);
+      return chain;
     });
 
     verifyPassword.mockResolvedValue(true);
@@ -120,7 +144,10 @@ describe('POST /api/auth/login', () => {
     };
 
     User.findOne.mockImplementation(() => {
-      return { populate: jest.fn().mockResolvedValue(mockUser) };
+      const chain = {};
+      chain.select = jest.fn().mockReturnValue(chain);
+      chain.populate = jest.fn().mockResolvedValue(mockUser);
+      return chain;
     });
 
     verifyPassword.mockResolvedValue(false);
