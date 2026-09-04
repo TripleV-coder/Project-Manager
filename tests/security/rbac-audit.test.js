@@ -65,7 +65,7 @@ describe('Audit RBAC — protections branchées dans les routes', () => {
     const src = await read('app/api/deliverables/route.js');
     expect(src).not.toMatch(/gererProjets/);
     expect(src).toMatch(
-      /canUseProjectPermission\(user, body\.projet_id, \['modifierCharteProjet', 'validerLivrable'\]\)/
+      /canUseProjectPermission\(user, body\.projet_id, \[\s*'modifierCharteProjet',\s*'validerLivrable',?\s*\]\)/
     );
     expect(src).toMatch(/getAccessibleProjectIds/);
   });
