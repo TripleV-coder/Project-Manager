@@ -9,11 +9,13 @@ const publicRoutes = [
   '/first-login-reset',
   '/api/check',
   '/api/init',
+  '/api/health',
   '/api/auth/first-admin',
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/first-login-reset',
   '/api/health',
+  '/api/settings',
   '/api/settings/maintenance',
   '/welcome',
   '/maintenance',
@@ -222,5 +224,7 @@ export async function middleware(request) {
 
 // Configure matcher
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
+  ],
 };

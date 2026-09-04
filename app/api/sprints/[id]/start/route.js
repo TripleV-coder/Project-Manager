@@ -1,26 +1,25 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { authenticateRequest } from '@/lib/requestAuth';
-import { APIResponse, handleError } from '@/lib/apiResponse';
 import { logActivity } from '@/lib/auditService';
 import { emitToProject } from '@/lib/socket-emitter';
 import { SOCKET_EVENTS } from '@/lib/socket-events';
 import Sprint from '@/models/Sprint';
 import Task from '@/models/Task';
+import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canUseProjectPermission } from '@/lib/projectAccess';
 
 // PUT /api/sprints/[id]/start
-export async function PUT(request, { params }) {
-  try {
-    await connectDB();
-    const user = await authenticateRequest(request);
-    if (!user) return APIResponse.unauthorized();
-
-    const perms = user.role_id?.permissions || {};
-    if (!perms.gererSprints && !perms.adminConfig) return APIResponse.forbidden();
+export const PUT = withApiProtection(
+  async (request, context) => {
+    const { user, params } = context;
 
     const sprint = await Sprint.findById(params.id);
     if (!sprint)
       return NextResponse.json({ success: false, error: 'Sprint introuvable' }, { status: 404 });
+
+    if (!(await canUseProjectPermission(user, sprint.projet_id, 'gererSprints'))) {
+      return APIResponse.forbidden();
+    }
 
     if (sprint.statut === 'Actif') {
       return NextResponse.json(
@@ -35,7 +34,6 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Check no other active sprint for this project
     const activeSprint = await Sprint.findOne({
       projet_id: sprint.projet_id,
       statut: 'Actif',
@@ -52,14 +50,10 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Initialize burndown data
     const sprintTasks = await Task.find({ sprint_id: params.id });
     const totalPoints = sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
 
     const startDate = sprint.date_début ? new Date(sprint.date_début) : new Date();
-    const _endDate = sprint.date_fin
-      ? new Date(sprint.date_fin)
-      : new Date(Date.now() + 14 * 24 * 3600 * 1000);
 
     const updated = await Sprint.findByIdAndUpdate(
       params.id,
@@ -93,7 +87,8 @@ export async function PUT(request, { params }) {
       data: updated,
       message: 'Sprint démarré avec succès',
     });
-  } catch (error) {
-    return handleError(error, 'PUT /api/sprints/[id]/start');
-  }
-}
+  },
+  { requiredPermissions: ['gererSprints', 'adminConfig'] }
+);
+
+export const POST = PUT;

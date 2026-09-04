@@ -4,6 +4,11 @@ import { validateBody } from '@/lib/validate';
 import { updateCommentSchema } from '@/lib/schemas';
 import Comment from '@/models/Comment';
 import { withApiProtection } from '@/lib/withApiProtection';
+import {
+  canAccessProject,
+  canUseProjectPermission,
+  resolveProjectIdForEntity,
+} from '@/lib/projectAccess';
 
 // PUT /api/comments/[id]
 export const PUT = withApiProtection(async (request, context) => {
@@ -13,10 +18,14 @@ export const PUT = withApiProtection(async (request, context) => {
   if (!comment)
     return NextResponse.json({ success: false, error: 'Commentaire introuvable' }, { status: 404 });
 
-  // Only author or admin can edit
   const perms = user.role_id?.permissions || {};
   const isAuthor = comment.auteur?.toString() === user._id.toString();
+  const projectId = await resolveProjectIdForEntity(comment.entity_type, comment.entity_id);
+  if (!projectId || !(await canAccessProject(user, projectId))) return APIResponse.forbidden();
   if (!isAuthor && !perms.adminConfig) return APIResponse.forbidden();
+  if (!perms.adminConfig && !(await canUseProjectPermission(user, projectId, 'commenter'))) {
+    return APIResponse.forbidden();
+  }
 
   const validation = await validateBody(request, updateCommentSchema);
   if (!validation.success) return validation.response;
@@ -40,7 +49,12 @@ export const DELETE = withApiProtection(async (request, context) => {
 
   const perms = user.role_id?.permissions || {};
   const isAuthor = comment.auteur?.toString() === user._id.toString();
-  if (!isAuthor && !perms.adminConfig && !perms.gererCommentaires) return APIResponse.forbidden();
+  const projectId = await resolveProjectIdForEntity(comment.entity_type, comment.entity_id);
+  if (!projectId || !(await canAccessProject(user, projectId))) return APIResponse.forbidden();
+  if (!isAuthor && !perms.adminConfig) return APIResponse.forbidden();
+  if (!perms.adminConfig && !(await canUseProjectPermission(user, projectId, 'commenter'))) {
+    return APIResponse.forbidden();
+  }
 
   await Comment.findByIdAndDelete(params.id);
   // Also delete replies

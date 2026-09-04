@@ -7,9 +7,16 @@ import { SOCKET_EVENTS } from '@/lib/socket-events';
 import Sprint from '@/models/Sprint';
 import Task from '@/models/Task';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import {
+  canAccessProject,
+  canUseProjectPermission,
+  getAccessibleProjectIds,
+  getProjectIdsWithAssignedWork,
+} from '@/lib/projectAccess';
 
 // GET /api/sprints
-export const GET = withApiProtection(async (request, _context) => {
+export const GET = withApiProtection(async (request, context) => {
   const url = new URL(request.url);
   const projet_id = url.searchParams.get('projet_id');
   const statut = url.searchParams.get('statut');
@@ -18,7 +25,21 @@ export const GET = withApiProtection(async (request, _context) => {
   const skip = (page - 1) * limit;
 
   const filter = {};
-  if (projet_id) filter.projet_id = projet_id;
+  if (projet_id) {
+    if (!(await canAccessProject(context.user, projet_id))) {
+      const assignedHere = await Task.exists({ projet_id, assigné_à: context.user._id });
+      if (!assignedHere) {
+        return APIResponse.forbidden("Vous n'avez pas accès à ce projet");
+      }
+    }
+    filter.projet_id = projet_id;
+  } else {
+    const projectIds = await getAccessibleProjectIds(context.user);
+    if (projectIds !== null) {
+      const assignedProjectIds = await getProjectIdsWithAssignedWork(context.user);
+      filter.projet_id = { $in: [...projectIds, ...assignedProjectIds] };
+    }
+  }
   if (statut) filter.statut = statut;
 
   const [sprints, total] = await Promise.all([
@@ -84,6 +105,10 @@ export const POST = withApiProtection(
       );
     }
 
+    if (!(await canUseProjectPermission(user, body.projet_id, 'gererSprints'))) {
+      return APIResponse.forbidden();
+    }
+
     // Only one active sprint per project
     if (body.statut === 'Actif') {
       const activeSprint = await Sprint.findOne({ projet_id: body.projet_id, statut: 'Actif' });
@@ -98,7 +123,11 @@ export const POST = withApiProtection(
       }
     }
 
-    const sprint = await Sprint.create({ ...body, créé_par: user._id });
+    const sprint = await Sprint.create({
+      ...body,
+      capacité_équipe: body.capacité_équipe ?? body.capacité ?? 0,
+      créé_par: user._id,
+    });
 
     await logActivity(user, 'création', 'sprint', sprint._id, `Création sprint ${body.nom}`, {
       request,

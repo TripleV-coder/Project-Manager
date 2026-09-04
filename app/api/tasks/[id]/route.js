@@ -2,31 +2,34 @@ import { NextResponse } from 'next/server';
 import { APIResponse } from '@/lib/apiResponse';
 import { validateBody } from '@/lib/validate';
 import { updateTaskSchema } from '@/lib/schemas';
-import { getMergedPermissions } from '@/lib/permissions';
 import { logActivity } from '@/lib/auditService';
 import { emitToProject } from '@/lib/socket-emitter';
 import { SOCKET_EVENTS } from '@/lib/socket-events';
 import Task from '@/models/Task';
-import Project from '@/models/Project';
 import Sprint from '@/models/Sprint';
 import { withApiProtection } from '@/lib/withApiProtection';
+import {
+  canAccessProject,
+  canUseProjectPermission,
+  canViewTask,
+  validateTaskCommandChain,
+} from '@/lib/projectAccess';
+import { isSameUser } from '@/lib/projectRoster';
+import notificationService from '@/lib/services/notificationService';
 
 async function getTaskWithAccess(taskId, user) {
   const task = await Task.findById(taskId)
     .populate('assigné_à', 'nom_complet email avatar')
-    .populate('projet_id', 'nom membres chef_projet créé_par')
+    .populate('projet_id', 'nom membres chef_projet product_owner créé_par')
     .populate('sprint_id', 'nom statut')
     .populate('deliverable_id', 'nom');
 
   if (!task) return { error: 'Tâche introuvable', status: 404 };
 
-  const perms = user.role_id?.permissions || {};
-  if (!perms.voirTousProjets && !perms.adminConfig) {
-    const project = task.projet_id;
-    const isMember = project?.membres?.some((m) => m.user_id?.toString() === user._id.toString());
-    const isChef = project?.chef_projet?.toString() === user._id.toString();
-    const isCreator = project?.créé_par?.toString() === user._id.toString();
-    if (!isMember && !isChef && !isCreator) return { error: 'Accès refusé', status: 403 };
+  const projectId = task.projet_id?._id || task.projet_id;
+  const project = task.projet_id && typeof task.projet_id === 'object' ? task.projet_id : null;
+  if (!canViewTask(user, task, project) && !(await canAccessProject(user, projectId))) {
+    return { error: 'Accès refusé', status: 403 };
   }
 
   return { task };
@@ -54,15 +57,24 @@ export const PUT = withApiProtection(async (request, context) => {
   if (!task)
     return NextResponse.json({ success: false, error: 'Tâche introuvable' }, { status: 404 });
 
-  // Permission check via merged system + project roles
-  const project = await Project.findById(task.projet_id._id || task.projet_id).populate({
-    path: 'membres.project_role_id',
-  });
-  const memberData = project?.membres?.find((m) => m.user_id?.toString() === user._id.toString());
-  const merged = getMergedPermissions(user, memberData?.project_role_id);
+  const projectId = task.projet_id._id || task.projet_id;
+  const project = task.projet_id;
+  const isAssignee = isSameUser(task.assigné_à, user._id);
+  const canManage = await canUseProjectPermission(user, projectId, [
+    'gererTaches',
+    'deplacerTaches',
+  ]);
+  const assigneeOnlyStatus =
+    isAssignee &&
+    Object.keys(body).every((key) => ['statut', 'colonne_kanban', 'temps_réel'].includes(key));
 
-  if (!merged.permissions.gererTaches && !merged.permissions.deplacerTaches) {
+  if (!canManage && !assigneeOnlyStatus) {
     return APIResponse.forbidden();
+  }
+
+  const chainError = await validateTaskCommandChain(body, project);
+  if (chainError) {
+    return NextResponse.json({ success: false, error: chainError }, { status: 422 });
   }
 
   const oldStatut = task.statut;
@@ -90,7 +102,7 @@ export const PUT = withApiProtection(async (request, context) => {
     }
   }
 
-  const projetId = (task.projet_id._id || task.projet_id).toString();
+  const projetId = projectId.toString();
   await logActivity(user, 'modification', 'tâche', task._id, `Modification tâche ${task.titre}`, {
     request,
     httpMethod: 'PUT',
@@ -100,6 +112,11 @@ export const PUT = withApiProtection(async (request, context) => {
   });
 
   emitToProject(projetId, SOCKET_EVENTS.TASK_UPDATED, { task: updatedTask });
+
+  const previousAssignee = task.assigné_à?._id || task.assigné_à;
+  if (body.assigné_à && String(body.assigné_à) !== String(previousAssignee || '')) {
+    await notificationService.notifyTaskAssigned(updatedTask, body.assigné_à, user._id);
+  }
 
   return NextResponse.json({ success: true, data: updatedTask });
 });
@@ -114,6 +131,9 @@ export const DELETE = withApiProtection(
       return NextResponse.json({ success: false, error: 'Tâche introuvable' }, { status: 404 });
 
     const projetId = task.projet_id?.toString();
+    if (!(await canUseProjectPermission(user, task.projet_id, 'gererTaches'))) {
+      return APIResponse.forbidden();
+    }
     const titre = task.titre;
 
     await Task.findByIdAndDelete(params.id);

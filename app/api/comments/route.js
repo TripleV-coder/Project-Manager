@@ -7,9 +7,23 @@ import Comment from '@/models/Comment';
 import Notification from '@/models/Notification';
 import User from '@/models/User';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import {
+  buildAccessibleEntityConditions,
+  canAccessProject,
+  canUseProjectPermission,
+  resolveProjectIdForEntity,
+} from '@/lib/projectAccess';
+
+const COMMENT_ENTITY_TYPE_MAP = {
+  project: 'projet',
+  task: 'tâche',
+  tache: 'tâche',
+  deliverable: 'livrable',
+};
 
 // GET /api/comments
-export const GET = withApiProtection(async (request, _context) => {
+export const GET = withApiProtection(async (request, context) => {
   const url = new URL(request.url);
   const entity_type = url.searchParams.get('entity_type');
   const entity_id = url.searchParams.get('entity_id');
@@ -20,6 +34,18 @@ export const GET = withApiProtection(async (request, _context) => {
   const filter = {};
   if (entity_type) filter.entity_type = entity_type;
   if (entity_id) filter.entity_id = entity_id;
+
+  const perms = context.user.role_id?.permissions || {};
+  if (!perms.adminConfig && !perms.voirTousProjets) {
+    if (entity_id) {
+      const projectId = await resolveProjectIdForEntity(entity_type, entity_id);
+      if (!projectId || !(await canAccessProject(context.user, projectId))) {
+        return APIResponse.forbidden("Vous n'avez pas accès à cette ressource");
+      }
+    } else {
+      filter.$or = await buildAccessibleEntityConditions(context.user, entity_type);
+    }
+  }
 
   const [comments, total] = await Promise.all([
     Comment.find(filter)
@@ -43,7 +69,19 @@ export const POST = withApiProtection(
     const validation = await validateBody(request, createCommentSchema);
     if (!validation.success) return validation.response;
 
-    const body = validation.data;
+    const body = {
+      ...validation.data,
+      entity_type:
+        COMMENT_ENTITY_TYPE_MAP[validation.data.entity_type] || validation.data.entity_type,
+    };
+
+    const projectId = await resolveProjectIdForEntity(body.entity_type, body.entity_id);
+    if (!projectId) {
+      return APIResponse.notFound('Entité liée introuvable');
+    }
+    if (!(await canUseProjectPermission(user, projectId, 'commenter'))) {
+      return APIResponse.forbidden();
+    }
 
     // Sanitize HTML content to prevent XSS attacks
     if (body.contenu_html) {

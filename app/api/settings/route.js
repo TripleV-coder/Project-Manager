@@ -8,7 +8,7 @@ import { withApiProtection } from '@/lib/withApiProtection';
 // GET /api/settings - public settings, no auth required
 export const GET = withApiProtection(
   async (_request, _context) => {
-    const settings = await appSettingsService.getSettings();
+    const settings = await appSettingsService.getAppSettings();
 
     // We only return safe settings publicly
     const publicSettings = {
@@ -35,7 +35,7 @@ export const PUT = withApiProtection(
     const validation = await validateBody(request, updateSettingsSchema);
     if (!validation.success) return validation.response;
 
-    const updated = await appSettingsService.updateSettings(validation.data, user._id);
+    const updated = await appSettingsService.setAppSettings(validation.data, user._id);
 
     await logActivity(
       user,

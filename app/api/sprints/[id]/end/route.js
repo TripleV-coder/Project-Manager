@@ -1,26 +1,25 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { authenticateRequest } from '@/lib/requestAuth';
-import { APIResponse, handleError } from '@/lib/apiResponse';
 import { logActivity } from '@/lib/auditService';
 import { emitToProject } from '@/lib/socket-emitter';
 import { SOCKET_EVENTS } from '@/lib/socket-events';
 import Sprint from '@/models/Sprint';
 import Task from '@/models/Task';
+import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canUseProjectPermission } from '@/lib/projectAccess';
 
 // PUT /api/sprints/[id]/end
-export async function PUT(request, { params }) {
-  try {
-    await connectDB();
-    const user = await authenticateRequest(request);
-    if (!user) return APIResponse.unauthorized();
-
-    const perms = user.role_id?.permissions || {};
-    if (!perms.gererSprints && !perms.adminConfig) return APIResponse.forbidden();
+export const PUT = withApiProtection(
+  async (request, context) => {
+    const { user, params } = context;
 
     const sprint = await Sprint.findById(params.id);
     if (!sprint)
       return NextResponse.json({ success: false, error: 'Sprint introuvable' }, { status: 404 });
+
+    if (!(await canUseProjectPermission(user, sprint.projet_id, 'gererSprints'))) {
+      return APIResponse.forbidden();
+    }
 
     if (sprint.statut !== 'Actif') {
       return NextResponse.json(
@@ -29,7 +28,6 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Compute velocity
     const sprintTasks = await Task.find({ sprint_id: params.id });
     const completedPoints = sprintTasks
       .filter((t) => t.statut === 'Terminé')
@@ -48,7 +46,6 @@ export async function PUT(request, { params }) {
       { new: true }
     );
 
-    // Move incomplete tasks to backlog
     if (incompleteTasks.length > 0) {
       await Task.updateMany(
         { sprint_id: params.id, statut: { $ne: 'Terminé' } },
@@ -75,7 +72,8 @@ export async function PUT(request, { params }) {
         incompleteTasksMoved: incompleteTasks.length,
       },
     });
-  } catch (error) {
-    return handleError(error, 'PUT /api/sprints/[id]/end');
-  }
-}
+  },
+  { requiredPermissions: ['gererSprints', 'adminConfig'] }
+);
+
+export const POST = PUT;

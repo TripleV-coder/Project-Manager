@@ -9,24 +9,50 @@ import { withApiProtection } from '@/lib/withApiProtection';
 
 // GET /api/users
 export const GET = withApiProtection(
-  async (request, _context) => {
+  async (request, context) => {
+    const { user } = context;
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit')) || 50, 200);
     const page = Math.max(parseInt(url.searchParams.get('page')) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const { users, total } = await userService.getUsers(limit, skip);
+    const isFullAdmin =
+      user.role_id?.permissions?.gererUtilisateurs === true ||
+      user.role_id?.permissions?.adminConfig === true;
+
+    const { users, total } = await userService.getUsers(
+      limit,
+      skip,
+      isFullAdmin ? {} : { status: 'Actif' }
+    );
+
+    const data = isFullAdmin
+      ? users
+      : users.map((item) => ({
+          _id: item._id,
+          nom_complet: item.nom_complet,
+          avatar: item.avatar,
+          status: item.status,
+        }));
 
     return NextResponse.json({
       success: true,
-      data: users,
+      data,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     });
   },
-  { requiredPermissions: ['gererUtilisateurs', 'adminConfig'] }
+  {
+    requiredPermissions: [
+      'gererUtilisateurs',
+      'adminConfig',
+      'gererMembresProjet',
+      'creerProjet',
+      'genererRapports',
+    ],
+  }
 );
 
 // POST /api/users

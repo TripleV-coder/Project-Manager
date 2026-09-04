@@ -7,6 +7,8 @@ import notificationService from '@/lib/services/notificationService';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canUseProjectPermission, resolveProjectIdForEntity } from '@/lib/projectAccess';
 
 // POST /api/files/upload
 export const POST = withApiProtection(
@@ -15,15 +17,35 @@ export const POST = withApiProtection(
 
     const formData = await request.formData();
     const file = formData.get('file');
-    const entity_type = formData.get('entity_type');
-    const entity_id = formData.get('entity_id');
+    const projet_id = formData.get('projet_id');
+    const deliverable_id = formData.get('deliverable_id');
+    const folder = formData.get('folder') || formData.get('dossier') || '/';
     const description = formData.get('description');
+    let entity_type = formData.get('entity_type');
+    let entity_id = formData.get('entity_id');
+
+    if ((!entity_type || !entity_id) && deliverable_id) {
+      entity_type = 'livrable';
+      entity_id = deliverable_id;
+    }
+    if ((!entity_type || !entity_id) && projet_id) {
+      entity_type = 'projet';
+      entity_id = projet_id;
+    }
 
     if (!file || !entity_type || !entity_id) {
       return NextResponse.json(
         { success: false, error: "Fichier et informations d'entité requis" },
         { status: 400 }
       );
+    }
+
+    const projectId = await resolveProjectIdForEntity(entity_type, entity_id);
+    if (!projectId) {
+      return APIResponse.notFound('Entité liée introuvable');
+    }
+    if (!(await canUseProjectPermission(user, projectId, 'gererFichiers'))) {
+      return APIResponse.forbidden();
     }
 
     // Process file storage (local for now, as in the monolith)
@@ -41,11 +63,17 @@ export const POST = withApiProtection(
 
     const newFile = await File.create({
       nom: file.name,
-      chemin: fileUrl,
+      nom_original: file.name,
+      url: fileUrl,
+      url_local: fileUrl,
+      path_local: filePath,
       taille: file.size,
       type_mime: file.type,
+      type: file.type,
       entity_type,
       entity_id,
+      projet_id: projectId,
+      dossier: folder || '/',
       description: description || '',
       uploadé_par: user._id,
     });
@@ -78,5 +106,9 @@ export const POST = withApiProtection(
 
     return NextResponse.json({ success: true, data: newFile }, { status: 201 });
   },
-  { rateLimitPreset: 'upload', maxBodySize: 10485760 }
+  {
+    requiredPermissions: ['gererFichiers', 'adminConfig'],
+    rateLimitPreset: 'upload',
+    maxBodySize: 10485760,
+  }
 );

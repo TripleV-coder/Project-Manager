@@ -4,6 +4,8 @@ import { updateExpenseSchema } from '@/lib/schemas';
 import { logActivity } from '@/lib/auditService';
 import Expense from '@/models/Budget';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canUseProjectPermission } from '@/lib/projectAccess';
 
 // PUT /api/expenses/[id]
 export const PUT = withApiProtection(
@@ -18,7 +20,11 @@ export const PUT = withApiProtection(
       return NextResponse.json({ success: false, error: 'Dépense introuvable' }, { status: 404 });
     }
 
-    if (expense.statut === 'Approuvée' && !perms.adminConfig) {
+    if (!(await canUseProjectPermission(user, expense.projet_id, 'modifierBudget'))) {
+      return APIResponse.forbidden();
+    }
+
+    if (expense.statut === 'validé' && !perms.adminConfig) {
       return NextResponse.json(
         { success: false, error: 'Impossible de modifier une dépense approuvée' },
         { status: 403 }
@@ -67,7 +73,11 @@ export const DELETE = withApiProtection(
       return NextResponse.json({ success: false, error: 'Dépense introuvable' }, { status: 404 });
     }
 
-    if (expense.statut === 'Approuvée' && !perms.adminConfig) {
+    if (!(await canUseProjectPermission(user, expense.projet_id, 'modifierBudget'))) {
+      return APIResponse.forbidden();
+    }
+
+    if (expense.statut === 'validé' && !perms.adminConfig) {
       return NextResponse.json(
         { success: false, error: 'Impossible de supprimer une dépense approuvée' },
         { status: 403 }

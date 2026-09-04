@@ -12,7 +12,7 @@ export async function POST(request) {
   try {
     await connectDB();
 
-    const rl = applyRateLimit(request, null, RATE_LIMIT_CONFIG.auth);
+    const rl = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.auth);
     if (!rl.allowed) return handleRateLimitError(rl);
 
     const refreshToken = getRefreshTokenFromRequest(request);

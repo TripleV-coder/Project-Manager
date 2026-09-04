@@ -6,6 +6,13 @@ import { logActivity } from '@/lib/auditService';
 import Deliverable from '@/models/Deliverable';
 import Project from '@/models/Project';
 import { withApiProtection } from '@/lib/withApiProtection';
+import {
+  canAccessProjectOrAssignedWork,
+  canUseProjectPermission,
+  getAccessibleProjectIds,
+  getProjectIdsWithAssignedWork,
+} from '@/lib/projectAccess';
+import { isOnProjectRoster } from '@/lib/projectRoster';
 
 // GET /api/deliverables
 export const GET = withApiProtection(async (request, context) => {
@@ -18,23 +25,16 @@ export const GET = withApiProtection(async (request, context) => {
   const skip = (page - 1) * limit;
 
   const filter = {};
-  if (projectId) filter.projet_id = projectId;
-
-  const perms = user.role_id?.permissions || {};
-  if (!perms.voirTousProjets && !perms.adminConfig) {
-    if (projectId) {
-      const project = await Project.findById(projectId);
-      const isMember = project?.membres?.some((m) => m.user_id?.toString() === user._id.toString());
-      const isChef = project?.chef_projet?.toString() === user._id.toString();
-      const isCreator = project?.créé_par?.toString() === user._id.toString();
-      if (!isMember && !isChef && !isCreator) return APIResponse.forbidden();
-    } else {
-      const userProjects = await Project.find({
-        $or: [{ 'membres.user_id': user._id }, { chef_projet: user._id }, { créé_par: user._id }],
-      })
-        .select('_id')
-        .lean();
-      filter.projet_id = { $in: userProjects.map((p) => p._id) };
+  if (projectId) {
+    if (!(await canAccessProjectOrAssignedWork(user, projectId))) {
+      return APIResponse.forbidden();
+    }
+    filter.projet_id = projectId;
+  } else {
+    const projectIds = await getAccessibleProjectIds(user);
+    if (projectIds !== null) {
+      const assignedIds = await getProjectIdsWithAssignedWork(user);
+      filter.projet_id = { $in: [...projectIds, ...assignedIds] };
     }
   }
 
@@ -67,6 +67,22 @@ export const POST = withApiProtection(
     if (!project)
       return NextResponse.json({ success: false, error: 'Projet introuvable' }, { status: 404 });
 
+    if (
+      !(await canUseProjectPermission(user, body.projet_id, [
+        'modifierCharteProjet',
+        'validerLivrable',
+      ]))
+    ) {
+      return APIResponse.forbidden();
+    }
+
+    if (body.responsable_id && !isOnProjectRoster(project, body.responsable_id)) {
+      return NextResponse.json(
+        { success: false, error: 'Le responsable doit être un membre du projet' },
+        { status: 422 }
+      );
+    }
+
     const deliverable = await Deliverable.create({
       ...body,
       créé_par: user._id,
@@ -82,5 +98,5 @@ export const POST = withApiProtection(
 
     return NextResponse.json({ success: true, data: deliverable }, { status: 201 });
   },
-  { requiredPermissions: ['gererProjets', 'adminConfig'] }
+  { requiredPermissions: ['modifierCharteProjet', 'validerLivrable', 'adminConfig'] }
 );

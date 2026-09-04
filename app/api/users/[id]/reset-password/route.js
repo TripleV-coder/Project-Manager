@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import { authenticateRequest } from '@/lib/requestAuth';
-import { APIResponse, handleError } from '@/lib/apiResponse';
+import { withApiProtection } from '@/lib/withApiProtection';
 import {
   assignTemporaryPassword,
   sendTemporaryPasswordEmail,
@@ -10,20 +8,9 @@ import {
 import { logActivity } from '@/lib/auditService';
 import User from '@/models/User';
 
-// PUT /api/users/[id]/reset-password
-export async function PUT(request, { params }) {
-  try {
-    await connectDB();
-    const user = await authenticateRequest(request);
-
-    // Only admins or those with 'gererUtilisateurs' permission
-    if (
-      !user ||
-      (!user.role_id?.permissions?.gererUtilisateurs && !user.role_id?.permissions?.adminConfig)
-    ) {
-      return APIResponse.forbidden();
-    }
-
+export const PUT = withApiProtection(
+  async (request, context) => {
+    const { user, params } = context;
     const targetUserId = params.id;
     const targetUser = await User.findById(targetUserId);
 
@@ -34,18 +21,13 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Assign new temporary password
     const tempPassword = await assignTemporaryPassword(targetUser, {
       firstLogin: false,
       mustChangePassword: true,
     });
 
     await targetUser.save();
-
-    // Revoke existing sessions
     await revokeUserSessions(targetUser._id, 'password_reset');
-
-    // Send temporary password via email (non-blocking)
     await sendTemporaryPasswordEmail(targetUser, tempPassword);
 
     await logActivity(
@@ -67,7 +49,6 @@ export async function PUT(request, { params }) {
       message:
         'Mot de passe réinitialisé. Le nouveau mot de passe temporaire a été envoyé par email.',
     });
-  } catch (error) {
-    return handleError(error, 'PUT /api/users/[id]/reset-password');
-  }
-}
+  },
+  { requiredPermissions: ['gererUtilisateurs', 'adminConfig'] }
+);

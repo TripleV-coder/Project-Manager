@@ -7,19 +7,32 @@ import { SOCKET_EVENTS } from '@/lib/socket-events';
 import Sprint from '@/models/Sprint';
 import Task from '@/models/Task';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canAccessProject, canUseProjectPermission } from '@/lib/projectAccess';
+import { isSameUser } from '@/lib/projectRoster';
 
 // GET /api/sprints/[id]
 export const GET = withApiProtection(async (request, context) => {
-  const { params } = context;
+  const { user, params } = context;
 
   const sprint = await Sprint.findById(params.id).populate('projet_id', 'nom');
   if (!sprint)
     return NextResponse.json({ success: false, error: 'Sprint introuvable' }, { status: 404 });
 
-  // Attach tasks
-  const tasks = await Task.find({ sprint_id: params.id })
+  const projectId = sprint.projet_id?._id || sprint.projet_id;
+  const onRoster = await canAccessProject(user, projectId);
+  if (!onRoster) {
+    const assignedInSprint = await Task.exists({ sprint_id: params.id, assigné_à: user._id });
+    if (!assignedInSprint) return APIResponse.forbidden();
+  }
+
+  let tasks = await Task.find({ sprint_id: params.id })
     .populate('assigné_à', 'nom_complet email avatar')
     .lean();
+
+  if (!onRoster) {
+    tasks = tasks.filter((task) => isSameUser(task.assigné_à, user._id));
+  }
 
   return NextResponse.json({ success: true, data: { ...sprint.toObject(), tasks } });
 });
@@ -35,6 +48,10 @@ export const PUT = withApiProtection(
     const sprint = await Sprint.findById(params.id);
     if (!sprint)
       return NextResponse.json({ success: false, error: 'Sprint introuvable' }, { status: 404 });
+
+    if (!(await canUseProjectPermission(user, sprint.projet_id, 'gererSprints'))) {
+      return APIResponse.forbidden();
+    }
 
     const updated = await Sprint.findByIdAndUpdate(
       params.id,
@@ -74,6 +91,10 @@ export const DELETE = withApiProtection(
     const sprint = await Sprint.findById(params.id);
     if (!sprint)
       return NextResponse.json({ success: false, error: 'Sprint introuvable' }, { status: 404 });
+
+    if (!(await canUseProjectPermission(user, sprint.projet_id, 'gererSprints'))) {
+      return APIResponse.forbidden();
+    }
 
     if (sprint.statut === 'Actif') {
       return NextResponse.json(

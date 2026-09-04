@@ -3,7 +3,11 @@ import { validateBody } from '@/lib/validate';
 import { updateDeliverableSchema } from '@/lib/schemas';
 import { logActivity } from '@/lib/auditService';
 import Deliverable from '@/models/Deliverable';
+import Project from '@/models/Project';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { APIResponse } from '@/lib/apiResponse';
+import { canUseProjectPermission } from '@/lib/projectAccess';
+import { isOnProjectRoster } from '@/lib/projectRoster';
 
 // PUT /api/deliverables/[id]
 export const PUT = withApiProtection(
@@ -17,8 +21,27 @@ export const PUT = withApiProtection(
       return NextResponse.json({ success: false, error: 'Livrable introuvable' }, { status: 404 });
     }
 
+    if (
+      !(await canUseProjectPermission(user, deliverable.projet_id, [
+        'modifierCharteProjet',
+        'validerLivrable',
+      ]))
+    ) {
+      return APIResponse.forbidden();
+    }
+
     const validation = await validateBody(request, updateDeliverableSchema);
     if (!validation.success) return validation.response;
+
+    if (validation.data.responsable_id) {
+      const project = await Project.findById(deliverable.projet_id).lean();
+      if (!project || !isOnProjectRoster(project, validation.data.responsable_id)) {
+        return NextResponse.json(
+          { success: false, error: 'Le responsable doit être un membre du projet' },
+          { status: 422 }
+        );
+      }
+    }
 
     const updated = await Deliverable.findByIdAndUpdate(
       deliverableId,
@@ -43,7 +66,7 @@ export const PUT = withApiProtection(
 
     return NextResponse.json({ success: true, data: updated });
   },
-  { requiredPermissions: ['gererProjets', 'validerLivrable', 'adminConfig'] }
+  { requiredPermissions: ['modifierCharteProjet', 'validerLivrable', 'adminConfig'] }
 );
 
 // DELETE /api/deliverables/[id]
@@ -58,6 +81,10 @@ export const DELETE = withApiProtection(
       return NextResponse.json({ success: false, error: 'Livrable introuvable' }, { status: 404 });
     }
 
+    if (!(await canUseProjectPermission(user, deliverable.projet_id, 'modifierCharteProjet'))) {
+      return APIResponse.forbidden();
+    }
+
     await Deliverable.findByIdAndDelete(deliverableId);
 
     await logActivity(user, 'suppression', 'livrable', deliverableId, `Suppression livrable`, {
@@ -70,5 +97,5 @@ export const DELETE = withApiProtection(
 
     return NextResponse.json({ success: true, message: 'Livrable supprimé' });
   },
-  { requiredPermissions: ['gererProjets', 'adminConfig'] }
+  { requiredPermissions: ['modifierCharteProjet', 'adminConfig'] }
 );

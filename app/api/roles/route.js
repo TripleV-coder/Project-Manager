@@ -6,11 +6,14 @@ import Role from '@/models/Role';
 import { withApiProtection } from '@/lib/withApiProtection';
 
 // GET /api/roles
-export const GET = withApiProtection(async (_request, _context) => {
-  const roles = await Role.find({}).sort({ is_predefined: -1, nom: 1 }).lean();
+export const GET = withApiProtection(
+  async (_request, _context) => {
+    const roles = await Role.find({}).sort({ is_predefined: -1, nom: 1 }).lean();
 
-  return NextResponse.json({ success: true, data: roles });
-});
+    return NextResponse.json({ success: true, data: roles });
+  },
+  { requiredPermissions: ['adminConfig'] }
+);
 
 // POST /api/roles
 export const POST = withApiProtection(

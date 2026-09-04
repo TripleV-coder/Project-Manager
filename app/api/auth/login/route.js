@@ -4,10 +4,16 @@ import { handleError } from '@/lib/apiResponse';
 import { validateBody } from '@/lib/validate';
 import { loginRequestSchema } from '@/lib/requestValidation';
 import { hashPassword, verifyPassword } from '@/lib/auth';
-import { createUserAccessToken, issueAuthTokens } from '@/lib/requestAuth';
+import {
+  createUserAccessToken,
+  issueAuthTokens,
+  serializeAuthenticatedUser,
+} from '@/lib/requestAuth';
 import { logActivity } from '@/lib/auditService';
 import { notifyAboutFailedLogins } from '@/lib/auditNotificationService';
 import { getClientIP } from '@/lib/rateLimit';
+import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
+import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import User from '@/models/User';
 
 // Dummy bcrypt hash used to equalize timing when the email is unknown.
@@ -33,13 +39,20 @@ const GENERIC_AUTH_ERROR = 'Identifiants invalides';
 export async function POST(request) {
   const startedAt = Date.now();
   try {
+    const rateLimit = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.login);
+    if (!rateLimit.allowed) {
+      return handleRateLimitError(rateLimit);
+    }
+
     await connectDB();
     const validation = await validateBody(request, loginRequestSchema);
     if (!validation.success) return validation.response;
 
     const { email, password } = validation.data;
 
-    const user = await User.findOne({ email: email.toLowerCase() }).populate('role_id');
+    const user = await User.findOne({ email: email.toLowerCase() })
+      .select('+password')
+      .populate('role_id');
 
     // No-user / inactive / locked branches all return the same generic
     // message + status so an attacker can't enumerate accounts. We still
@@ -65,9 +78,9 @@ export async function POST(request) {
     const isValid = await verifyPassword(password, user.password);
 
     if (!isValid) {
-      // Manage failed attempts
-      user.loginAttempts = (user.loginAttempts || 0) + 1;
-      const lockoutThresholdReached = user.loginAttempts >= 5;
+      user.failedLoginAttempts = (user.failedLoginAttempts || user.loginAttempts || 0) + 1;
+      user.loginAttempts = user.failedLoginAttempts;
+      const lockoutThresholdReached = user.failedLoginAttempts >= 5;
       if (lockoutThresholdReached) {
         user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 mins
       }
@@ -78,7 +91,7 @@ export async function POST(request) {
       // credential dump replay, etc). Best-effort — failure is swallowed.
       if (lockoutThresholdReached) {
         const ip = getClientIP(request) || 'unknown';
-        notifyAboutFailedLogins(user._id, user.loginAttempts, ip).catch(() => {});
+        notifyAboutFailedLogins(user._id, user.failedLoginAttempts, ip).catch(() => {});
       }
 
       await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
@@ -87,37 +100,31 @@ export async function POST(request) {
 
     // Success, reset attempts
     user.loginAttempts = 0;
+    user.failedLoginAttempts = 0;
     user.lockUntil = undefined;
     user.lastLoginAt = new Date();
+    user.dernière_connexion = new Date();
     await user.save();
 
-    // Check if password reset is required
-    if (user.mustChangePassword) {
-      return NextResponse.json({
-        success: true,
-        requirePasswordChange: true,
-        message: 'Vous devez changer votre mot de passe',
-      });
-    }
+    const mustChange =
+      user.must_change_password === true ||
+      user.mustChangePassword === true ||
+      user.first_login === true;
 
-    // Check if 2FA is required
-    if (user.twoFactorEnabled) {
+    if (user.twoFactorEnabled && !mustChange) {
       return NextResponse.json({
         success: true,
         require2FA: true,
-        tempToken: await createUserAccessToken(user, '5m'), // Short lived token just for 2FA
+        requires2FA: true,
+        email: user.email,
+        tempToken: await createUserAccessToken(user, 5),
       });
     }
 
     const response = NextResponse.json({
       success: true,
-      user: {
-        id: user._id,
-        nom_complet: user.nom_complet,
-        email: user.email,
-        role: user.role_id,
-        avatar: user.avatar,
-      },
+      requirePasswordChange: mustChange,
+      user: serializeAuthenticatedUser(user),
     });
 
     await issueAuthTokens(response, user);
