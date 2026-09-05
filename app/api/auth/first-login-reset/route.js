@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { handleError } from '@/lib/apiResponse';
 import { validateBody } from '@/lib/validate';
 import { firstLoginResetSchema } from '@/lib/requestValidation';
-import { verifyPassword, hashPassword, validatePassword } from '@/lib/auth';
+import { verifyPassword, hashPassword, validatePassword, isPasswordReused } from '@/lib/auth';
 import {
   authenticateRequest,
   getBearerToken,
@@ -77,9 +77,20 @@ export async function POST(request) {
       );
     }
 
+    if (await isPasswordReused(new_password, user.password_history)) {
+      return NextResponse.json(
+        { success: false, error: 'Ce mot de passe a déjà été utilisé récemment' },
+        { status: 422 }
+      );
+    }
+
     await revokeUserSessions(user._id);
 
     user.password = await hashPassword(new_password);
+    user.password_history = [
+      { hash: user.password, date: new Date() },
+      ...(user.password_history || []).slice(0, 4),
+    ];
     user.must_change_password = false;
     user.first_login = false;
     user.tokenVersion = (user.tokenVersion || 0) + 1;

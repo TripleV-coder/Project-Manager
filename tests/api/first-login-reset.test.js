@@ -107,4 +107,23 @@ describe('POST /api/auth/first-login-reset', () => {
     const res = await reset(resetReq(token));
     expect(res.status).toBe(401);
   });
+
+  test('rejects reuse of a password in history', async () => {
+    const { hashPassword } = jest.requireActual('@/lib/auth');
+    const reusedHash = await hashPassword('StrongPass123!');
+    User.findById.mockReturnValue({
+      select: () => ({
+        populate: () =>
+          Promise.resolve({ ...mustChangeUser(), password_history: [{ hash: reusedHash }] }),
+      }),
+    });
+    // verifyPassword mock returns true for the temp password check
+    const token = await createStepUpToken(
+      { _id: 'u1', tokenVersion: 0 },
+      STEP_UP_SCOPE.PASSWORD_CHANGE,
+      15
+    );
+    const res = await reset(resetReq(token, strongPw));
+    expect(res.status).toBe(422);
+  });
 });

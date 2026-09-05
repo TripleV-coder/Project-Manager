@@ -92,3 +92,20 @@ describe('signTokenWithMinutes TTL', () => {
     expect(p2.exp - p2.iat).toBe(10080 * 60);
   });
 });
+
+describe('isPasswordReused', () => {
+  const { isPasswordReused, hashPassword } = require('@/lib/auth');
+
+  test('detects a reused password', async () => {
+    const h = await hashPassword('OldPass123!');
+    expect(await isPasswordReused('OldPass123!', [{ hash: h }])).toBe(true);
+  });
+  test('passes a fresh password', async () => {
+    const h = await hashPassword('OldPass123!');
+    expect(await isPasswordReused('BrandNew456!', [{ hash: h }])).toBe(false);
+  });
+  test('handles empty / missing history', async () => {
+    expect(await isPasswordReused('x', [])).toBe(false);
+    expect(await isPasswordReused('x', undefined)).toBe(false);
+  });
+});
