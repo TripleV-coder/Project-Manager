@@ -7,17 +7,25 @@ import {
 } from '@/lib/userSecurity';
 import { logActivity } from '@/lib/auditService';
 import User from '@/models/User';
+import { canActorManageTarget } from '@/lib/userManagement';
 
 export const PUT = withApiProtection(
   async (request, context) => {
     const { user, params } = context;
     const targetUserId = params.id;
-    const targetUser = await User.findById(targetUserId);
+    const targetUser = await User.findById(targetUserId).populate('role_id');
 
     if (!targetUser) {
       return NextResponse.json(
         { success: false, error: 'Utilisateur introuvable' },
         { status: 404 }
+      );
+    }
+
+    if (!canActorManageTarget(user, targetUser)) {
+      return NextResponse.json(
+        { success: false, error: 'Action non autorisée sur ce compte' },
+        { status: 403 }
       );
     }
 

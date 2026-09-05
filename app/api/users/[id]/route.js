@@ -5,6 +5,7 @@ import { logActivity } from '@/lib/auditService';
 import { revokeUserSessions } from '@/lib/userSecurity';
 import User from '@/models/User';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { canActorManageTarget } from '@/lib/userManagement';
 
 // PUT /api/users/[id]
 export const PUT = withApiProtection(
@@ -12,12 +13,19 @@ export const PUT = withApiProtection(
     const { user, params } = context;
 
     const targetUserId = params.id;
-    const targetUser = await User.findById(targetUserId);
+    const targetUser = await User.findById(targetUserId).populate('role_id');
 
     if (!targetUser) {
       return NextResponse.json(
         { success: false, error: 'Utilisateur introuvable' },
         { status: 404 }
+      );
+    }
+
+    if (!canActorManageTarget(user, targetUser)) {
+      return NextResponse.json(
+        { success: false, error: 'Action non autorisée sur ce compte' },
+        { status: 403 }
       );
     }
 
@@ -72,11 +80,18 @@ export const DELETE = withApiProtection(
       );
     }
 
-    const targetUser = await User.findById(targetUserId);
+    const targetUser = await User.findById(targetUserId).populate('role_id');
     if (!targetUser) {
       return NextResponse.json(
         { success: false, error: 'Utilisateur introuvable' },
         { status: 404 }
+      );
+    }
+
+    if (!canActorManageTarget(user, targetUser)) {
+      return NextResponse.json(
+        { success: false, error: 'Action non autorisée sur ce compte' },
+        { status: 403 }
       );
     }
 
