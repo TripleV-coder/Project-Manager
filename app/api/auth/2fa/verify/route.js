@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import User from '@/models/User';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { applyUserRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
+import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import { getBearerToken, issueAuthTokens, serializeAuthenticatedUser } from '@/lib/requestAuth';
 import { verifyStepUpToken, createStepUpToken, STEP_UP_SCOPE } from '@/lib/auth/stepUp';
 import { mustChangePassword } from '@/lib/userState';
@@ -35,6 +37,19 @@ export const POST = withApiProtection(
 
     if (!fresh.twoFactorEnabled) {
       return NextResponse.json({ success: false, error: '2FA non activé' }, { status: 400 });
+    }
+
+    // withApiProtection's per-user pass (pass 2) never runs for this route
+    // (requireAuth: false, since the caller isn't authenticated yet — they're
+    // proving the second factor). Without an explicit per-account cap here,
+    // an attacker with a valid password and rotating source IPs could grind
+    // a 6-digit TOTP code with no account-side throttle, only the IP-based
+    // pass 1. Enforce it here instead, now that the token is a genuinely
+    // valid, fresh challenge for a real account (so an invalid/expired token
+    // can't be used to burn another account's budget).
+    const userLimit = await applyUserRateLimit(String(fresh._id), RATE_LIMIT_CONFIG.auth);
+    if (!userLimit.allowed) {
+      return handleRateLimitError(userLimit);
     }
 
     let backupCodesRemaining;

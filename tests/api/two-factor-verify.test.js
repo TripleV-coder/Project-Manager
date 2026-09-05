@@ -18,6 +18,14 @@ jest.mock('@/lib/twoFactorAuth', () => ({
   verifyTwoFactorToken: jest.fn(() => true),
   verifyBackupCode: jest.fn(() => ({ valid: true, remainingCodes: [] })),
 }));
+// The per-user rate limit added to close the "no account-side TOTP brute-
+// force cap" gap (withApiProtection's own pass 2 never runs here because
+// this route uses requireAuth: false). Defaults to "allowed" so existing
+// tests that don't care about it don't need their own stub.
+jest.mock('@/lib/apiMiddleware', () => ({
+  applyUserRateLimit: jest.fn(async () => ({ allowed: true })),
+  handleRateLimitError: jest.fn(() => ({ status: 429 })),
+}));
 jest.mock('@/lib/auditService', () => ({ logActivity: jest.fn() }));
 jest.mock('@/lib/requestAuth', () => ({
   ...jest.requireActual('@/lib/requestAuth'),
@@ -135,5 +143,24 @@ describe('POST /api/auth/2fa/verify', () => {
     expect(issueAuthTokens).not.toHaveBeenCalled();
     const claims = await verifyStepUpToken(data.tempToken, STEP_UP_SCOPE.PASSWORD_CHANGE);
     expect(claims?.userId).toBe('u1');
+  });
+
+  test('per-user rate limit blocks repeated guesses against the same account', async () => {
+    const { applyUserRateLimit } = require('@/lib/apiMiddleware');
+    applyUserRateLimit.mockResolvedValueOnce({ allowed: false, resetTime: 60 });
+
+    User.findById = jest.fn().mockReturnValue({
+      select: () => ({ populate: () => Promise.resolve(mockUser()) }),
+    });
+    const token = await createStepUpToken(
+      { _id: 'u1', tokenVersion: 0 },
+      STEP_UP_SCOPE.TWO_FACTOR,
+      5
+    );
+    const { POST } = require('@/app/api/auth/2fa/verify/route');
+    const res = await POST(twoFAReq(token));
+
+    expect(res.status).toBe(429);
+    expect(applyUserRateLimit).toHaveBeenCalledWith('u1', expect.any(Object));
   });
 });

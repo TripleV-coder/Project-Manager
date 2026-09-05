@@ -28,7 +28,9 @@ jest.mock('@/lib/requestAuth', () => ({
 }));
 jest.mock('@/lib/apiMiddleware', () => ({
   applyRateLimit: jest.fn(() => ({ allowed: true })),
+  applyUserRateLimit: jest.fn(() => ({ allowed: true })),
   handleRateLimitError: jest.fn(() => ({ status: 429 })),
+  validateRequestSize: jest.fn(async () => ({ valid: true })),
 }));
 jest.mock('@/lib/auditService', () => ({
   logActivity: jest.fn(),
