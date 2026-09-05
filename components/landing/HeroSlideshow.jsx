@@ -59,6 +59,7 @@ function usePrefersReducedMotion() {
 export default function HeroSlideshow({ children }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const goTo = useCallback(
     (next) => {
@@ -68,12 +69,12 @@ export default function HeroSlideshow({ children }) {
   );
 
   useEffect(() => {
-    if (paused) return undefined;
+    if (paused || prefersReducedMotion) return undefined;
     const id = window.setInterval(() => {
       setIndex((current) => (current + 1) % SLIDES.length);
     }, INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [paused]);
+  }, [paused, prefersReducedMotion]);
 
   return (
     <div
