@@ -43,3 +43,21 @@ test('prod: nothing usable returns "unknown"', () => {
   const { getClientIP } = require('@/lib/rateLimit');
   expect(getClientIP(reqWith({}))).toBe('unknown');
 });
+
+test('prod, TRUSTED_PROXY_COUNT=0 (no reverse proxy): ignores XFF entirely, does not trust it', () => {
+  process.env.NODE_ENV = 'production';
+  process.env.TRUSTED_PROXY_COUNT = '0';
+  const { getClientIP } = require('@/lib/rateLimit');
+  // A directly-exposed deployment with no proxy: even though XFF is present
+  // (fully attacker-controlled here), it must never be trusted.
+  expect(getClientIP(reqWith({ 'x-forwarded-for': '1.2.3.4' }))).toBe('unknown');
+});
+
+test('prod, TRUSTED_PROXY_COUNT=0: falls back to the raw socket address when available', () => {
+  process.env.NODE_ENV = 'production';
+  process.env.TRUSTED_PROXY_COUNT = '0';
+  const { getClientIP } = require('@/lib/rateLimit');
+  const req = reqWith({ 'x-forwarded-for': '1.2.3.4' });
+  req.socket = { remoteAddress: '198.51.100.20' };
+  expect(getClientIP(req)).toBe('198.51.100.20');
+});
