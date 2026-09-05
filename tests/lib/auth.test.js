@@ -1,4 +1,4 @@
-import { hashPassword, verifyPassword, validatePassword } from '@/lib/auth';
+import { hashPassword, verifyPassword, validatePassword, signTokenWithMinutes } from '@/lib/auth';
 
 describe('Authentication utilities', () => {
   describe('Password hashing and verification', () => {
@@ -63,5 +63,32 @@ describe('Authentication utilities', () => {
       expect(result.valid).toBe(false);
       expect(result.message).toContain('8');
     });
+  });
+});
+
+describe('signTokenWithMinutes TTL', () => {
+  const { jwtVerify } = require('jose');
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+
+  test('honours a 15-minute request', async () => {
+    const token = await signTokenWithMinutes({ userId: 'u1' }, 15);
+    const { payload } = await jwtVerify(token, secret);
+    expect(payload.exp - payload.iat).toBe(15 * 60);
+  });
+
+  test('honours a 5-minute request', async () => {
+    const token = await signTokenWithMinutes({ userId: 'u1' }, 5);
+    const { payload } = await jwtVerify(token, secret);
+    expect(payload.exp - payload.iat).toBe(5 * 60);
+  });
+
+  test('floors sub-minute values to 1 minute and caps at 7 days', async () => {
+    const secret2 = new TextEncoder().encode(process.env.JWT_SECRET);
+    const lo = await signTokenWithMinutes({ userId: 'u1' }, 0);
+    const hi = await signTokenWithMinutes({ userId: 'u1' }, 99999);
+    const { payload: p1 } = await jwtVerify(lo, secret2);
+    const { payload: p2 } = await jwtVerify(hi, secret2);
+    expect(p1.exp - p1.iat).toBe(60);
+    expect(p2.exp - p2.iat).toBe(10080 * 60);
   });
 });
