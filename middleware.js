@@ -52,23 +52,55 @@ export async function middleware(request) {
   // ==========================================
 
   // Content Security Policy
-  // Production: nonce-based scripts (no unsafe-inline / unsafe-eval). Styles still
-  // need 'unsafe-inline' because Tailwind & Radix emit inline style attributes — a
-  // hash/nonce-based style policy is tracked for a follow-up. Development keeps
-  // 'unsafe-eval' for HMR.
+  //
+  // Task 4.2 (2026-09-05) investigated wiring a per-request nonce into
+  // script-src with 'strict-dynamic' (the setup this file used to have) and
+  // found it CANNOT work for this app, so it was deliberately dropped rather
+  // than left silently broken. Evidence:
+  //   - Next 14.2.35 DOES have a built-in mechanism to auto-nonce its own
+  //     framework bootstrap scripts — it reads
+  //     req.headers['content-security-policy'] on the *incoming request*
+  //     (not the response!) and extracts the nonce
+  //     (node_modules/next/dist/server/app-render/get-script-nonce-from-header.js,
+  //     called from node_modules/next/dist/server/app-render/app-render.js
+  //     ~line 572: "Get the nonce from the incoming request if it has one").
+  //     That alone would be wireable by also forwarding the CSP onto the
+  //     request via NextResponse.next({ request: { headers } }).
+  //   - BUT that mechanism only runs during a live, per-request render. A
+  //     `npm run build` of this app shows nearly every route — /dashboard and
+  //     all of its sibling pages — is prerendered STATIC ("○"), not dynamic
+  //     ("ƒ"), because none of them call headers()/cookies()/searchParams.
+  //     Static HTML is generated once at build time, with no request (and
+  //     therefore no nonce) in scope.
+  //   - Confirmed empirically on the actual build output: every prerendered
+  //     page under .next/server/app/**.html (dashboard.html and ~25 sibling
+  //     dashboard pages, 500+ <script> tags total, including the inline
+  //     `self.__next_f.push(...)` RSC-hydration payload scripts every App
+  //     Router page ships) has ZERO `nonce` attributes.
+  //   - With 'strict-dynamic' present, browsers that support it ignore 'self'
+  //     entirely, so every one of those un-nonced scripts — including the
+  //     framework's own bootstrap chunks AND the inline hydration payload
+  //     React needs to hydrate the page — would be blocked. That's not a
+  //     partial degradation, it's a broken app on nearly every route.
+  //   - Dropping only 'strict-dynamic' (keeping 'nonce-X') doesn't fix it
+  //     either: per the CSP3 spec, the mere presence of a nonce/hash source
+  //     in a directive silently disables 'unsafe-inline' for that directive,
+  //     so the un-nonced inline hydration scripts would still be blocked.
+  //   - Fixing this properly would mean forcing every route to dynamic
+  //     rendering (a real perf/infra trade-off) or a template-level nonce
+  //     injection strategy — both out of scope for this task.
+  // Decision: relax script-src to 'self' 'unsafe-inline', the same trade-off
+  // already accepted below for style-src (Tailwind/Radix inline styles).
+  // This still blocks loading arbitrary third-party script origins; it does
+  // not protect against inline-script injection.
+  // TODO(Task 6.5): move this rationale into docs/DEPLOYMENT.md once that
+  // file exists.
   const socketUrl = process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || 'http://localhost:4000';
   const isDev = process.env.NODE_ENV !== 'production';
 
-  // Per-request nonce (16 random bytes -> base64). Exposed via x-nonce header so
-  // server components / Script tags can read it.
-  const nonceBytes = new Uint8Array(16);
-  crypto.getRandomValues(nonceBytes);
-  const nonce = Buffer.from(nonceBytes).toString('base64');
-  response.headers.set('x-nonce', nonce);
-
   const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'";
 
   response.headers.set(
     'Content-Security-Policy',

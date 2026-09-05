@@ -54,3 +54,28 @@ test('x-user-id is not exposed on the response to the client', async () => {
   expect(res.headers.get('x-user-id')).toBeNull();
   expect(res.headers.get('x-user-role')).toBeNull();
 });
+
+test('script-src has no dangling nonce/strict-dynamic claim (Task 4.2: dropped — see middleware.js comment)', async () => {
+  // apiRequest's cookies.get() returns a truthy value for any cookie name
+  // (including 'auth_token'), so this exercises the frontend/page branch of
+  // the middleware without being redirected to /login.
+  //
+  // Task 4.2 investigated wiring a per-request nonce into script-src and
+  // found it would silently break the app: nearly every route in this app is
+  // statically prerendered at build time (verified via `npm run build` and by
+  // inspecting .next/server/app/**.html — 0 of 500+ <script> tags across
+  // every prerendered page carry a nonce, including the inline RSC-hydration
+  // payload scripts every App Router page ships), so a nonce baked in at
+  // request time can never match what's in that static HTML. With
+  // 'strict-dynamic' present, browsers ignore 'self' entirely, which would
+  // block every one of those un-nonced scripts. So script-src was
+  // deliberately relaxed to 'self' 'unsafe-inline' instead (same trade-off
+  // already accepted for style-src). This test guards against that decision
+  // silently regressing back to a broken nonce/strict-dynamic CSP.
+  const res = await middleware(apiRequest('/dashboard'));
+  const csp = res.headers.get('Content-Security-Policy');
+  expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+  expect(csp).not.toContain('strict-dynamic');
+  expect(csp).not.toContain("'nonce-");
+  expect(res.headers.get('x-nonce')).toBeNull();
+});

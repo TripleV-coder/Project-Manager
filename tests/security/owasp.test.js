@@ -91,11 +91,29 @@ describe('OWASP A05:2021 — Security Misconfiguration', () => {
     expect(src).toMatch(/object-src 'none'/);
   });
 
-  test("CSP does not contain 'unsafe-inline' or 'unsafe-eval' for scripts in production branch", async () => {
+  test("production script-src is 'self' 'unsafe-inline' (nonce/strict-dynamic deliberately dropped — Task 4.2) and dev keeps 'unsafe-eval' for HMR only", async () => {
+    // This test previously pinned a nonce + 'strict-dynamic' script-src with
+    // no unsafe-inline/eval. Task 4.2 (2026-09-05) found that setup would
+    // silently break the app: nearly every route is statically prerendered
+    // at build time (verified via `npm run build` + inspecting
+    // .next/server/app/**.html — 0 of 500+ <script> tags across every
+    // prerendered page carry a nonce, including the inline RSC-hydration
+    // payload scripts every App Router page ships), so a request-time nonce
+    // can never match what's baked into that static HTML, and
+    // 'strict-dynamic' makes browsers ignore 'self' entirely — blocking
+    // every one of those un-nonced scripts. See the detailed rationale
+    // comment in middleware.js above the CSP block.
+    // Decision: relax script-src to 'self' 'unsafe-inline' (same trade-off
+    // already accepted for style-src, below). This still blocks loading
+    // scripts from arbitrary third-party origins; it does not protect
+    // against inline-script injection. Pin that this stays a deliberate,
+    // visible choice — not a further, silent regression (e.g. adding
+    // 'unsafe-eval' to the production branch too).
     const src = await import('fs').then((fs) => fs.readFileSync('middleware.js', 'utf8'));
-    // Match the production scriptSrc literal — should NOT contain unsafe-inline/eval
-    const prodScriptSrc = src.match(/script-src 'self' 'nonce-\$\{nonce\}' 'strict-dynamic'\s*`/);
+    const prodScriptSrc = src.match(/script-src 'self' 'unsafe-inline'"/);
     expect(prodScriptSrc).toBeTruthy();
+    const devScriptSrc = src.match(/script-src 'self' 'unsafe-inline' 'unsafe-eval'"/);
+    expect(devScriptSrc).toBeTruthy();
   });
 });
 
