@@ -14,7 +14,7 @@ import { verifyStepUpToken, STEP_UP_SCOPE } from '@/lib/auth/stepUp';
 import { mustChangePassword } from '@/lib/userState';
 import { revokeUserSessions } from '@/lib/userSecurity';
 import { logActivity } from '@/lib/auditService';
-import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
+import { applyRateLimit, handleRateLimitError, validateRequestSize } from '@/lib/apiMiddleware';
 import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import User from '@/models/User';
 
@@ -23,6 +23,13 @@ export async function POST(request) {
     const rateLimit = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.auth);
     if (!rateLimit.allowed) {
       return handleRateLimitError(rateLimit);
+    }
+
+    // Hand-rolled route (not wrapped by withApiProtection) — apply the same
+    // chunked-transfer-encoding-without-content-length rejection explicitly.
+    const sizeCheck = await validateRequestSize(request);
+    if (!sizeCheck.valid) {
+      return NextResponse.json({ success: false, error: sizeCheck.error }, { status: 413 });
     }
 
     await connectDB();

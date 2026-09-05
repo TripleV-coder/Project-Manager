@@ -35,6 +35,7 @@ jest.mock('@/lib/apiMiddleware', () => ({
     body: { error: 'Too many requests' },
     status: 429,
   })),
+  validateRequestSize: jest.fn(async () => ({ valid: true })),
 }));
 
 // Mock NextResponse

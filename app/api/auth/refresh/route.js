@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { handleError } from '@/lib/apiResponse';
 import { getRefreshTokenFromRequest, verifyRefreshToken } from '@/lib/auth/refresh';
 import { issueAuthTokens, serializeAuthenticatedUser } from '@/lib/requestAuth';
-import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
+import { applyRateLimit, handleRateLimitError, validateRequestSize } from '@/lib/apiMiddleware';
 import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import User from '@/models/User';
 
@@ -14,6 +14,13 @@ export async function POST(request) {
 
     const rl = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.auth);
     if (!rl.allowed) return handleRateLimitError(rl);
+
+    // Hand-rolled route (not wrapped by withApiProtection) — apply the same
+    // chunked-transfer-encoding-without-content-length rejection explicitly.
+    const sizeCheck = await validateRequestSize(request);
+    if (!sizeCheck.valid) {
+      return NextResponse.json({ success: false, error: sizeCheck.error }, { status: 413 });
+    }
 
     const refreshToken = getRefreshTokenFromRequest(request);
     if (!refreshToken) {

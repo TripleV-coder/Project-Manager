@@ -10,7 +10,7 @@ import { mustChangePassword } from '@/lib/userState';
 import { logActivity } from '@/lib/auditService';
 import { notifyAboutFailedLogins } from '@/lib/auditNotificationService';
 import { getClientIP } from '@/lib/rateLimit';
-import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';
+import { applyRateLimit, handleRateLimitError, validateRequestSize } from '@/lib/apiMiddleware';
 import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
 import User from '@/models/User';
 
@@ -40,6 +40,14 @@ export async function POST(request) {
     const rateLimit = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.login);
     if (!rateLimit.allowed) {
       return handleRateLimitError(rateLimit);
+    }
+
+    // This route is hand-rolled (not wrapped by withApiProtection), so it
+    // wouldn't otherwise get the chunked-transfer-encoding-without-
+    // content-length rejection every withApiProtection-wrapped route has.
+    const sizeCheck = await validateRequestSize(request);
+    if (!sizeCheck.valid) {
+      return NextResponse.json({ success: false, error: sizeCheck.error }, { status: 413 });
     }
 
     await connectDB();

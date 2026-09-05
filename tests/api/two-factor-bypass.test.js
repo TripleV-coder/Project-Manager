@@ -6,6 +6,7 @@ jest.mock('@/lib/mongodb', () => jest.fn());
 jest.mock('@/lib/apiMiddleware', () => ({
   applyRateLimit: jest.fn(() => ({ allowed: true })),
   handleRateLimitError: jest.fn(() => ({ status: 429 })),
+  validateRequestSize: jest.fn(async () => ({ valid: true })),
 }));
 jest.mock('@/lib/auditService', () => ({ logActivity: jest.fn() }));
 jest.mock('@/lib/auditNotificationService', () => ({ notifyAboutFailedLogins: jest.fn() }));
