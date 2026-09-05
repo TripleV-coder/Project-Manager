@@ -5,7 +5,9 @@ import { assignTemporaryPassword, sendTemporaryPasswordEmail } from '@/lib/userS
 import { logActivity } from '@/lib/auditService';
 import userService from '@/lib/services/userService';
 import User from '@/models/User';
+import Role from '@/models/Role';
 import { withApiProtection } from '@/lib/withApiProtection';
+import { canActorAssignRole } from '@/lib/userManagement';
 
 // GET /api/users
 export const GET = withApiProtection(
@@ -65,6 +67,19 @@ export const POST = withApiProtection(
 
     const body = validation.data;
     const { email } = body;
+
+    if (body.role_id) {
+      const role = await Role.findById(body.role_id);
+      if (!canActorAssignRole(user, role)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Seul un administrateur peut attribuer un rôle avec les droits d'administration",
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {

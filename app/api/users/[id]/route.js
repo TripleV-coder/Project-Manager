@@ -4,8 +4,9 @@ import { updateUserSchema } from '@/lib/schemas';
 import { logActivity } from '@/lib/auditService';
 import { revokeUserSessions } from '@/lib/userSecurity';
 import User from '@/models/User';
+import Role from '@/models/Role';
 import { withApiProtection } from '@/lib/withApiProtection';
-import { canActorManageTarget } from '@/lib/userManagement';
+import { canActorManageTarget, canActorAssignRole } from '@/lib/userManagement';
 
 // PUT /api/users/[id]
 export const PUT = withApiProtection(
@@ -33,6 +34,20 @@ export const PUT = withApiProtection(
     if (!validation.success) return validation.response;
 
     const body = validation.data;
+
+    if (body.role_id) {
+      const role = await Role.findById(body.role_id);
+      if (!canActorAssignRole(user, role)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Seul un administrateur peut attribuer un rôle avec les droits d'administration",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const oldStatus = targetUser.status;
 
     const updatedUser = await User.findByIdAndUpdate(
