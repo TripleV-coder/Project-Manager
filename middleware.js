@@ -6,7 +6,9 @@ import { getTokenFromRequest } from '@/lib/authCookie';
 const publicRoutes = [
   '/login',
   '/first-admin',
-  '/first-login-reset',
+  // NOT '/first-login-reset' — no such page exists (app/first-login/page.js
+  // is the real page; '/api/auth/first-login-reset' below is the API route).
+  '/first-login',
   '/api/check',
   '/api/init',
   '/api/health',

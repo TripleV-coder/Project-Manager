@@ -44,6 +44,17 @@ function apiRequest(pathname) {
   };
 }
 
+function pageRequestNoCookie(pathname) {
+  const url = `http://localhost${pathname}`;
+  return {
+    nextUrl: { pathname },
+    url,
+    method: 'GET',
+    headers: { get: () => null },
+    cookies: { get: () => undefined },
+  };
+}
+
 test('X-XSS-Protection is disabled', async () => {
   const res = await middleware(apiRequest('/api/projects'));
   expect(res.headers.get('X-XSS-Protection')).toBe('0');
@@ -78,4 +89,21 @@ test('script-src has no dangling nonce/strict-dynamic claim (Task 4.2: dropped �
   expect(csp).not.toContain('strict-dynamic');
   expect(csp).not.toContain("'nonce-");
   expect(res.headers.get('x-nonce')).toBeNull();
+});
+
+test('/first-login is reachable with NO auth_token cookie (must-change-password flow)', async () => {
+  // Regression for the must-change-password lockout: POST /api/auth/login
+  // does not issue a session cookie on this path (it hands back a
+  // tempToken/step-up token in the JSON body instead), so the client
+  // navigates to /first-login with no auth_token cookie at all. If
+  // '/first-login' isn't in publicRoutes, the frontend-route branch below
+  // (which requires an auth_token cookie for any non-public route) redirects
+  // back to /login — an infinite loop that locks out every new user, every
+  // admin-triggered password reset, and the 2FA-then-must-change path.
+  // The page itself has its own client-side guard (hasAuthSessionMarker() /
+  // the pm_pwd_stepup sessionStorage token — see app/first-login/page.js's
+  // useEffect), so making the route reachable without a cookie here does not
+  // open an unauthenticated-access hole.
+  const res = await middleware(pageRequestNoCookie('/first-login'));
+  expect(res.headers.get('Location')).toBeNull();
 });
