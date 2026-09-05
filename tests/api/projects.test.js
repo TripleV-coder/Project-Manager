@@ -18,8 +18,8 @@ describe('Projects API', () => {
           total: expect.any(Number),
           totalPages: expect.any(Number),
           hasNextPage: expect.any(Boolean),
-          hasPrevPage: expect.any(Boolean)
-        }
+          hasPrevPage: expect.any(Boolean),
+        },
       };
 
       // Example of expected response structure
@@ -32,9 +32,9 @@ describe('Projects API', () => {
             statut: 'en_cours',
             responsable: {
               nom_complet: 'John Doe',
-              email: 'john@example.com'
-            }
-          }
+              email: 'john@example.com',
+            },
+          },
         ],
         pagination: {
           page: 1,
@@ -42,8 +42,8 @@ describe('Projects API', () => {
           total: 1,
           totalPages: 1,
           hasNextPage: false,
-          hasPrevPage: false
-        }
+          hasPrevPage: false,
+        },
       };
 
       expect(mockResponse).toMatchObject(expectedStructure);
@@ -53,7 +53,7 @@ describe('Projects API', () => {
       const queryParams = new URLSearchParams({
         page: '1',
         limit: '20',
-        search: 'test'
+        search: 'test',
       });
 
       expect(queryParams.toString()).toBe('page=1&limit=20&search=test');
@@ -62,7 +62,7 @@ describe('Projects API', () => {
     test('should support status filter', () => {
       const validStatuses = ['planifie', 'en_cours', 'en_pause', 'termine', 'annule'];
 
-      validStatuses.forEach(status => {
+      validStatuses.forEach((status) => {
         const queryParams = new URLSearchParams({ statut: status });
         expect(queryParams.get('statut')).toBe(status);
       });
@@ -85,13 +85,13 @@ describe('Projects API', () => {
       description: 'Project description',
       date_debut: new Date().toISOString(),
       date_fin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      responsable: '507f1f77bcf86cd799439011'
+      responsable: '507f1f77bcf86cd799439011',
     };
 
     test('should require valid project data', () => {
       const invalidData = {
         nom: 'P', // Too short
-        description: 'Invalid'
+        description: 'Invalid',
       };
 
       // Validation should fail for short name
@@ -104,7 +104,7 @@ describe('Projects API', () => {
         nom: 'New Project',
         description: 'Project description',
         statut: expect.any(String),
-        createdBy: expect.any(String)
+        createdBy: expect.any(String),
       };
 
       // Mock successful response
@@ -112,7 +112,7 @@ describe('Projects API', () => {
         _id: '507f1f77bcf86cd799439012',
         ...validProjectData,
         statut: 'planifie',
-        createdBy: '507f1f77bcf86cd799439010'
+        createdBy: '507f1f77bcf86cd799439010',
       };
 
       expect(mockResponse).toMatchObject(expectedResponse);
@@ -133,7 +133,7 @@ describe('Projects API', () => {
       const invalidData = {
         ...validProjectData,
         date_debut: new Date().toISOString(),
-        date_fin: new Date(Date.now() - 1000).toISOString() // Before start
+        date_fin: new Date(Date.now() - 1000).toISOString(), // Before start
       };
 
       const startDate = new Date(validProjectData.date_debut);
@@ -153,12 +153,12 @@ describe('Projects API', () => {
     test('should validate budget if provided', () => {
       const validData = {
         ...validProjectData,
-        budget: 10000
+        budget: 10000,
       };
 
       const invalidData = {
         ...validProjectData,
-        budget: -1000 // Negative
+        budget: -1000, // Negative
       };
 
       expect(validData.budget).toBeGreaterThanOrEqual(0);
@@ -204,8 +204,8 @@ describe('Projects API', () => {
       const errorResponse = {
         error: 'Validation failed',
         errors: {
-          nom: 'Le nom du projet est requis'
-        }
+          nom: 'Le nom du projet est requis',
+        },
       };
 
       expect(errorResponse).toHaveProperty('error');
@@ -215,7 +215,7 @@ describe('Projects API', () => {
     test('should return 500 for server errors', () => {
       const errorResponse = {
         error: 'Server error',
-        message: 'An unexpected error occurred'
+        message: 'An unexpected error occurred',
       };
 
       expect(errorResponse.error).toBe('Server error');

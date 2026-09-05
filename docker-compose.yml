@@ -4,11 +4,12 @@ services:
     container_name: project-manager-mongodb
     restart: always
     ports:
-      - "${MONGODB_PORT:-27017}:27017"
+      - '${MONGODB_PORT:-27017}:27017'
     environment:
       MONGO_INITDB_DATABASE: project-manager
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-change_me_in_production}
+      # SECURITY: Set these in .env — defaults are for development only
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?Set MONGO_INITDB_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Set MONGO_INITDB_ROOT_PASSWORD in .env}
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
@@ -17,6 +18,50 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  app:
+    build:
+      context: .
+      target: web
+    container_name: project-manager-app
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      socket:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGO_URL: ${MONGO_URL:?Set MONGO_URL in .env}
+      SOCKET_SERVER_URL: ${SOCKET_SERVER_URL:-http://socket:4000}
+      NEXT_PUBLIC_SOCKET_SERVER_URL: ${NEXT_PUBLIC_SOCKET_SERVER_URL:-http://localhost:4000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - '${APP_PORT:-3000}:3000'
+
+  socket:
+    build:
+      context: .
+      target: socket
+    container_name: project-manager-socket
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      SOCKET_PORT: 4000
+      MONGO_URL: ${MONGO_URL:?Set MONGO_URL in .env}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      SOCKET_EMIT_SECRET: ${SOCKET_EMIT_SECRET:?Set SOCKET_EMIT_SECRET in .env}
+    ports:
+      - '${SOCKET_PORT:-4000}:4000'
 
 volumes:
   mongodb_data:

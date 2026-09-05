@@ -2,19 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Phone, Briefcase, Calendar, Shield, Save, Building, Clock, Globe } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Phone,
+  Briefcase,
+  Calendar,
+  Shield,
+  Save,
+  Building,
+  Clock,
+  Globe,
+} from 'lucide-react';
 import { useTranslation } from '@/contexts/AppSettingsContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import TwoFactorSetup from '@/components/TwoFactorSetup';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +43,7 @@ export default function ProfilePage() {
     projets_actifs: 0,
     taches_completees: 0,
     taches_en_cours: 0,
-    heures_travaillees: 0
+    heures_travaillees: 0,
   });
   const [formData, setFormData] = useState({
     nom_complet: '',
@@ -32,7 +51,7 @@ export default function ProfilePage() {
     poste_titre: '',
     département_équipe: '',
     disponibilité_hebdo: 35,
-    fuseau_horaire: 'Africa/Porto-Novo'
+    fuseau_horaire: 'Africa/Porto-Novo',
   });
 
   useEffect(() => {
@@ -42,16 +61,9 @@ export default function ProfilePage() {
 
   const loadProfile = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       // Charger le profil utilisateur
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(8000)
+      const response = await authFetch('/api/auth/me', {
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
@@ -71,11 +83,11 @@ export default function ProfilePage() {
         poste_titre: data.poste_titre || '',
         département_équipe: data.département_équipe || '',
         disponibilité_hebdo: data.disponibilité_hebdo || 35,
-        fuseau_horaire: data.fuseau_horaire || 'Africa/Porto-Novo'
+        fuseau_horaire: data.fuseau_horaire || 'Africa/Porto-Novo',
       });
 
       // Charger les statistiques
-      await loadStats(token, data._id || data.id);
+      await loadStats(data._id || data.id);
 
       setLoading(false);
     } catch (error) {
@@ -85,38 +97,32 @@ export default function ProfilePage() {
     }
   };
 
-  const loadStats = async (token, userId) => {
+  const loadStats = async (userId) => {
     try {
       // Charger les projets où l'utilisateur est membre
-      const projectsRes = await fetch('/api/projects?limit=100', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const projectsRes = await authFetch('/api/projects?limit=100', {});
 
       let projetsActifs = 0;
       if (projectsRes.ok) {
         const projectsData = await projectsRes.json();
         const projects = projectsData.data || projectsData.projects || [];
-        projetsActifs = projects.filter(p => p.statut === 'En cours').length;
+        projetsActifs = projects.filter((p) => p.statut === 'En cours').length;
       }
 
       // Charger les tâches assignées à l'utilisateur
-      const tasksRes = await fetch(`/api/tasks?assigné_à=${userId}&limit=200`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const tasksRes = await authFetch(`/api/tasks?assigné_à=${userId}&limit=200`, {});
 
       let tachesCompletees = 0;
       let tachesEnCours = 0;
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json();
         const tasks = tasksData.data || tasksData.tasks || [];
-        tachesCompletees = tasks.filter(t => t.statut === 'Terminé').length;
-        tachesEnCours = tasks.filter(t => t.statut === 'En cours').length;
+        tachesCompletees = tasks.filter((t) => t.statut === 'Terminé').length;
+        tachesEnCours = tasks.filter((t) => t.statut === 'En cours').length;
       }
 
       // Charger les heures travaillées (timesheets)
-      const timesheetRes = await fetch(`/api/timesheets?utilisateur=${userId}&limit=500`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const timesheetRes = await authFetch(`/api/timesheets?utilisateur=${userId}&limit=500`, {});
 
       let heuresTravaillees = 0;
       if (timesheetRes.ok) {
@@ -129,7 +135,7 @@ export default function ProfilePage() {
         projets_actifs: projetsActifs,
         taches_completees: tachesCompletees,
         taches_en_cours: tachesEnCours,
-        heures_travaillees: Math.round(heuresTravaillees * 10) / 10
+        heures_travaillees: Math.round(heuresTravaillees * 10) / 10,
       });
     } catch (error) {
       console.warn('Erreur chargement statistiques:', error);
@@ -144,21 +150,19 @@ export default function ProfilePage() {
 
     setSaving(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/users/profile', {
+      const response = await authFetch('/api/users/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       if (response.ok) {
         toast.success(t('profileUpdated'));
         setEditing(false);
         // Mettre à jour l'état local
-        setUser(prev => ({ ...prev, ...formData }));
+        setUser((prev) => ({ ...prev, ...formData }));
       } else {
         const errorData = await response.json();
         toast.error(errorData.error || t('updateError'));
@@ -179,7 +183,7 @@ export default function ProfilePage() {
       poste_titre: user?.poste_titre || '',
       département_équipe: user?.département_équipe || '',
       disponibilité_hebdo: user?.disponibilité_hebdo || 35,
-      fuseau_horaire: user?.fuseau_horaire || 'Africa/Porto-Novo'
+      fuseau_horaire: user?.fuseau_horaire || 'Africa/Porto-Novo',
     });
     setEditing(false);
   };
@@ -196,7 +200,7 @@ export default function ProfilePage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('myProfile')}</h1>
-        <p className="text-gray-600">{t('personalInfo')}</p>
+        <p className="text-gray-600">{t('profileSubtitle')}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -214,7 +218,7 @@ export default function ProfilePage() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-600">Rôle:</span>
+              <span className="text-sm text-gray-600">{t('accessLevel')}:</span>
               <Badge className="bg-indigo-100 text-indigo-800">
                 {user?.role_id?.nom || user?.role?.nom || 'Non défini'}
               </Badge>
@@ -234,17 +238,20 @@ export default function ProfilePage() {
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">
-                Membre depuis {user?.created_at ? new Date(user.created_at).toLocaleDateString('fr-FR', {
-                  month: 'long',
-                  year: 'numeric'
-                }) : 'N/A'}
+                {t('partnerSince')}{' '}
+                {user?.created_at
+                  ? new Date(user.created_at).toLocaleDateString('fr-FR', {
+                      month: 'long',
+                      year: 'numeric',
+                    })
+                  : 'N/A'}
               </span>
             </div>
             {user?.dernière_connexion && (
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-400" />
                 <span className="text-sm text-gray-600">
-                  Dernière connexion: {new Date(user.dernière_connexion).toLocaleDateString('fr-FR')}
+                  {t('lastVisit')}: {new Date(user.dernière_connexion).toLocaleDateString('fr-FR')}
                 </span>
               </div>
             )}
@@ -256,12 +263,12 @@ export default function ProfilePage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>{t('personalInfo')}</CardTitle>
-                <CardDescription>{t('contactInfo')}</CardDescription>
+                <CardTitle>{t('personalDetails')}</CardTitle>
+                <CardDescription>{t('identitySubtitle')}</CardDescription>
               </div>
               {!editing && (
                 <Button onClick={() => setEditing(true)} variant="outline">
-                  {t('editProfile')}
+                  {t('editMyProfile')}
                 </Button>
               )}
             </div>
@@ -270,7 +277,7 @@ export default function ProfilePage() {
             {editing ? (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>{t('userName')} *</Label>
+                  <Label>{t('usageName')} *</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
@@ -286,20 +293,14 @@ export default function ProfilePage() {
                   <Label>{t('email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                    <Input
-                      value={user?.email}
-                      disabled
-                      className="pl-10 bg-gray-50"
-                    />
+                    <Input value={user?.email} disabled className="pl-10 bg-gray-50" />
                   </div>
-                  <p className="text-xs text-gray-500">
-                    {t('emailNotEditable')}
-                  </p>
+                  <p className="text-xs text-gray-500">{t('emailNotEditable')}</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>{t('userPhone')}</Label>
+                    <Label>{t('contactLine')}</Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -312,7 +313,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>{t('userPosition')}</Label>
+                    <Label>{t('expertiseTitle')}</Label>
                     <div className="relative">
                       <Briefcase className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -327,12 +328,14 @@ export default function ProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>{t('userDepartment')}</Label>
+                    <Label>{t('teamEntity')}</Label>
                     <div className="relative">
                       <Building className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
                         value={formData.département_équipe}
-                        onChange={(e) => setFormData({ ...formData, département_équipe: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, département_équipe: e.target.value })
+                        }
                         className="pl-10"
                         placeholder="Développement"
                       />
@@ -340,7 +343,9 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>{t('weeklyAvailability')} ({t('hours')})</Label>
+                    <Label>
+                      {t('engagementWeekly')} ({t('hours')})
+                    </Label>
                     <div className="relative">
                       <Clock className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                       <Input
@@ -348,7 +353,12 @@ export default function ProfilePage() {
                         min="0"
                         max="60"
                         value={formData.disponibilité_hebdo}
-                        onChange={(e) => setFormData({ ...formData, disponibilité_hebdo: parseInt(e.target.value) || 0 })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            disponibilité_hebdo: parseInt(e.target.value) || 0,
+                          })
+                        }
                         className="pl-10"
                       />
                     </div>
@@ -367,7 +377,9 @@ export default function ProfilePage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Africa/Porto-Novo">Cotonou / Porto-Novo (GMT+1)</SelectItem>
+                        <SelectItem value="Africa/Porto-Novo">
+                          Cotonou / Porto-Novo (GMT+1)
+                        </SelectItem>
                         <SelectItem value="Africa/Abidjan">Abidjan (GMT+0)</SelectItem>
                         <SelectItem value="Africa/Lagos">Lagos (GMT+1)</SelectItem>
                         <SelectItem value="Africa/Douala">Douala (GMT+1)</SelectItem>
@@ -399,7 +411,12 @@ export default function ProfilePage() {
                       </>
                     )}
                   </Button>
-                  <Button onClick={handleCancel} variant="outline" className="flex-1" disabled={saving}>
+                  <Button
+                    onClick={handleCancel}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={saving}
+                  >
                     {t('cancel')}
                   </Button>
                 </div>
@@ -409,7 +426,7 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <User className="w-5 h-5 text-gray-400" />
                   <div>
-                    <p className="text-sm text-gray-500">{t('userName')}</p>
+                    <p className="text-sm text-gray-500">{t('usageName')}</p>
                     <p className="font-medium">{user?.nom_complet}</p>
                   </div>
                 </div>
@@ -426,7 +443,7 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Phone className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">{t('userPhone')}</p>
+                      <p className="text-sm text-gray-500">{t('contactLine')}</p>
                       <p className="font-medium">{user?.telephone || t('notProvided')}</p>
                     </div>
                   </div>
@@ -434,7 +451,7 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Briefcase className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">{t('userPosition')}</p>
+                      <p className="text-sm text-gray-500">{t('expertiseTitle')}</p>
                       <p className="font-medium">{user?.poste_titre || t('notProvided')}</p>
                     </div>
                   </div>
@@ -444,7 +461,7 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Building className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">{t('userDepartment')}</p>
+                      <p className="text-sm text-gray-500">{t('teamEntity')}</p>
                       <p className="font-medium">{user?.département_équipe || t('notProvided')}</p>
                     </div>
                   </div>
@@ -452,8 +469,11 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <Clock className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-500">{t('weeklyAvailability')}</p>
-                      <p className="font-medium">{user?.disponibilité_hebdo || 35}{t('hours')}</p>
+                      <p className="text-sm text-gray-500">{t('engagementWeekly')}</p>
+                      <p className="font-medium">
+                        {user?.disponibilité_hebdo || 35}
+                        {t('hours')}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -475,33 +495,33 @@ export default function ProfilePage() {
       <div className="mt-6">
         <TwoFactorSetup
           isEnabled={user?.twoFactorEnabled || false}
-          onStatusChange={(enabled) => setUser(prev => ({ ...prev, twoFactorEnabled: enabled }))}
+          onStatusChange={(enabled) => setUser((prev) => ({ ...prev, twoFactorEnabled: enabled }))}
         />
       </div>
 
       {/* Statistiques */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Activité</CardTitle>
-          <CardDescription>Vos statistiques d'activité sur la plateforme</CardDescription>
+          <CardTitle>{t('myActivity')}</CardTitle>
+          <CardDescription>{t('activitySubtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-indigo-50 rounded-lg">
               <p className="text-3xl font-bold text-indigo-600">{stats.projets_actifs}</p>
-              <p className="text-sm text-gray-600 mt-1">Projets actifs</p>
+              <p className="text-sm text-gray-600 mt-1">{t('activeMissions')}</p>
             </div>
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <p className="text-3xl font-bold text-blue-600">{stats.taches_en_cours}</p>
-              <p className="text-sm text-gray-600 mt-1">Tâches en cours</p>
+              <p className="text-sm text-gray-600 mt-1">{t('activeNeeds')}</p>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <p className="text-3xl font-bold text-green-600">{stats.taches_completees}</p>
-              <p className="text-sm text-gray-600 mt-1">Tâches terminées</p>
+              <p className="text-sm text-gray-600 mt-1">{t('successAccomplished')}</p>
             </div>
             <div className="text-center p-4 bg-orange-50 rounded-lg">
               <p className="text-3xl font-bold text-orange-600">{stats.heures_travaillees}h</p>
-              <p className="text-sm text-gray-600 mt-1">Heures enregistrées</p>
+              <p className="text-sm text-gray-600 mt-1">{t('valueAddedTime')}</p>
             </div>
           </div>
         </CardContent>

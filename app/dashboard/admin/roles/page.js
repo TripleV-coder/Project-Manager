@@ -9,7 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,9 +24,11 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function RolesPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const { confirm } = useConfirmation();
   const [user, setUser] = useState(null);
   const [roles, setRoles] = useState([]);
@@ -30,7 +39,7 @@ export default function RolesPage() {
     nom: '',
     description: '',
     permissions: {},
-    visibleMenus: {}
+    visibleMenus: {},
   });
 
   // Liste complète des 23 permissions atomiques
@@ -38,99 +47,93 @@ export default function RolesPage() {
     {
       category: 'Projets',
       items: [
-        { key: 'voirTousProjets', label: 'Voir tous les projets (portfolio global)' },
-        { key: 'voirSesProjets', label: 'Voir uniquement ses projets' },
+        { key: 'voirTousProjets', label: "Voir tous les projets de l'organisation" },
+        { key: 'voirSesProjets', label: 'Voir seulement mes projets' },
         { key: 'creerProjet', label: 'Créer un nouveau projet' },
         { key: 'supprimerProjet', label: 'Supprimer un projet' },
-        { key: 'modifierCharteProjet', label: 'Modifier la charte / les infos du projet' }
-      ]
+        { key: 'modifierCharteProjet', label: 'Modifier les infos et le cadre du projet' },
+      ],
     },
     {
       category: 'Équipe',
       items: [
-        { key: 'gererMembresProjet', label: 'Ajouter / retirer des membres du projet' },
-        { key: 'changerRoleMembre', label: 'Changer le rôle d\'un membre dans un projet' }
-      ]
+        { key: 'gererMembresProjet', label: 'Ajouter ou retirer des gens du projet' },
+        { key: 'changerRoleMembre', label: "Changer le rôle d'un membre" },
+      ],
     },
     {
       category: 'Tâches',
       items: [
-        { key: 'gererTaches', label: 'Créer / modifier / supprimer des tâches' },
-        { key: 'deplacerTaches', label: 'Déplacer des tâches (Kanban / statut)' },
-        { key: 'prioriserBacklog', label: 'Prioriser le backlog' }
-      ]
+        { key: 'gererTaches', label: 'Créer, modifier ou supprimer des tâches' },
+        { key: 'deplacerTaches', label: "Changer l'état des tâches (ex: À faire -> Fini)" },
+        { key: 'prioriserBacklog', label: 'Organiser la liste des choses à faire' },
+      ],
     },
     {
       category: 'Sprints',
-      items: [
-        { key: 'gererSprints', label: 'Créer et lancer des sprints' }
-      ]
+      items: [{ key: 'gererSprints', label: 'Créer et lancer des cycles de travail (Sprints)' }],
     },
     {
       category: 'Budget',
       items: [
-        { key: 'modifierBudget', label: 'Modifier le budget du projet' },
-        { key: 'voirBudget', label: 'Voir le budget du projet' }
-      ]
+        { key: 'modifierBudget', label: "Modifier l'argent prévu pour le projet" },
+        { key: 'voirBudget', label: 'Voir les finances du projet' },
+      ],
     },
     {
       category: 'Temps',
       items: [
-        { key: 'voirTempsPasses', label: 'Voir les temps passés (timesheets)' },
-        { key: 'saisirTemps', label: 'Saisir son propre temps passé' }
-      ]
+        { key: 'voirTempsPasses', label: 'Voir le temps passé par tout le monde' },
+        { key: 'saisirTemps', label: 'Noter mon propre temps passé' },
+      ],
     },
     {
       category: 'Livrables',
-      items: [
-        { key: 'validerLivrable', label: 'Valider / refuser un livrable' }
-      ]
+      items: [{ key: 'validerLivrable', label: 'Accepter ou refuser un résultat (Livrable)' }],
     },
     {
       category: 'Fichiers',
-      items: [
-        { key: 'gererFichiers', label: 'Télécharger / uploader des fichiers' }
-      ]
+      items: [{ key: 'gererFichiers', label: 'Ajouter ou supprimer des documents' }],
     },
     {
       category: 'Communication',
       items: [
-        { key: 'commenter', label: 'Commenter et @mention' },
-        { key: 'recevoirNotifications', label: 'Recevoir des notifications' }
-      ]
+        { key: 'commenter', label: 'Discuter et mentionner des gens (@nom)' },
+        { key: 'recevoirNotifications', label: 'Recevoir des alertes' },
+      ],
     },
     {
       category: 'Rapports & Audit',
       items: [
-        { key: 'genererRapports', label: 'Générer des rapports / exports' },
-        { key: 'voirAudit', label: 'Voir l\'historique / audit trail' }
-      ]
+        { key: 'genererRapports', label: 'Créer des bilans et exports (PDF, Excel)' },
+        { key: 'voirAudit', label: 'Voir qui a fait quoi (Historique complet)' },
+      ],
     },
     {
       category: 'Administration',
       items: [
         { key: 'gererUtilisateurs', label: 'Gérer les utilisateurs (créer, modifier, supprimer)' },
-        { key: 'adminConfig', label: 'Accéder à la configuration globale (Admin seulement)' }
-      ]
-    }
+        { key: 'adminConfig', label: 'Accéder à la configuration globale (Admin seulement)' },
+      ],
+    },
   ];
 
   // Liste des menus disponibles
   const allMenus = [
-    { key: 'portfolio', label: 'Portfolio / Dashboard' },
-    { key: 'projects', label: 'Projets' },
-    { key: 'kanban', label: 'Kanban Board' },
-    { key: 'backlog', label: 'Backlog & Épics' },
-    { key: 'sprints', label: 'Sprints' },
-    { key: 'roadmap', label: 'Roadmap / Gantt' },
+    { key: 'portfolio', label: 'Accueil / Vue Globale' },
+    { key: 'projects', label: 'Mes Projets' },
+    { key: 'kanban', label: 'Tableau des Tâches' },
+    { key: 'backlog', label: 'Liste à faire' },
+    { key: 'sprints', label: 'Cycles (Sprints)' },
+    { key: 'roadmap', label: 'Calendrier des projets' },
     { key: 'tasks', label: 'Tâches' },
-    { key: 'files', label: 'Fichiers' },
-    { key: 'comments', label: 'Commentaires' },
-    { key: 'timesheets', label: 'Timesheets' },
+    { key: 'files', label: 'Documents' },
+    { key: 'comments', label: 'Discussions' },
+    { key: 'timesheets', label: 'Temps passé' },
     { key: 'budget', label: 'Budget' },
-    { key: 'reports', label: 'Rapports' },
-    { key: 'notifications', label: 'Notifications' },
-    { key: 'admin', label: 'Administration' }
+    { key: 'reports', label: 'Bilans & Rapports' },
+    { key: 'notifications', label: 'Alertes' },
+    { key: 'admin', label: 'Administration' },
   ];
 
   const permissions = useRBACPermissions(user);
@@ -138,15 +141,9 @@ export default function RolesPage() {
 
   const loadRoles = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const [userRes, rolesRes] = await Promise.all([
-        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` } })
+        authFetch('/api/auth/me'),
+        authFetch('/api/roles'),
       ]);
 
       const userData = await userRes.json();
@@ -168,6 +165,7 @@ export default function RolesPage() {
       toast.error('Erreur lors du chargement des rôles');
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -181,14 +179,12 @@ export default function RolesPage() {
         return;
       }
 
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/roles', {
+      const response = await authFetch('/api/roles', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newRole)
+        body: JSON.stringify(newRole),
       });
 
       const data = await response.json();
@@ -209,14 +205,12 @@ export default function RolesPage() {
 
   const handleUpdateRole = async (roleId, updates) => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/roles/${roleId}`, {
+      const response = await authFetch(`/api/roles/${roleId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(updates)
+        body: JSON.stringify(updates),
       });
 
       const data = await response.json();
@@ -240,17 +234,15 @@ export default function RolesPage() {
       description: `Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`,
       actionLabel: 'Supprimer',
       cancelLabel: 'Annuler',
-      isDangerous: true
+      isDangerous: true,
     });
     if (!confirmed) {
       return;
     }
 
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/roles/${roleId}`, {
+      const response = await authFetch(`/api/roles/${roleId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       const data = await response.json();
@@ -272,8 +264,8 @@ export default function RolesPage() {
       ...role,
       permissions: {
         ...role.permissions,
-        [permKey]: !role.permissions[permKey]
-      }
+        [permKey]: !role.permissions[permKey],
+      },
     };
     setEditingRole(updated);
   };
@@ -283,8 +275,8 @@ export default function RolesPage() {
       ...role,
       visibleMenus: {
         ...role.visibleMenus,
-        [menuKey]: !role.visibleMenus[menuKey]
-      }
+        [menuKey]: !role.visibleMenus[menuKey],
+      },
     };
     setEditingRole(updated);
   };
@@ -294,8 +286,8 @@ export default function RolesPage() {
       ...newRole,
       permissions: {
         ...newRole.permissions,
-        [permKey]: !newRole.permissions[permKey]
-      }
+        [permKey]: !newRole.permissions[permKey],
+      },
     });
   };
 
@@ -304,8 +296,8 @@ export default function RolesPage() {
       ...newRole,
       visibleMenus: {
         ...newRole.visibleMenus,
-        [menuKey]: !newRole.visibleMenus[menuKey]
-      }
+        [menuKey]: !newRole.visibleMenus[menuKey],
+      },
     });
   };
 
@@ -323,7 +315,9 @@ export default function RolesPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestion des Rôles</h1>
-          <p className="text-gray-600">Configurez les rôles système et leurs 23 permissions atomiques</p>
+          <p className="text-gray-600">
+            Configurez les rôles système et leurs 23 permissions atomiques
+          </p>
         </div>
         {canManageRoles('adminConfig') && (
           <Button
@@ -355,9 +349,7 @@ export default function RolesPage() {
                     </div>
                     <CardDescription>{role.description}</CardDescription>
                   </div>
-                  {role.is_predefined && (
-                    <Badge variant="secondary">Système</Badge>
-                  )}
+                  {role.is_predefined && <Badge variant="secondary">Système</Badge>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -376,9 +368,9 @@ export default function RolesPage() {
                   </div>
                   <Separator />
                   <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="flex-1"
                       onClick={() => setEditingRole(role)}
                     >
@@ -386,8 +378,8 @@ export default function RolesPage() {
                       Configurer
                     </Button>
                     {!role.is_predefined && (
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="text-red-600 hover:text-red-700"
                         onClick={() => handleDeleteRole(role._id, role.nom)}
@@ -412,11 +404,9 @@ export default function RolesPage() {
                 <Shield className="w-5 h-5 text-indigo-600" />
                 Configuration : {editingRole.nom}
               </DialogTitle>
-              <DialogDescription>
-                {editingRole.description}
-              </DialogDescription>
+              <DialogDescription>{editingRole.description}</DialogDescription>
             </DialogHeader>
-            
+
             <Tabs defaultValue="permissions" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="permissions">Permissions (23)</TabsTrigger>
@@ -434,8 +424,8 @@ export default function RolesPage() {
                         </h3>
                         <div className="space-y-3 ml-3">
                           {category.items.map((perm) => (
-                            <div 
-                              key={perm.key} 
+                            <div
+                              key={perm.key}
                               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                             >
                               <Checkbox
@@ -462,7 +452,7 @@ export default function RolesPage() {
                 <ScrollArea className="h-[500px] pr-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {allMenus.map((menu) => (
-                      <div 
+                      <div
                         key={menu.key}
                         className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                       >
@@ -489,12 +479,14 @@ export default function RolesPage() {
                 <X className="w-4 h-4 mr-1" />
                 Annuler
               </Button>
-              <Button 
+              <Button
                 className="bg-indigo-600 hover:bg-indigo-700"
-                onClick={() => handleUpdateRole(editingRole._id, {
-                  permissions: editingRole.permissions,
-                  visibleMenus: editingRole.visibleMenus
-                })}
+                onClick={() =>
+                  handleUpdateRole(editingRole._id, {
+                    permissions: editingRole.permissions,
+                    visibleMenus: editingRole.visibleMenus,
+                  })
+                }
               >
                 <Save className="w-4 h-4 mr-1" />
                 Enregistrer
@@ -551,8 +543,8 @@ export default function RolesPage() {
                         </h3>
                         <div className="space-y-3 ml-3">
                           {category.items.map((perm) => (
-                            <div 
-                              key={perm.key} 
+                            <div
+                              key={perm.key}
                               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                             >
                               <Checkbox
@@ -579,7 +571,7 @@ export default function RolesPage() {
                 <ScrollArea className="h-[400px] pr-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {allMenus.map((menu) => (
-                      <div 
+                      <div
                         key={menu.key}
                         className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                       >
@@ -603,16 +595,16 @@ export default function RolesPage() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => {
-              setCreateDialogOpen(false);
-              setNewRole({ nom: '', description: '', permissions: {}, visibleMenus: {} });
-            }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateDialogOpen(false);
+                setNewRole({ nom: '', description: '', permissions: {}, visibleMenus: {} });
+              }}
+            >
               Annuler
             </Button>
-            <Button 
-              className="bg-indigo-600 hover:bg-indigo-700"
-              onClick={handleCreateRole}
-            >
+            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleCreateRole}>
               <Plus className="w-4 h-4 mr-1" />
               Créer le rôle
             </Button>

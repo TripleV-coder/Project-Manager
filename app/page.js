@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { clearAuthSession, markAuthSession } from '@/lib/client-auth';
 
 export default function Home() {
   const router = useRouter();
@@ -16,11 +17,7 @@ export default function Home() {
 
     async function checkAuth() {
       try {
-        const token = localStorage.getItem('pm_token');
-
-        // Single API call to get both admin status and user data
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch('/api/init', { headers });
+        const response = await fetch('/api/init');
 
         if (!response.ok) {
           console.error('Erreur init:', response.status);
@@ -35,17 +32,13 @@ export default function Home() {
           return;
         }
 
-        if (!token) {
+        if (!data.user) {
+          clearAuthSession();
           router.push('/login');
           return;
         }
 
-        if (!data.user) {
-          localStorage.removeItem('pm_token');
-          localStorage.removeItem('pm_user');
-          router.push('/login');
-          return;
-        }
+        markAuthSession(data.user);
 
         if (data.user.first_login || data.user.must_change_password) {
           router.push('/first-login');
@@ -53,7 +46,6 @@ export default function Home() {
         }
 
         router.push('/dashboard');
-
       } catch (error) {
         console.error('Erreur check auth:', error);
         router.push('/login');

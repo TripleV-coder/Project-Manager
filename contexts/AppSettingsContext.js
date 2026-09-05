@@ -7,54 +7,94 @@ const translations = {
   fr: {
     // Navigation
     dashboard: 'Tableau de bord',
-    projects: 'Projets',
-    tasks: 'Tâches',
-    team: 'Équipe',
-    calendar: 'Calendrier',
-    reports: 'Rapports',
-    notifications: 'Notifications',
-    settings: 'Paramètres',
-    profile: 'Profil',
-    logout: 'Déconnexion',
-    administration: 'Administration',
-    users: 'Utilisateurs',
-    roles: 'Rôles',
-    sprints: 'Sprints',
-    timesheets: 'Feuilles de temps',
-    budgetManagement: 'Gestion du budget',
-    kanban: 'Kanban',
-    backlog: 'Backlog',
-    roadmap: 'Roadmap',
-    files: 'Fichiers',
-    comments: 'Commentaires',
-    audit: 'Audit',
+    projects: 'Vos Projets',
+    tasks: 'Suivi des Tâches',
+    team: 'Équipe & Membres',
+    calendar: 'Calendrier des Événements',
+    reports: 'Analyses & Rapports',
+    reportsTitle: 'Bilan de Performance',
+    reportsSubtitle: "Analysez la valeur créée et l'activité de vos équipes",
+    timesheetTitle: 'Suivi du Temps',
+    timesheetSubtitle: 'Chaque minute consacrée nous rapproche de la réussite.',
+    logTimeButton: 'Déclarer mon temps',
+    kanban: 'Tableau par étapes',
+    backlog: 'Réserve & En attente',
+    roadmap: 'Planning & Calendrier',
+    files: 'Fichiers & Documents',
+    comments: 'Discussions & Échanges',
+    timesheets: 'Temps passés',
+    budgetManagement: 'Gestion du Budget',
+    budget: 'Budget & Dépenses',
+    audit: 'Historique des actions',
+    projectOverview: "Vue d'ensemble du Projet",
+    projectGovernance: 'Gouvernance & Équipe',
+    projectDeliverables: 'Livrables & Résultats',
+    projectTasks: 'Suivi des Tâches',
+    projectBudgetTab: 'Budget & Ressources',
+    projectFiles: 'Fichiers du Projet',
+    projectInfoTitle: 'Informations du Projet',
+    currentStatus: 'Statut du Projet',
+    priorityLevel: 'Niveau de Priorité',
+    projectBudgetTitle: 'Suivi du Budget',
+    plannedBudget: 'Budget Prévu',
+    actualExpenses: 'Dépenses Réelles',
+    budgetConsumption: 'Consommation budgétaire du projet',
+    projectProgress: 'Progression du Projet',
+    completedTasks: 'Tâches Terminées',
+    actualHours: 'Heures Réelles',
+    projectTeamTitle: 'Équipe du Projet',
+    addMemberButton: 'Ajouter un Membre',
+    noMembers: "L'équipe n'a pas encore de membres assignés.",
+    projectDeliverablesTitle: 'Livrables du Projet',
+    projectDeliverablesDesc: 'Suivez les éléments clés à produire pour la réussite du projet.',
+    noDeliverables: 'Aucun livrable défini pour le moment',
+    noDeliverablesDesc:
+      'Les livrables sont les jalons de votre réussite. Définissez-les pour marquer votre progression.',
 
     // Dashboard
-    welcomeBack: 'Bienvenue',
-    activeProjects: 'Projets actifs',
-    pendingTasks: 'Tâches en attente',
-    teamMembers: 'Membres d\'équipe',
-    upcomingDeadlines: 'Échéances à venir',
-    recentActivity: 'Activité récente',
+    overview: "Vue d'ensemble",
+    overviewDesc: "Un aperçu global de vos projets et de l'activité de votre équipe.",
+    welcomeBack: 'Heureux de vous retrouver pour la suite de vos succès',
+    activeProjects: 'Projets en cours',
+    activeProjectsStat: 'Projets en cours',
+    activeInitiativesDesc: 'Vos projets actuellement actifs et en progression.',
+    pendingTasks: 'Tâches à réaliser',
+    actionsToTake: 'Tâches à réaliser',
+    plannedTasksDesc: "Le planning prévu pour aujourd'hui.",
+    achievements: 'Tâches terminées',
+    globalCompletion: 'des tâches accomplies avec succès',
+    expectedDeliverables: 'Livrables attendus',
+    successProofsDesc: 'Les livrables clés qui concrétisent vos efforts.',
+    recentProjects: 'Derniers dossiers',
+    workingOnDesc: 'Les projets sur lesquels vous concentrez votre énergie.',
+    myPriorities: 'Vos Priorités Immédiates',
+    upcomingTasksDesc: 'Les tâches qui requièrent votre attention.',
+    teamMembers: "Membres d'équipe",
+    upcomingDeadlines: 'Échéances proches',
+    recentActivity: 'Dernières activités',
     quickActions: 'Actions rapides',
     newProject: 'Nouveau projet',
     newTask: 'Nouvelle tâche',
     viewAll: 'Voir tout',
+    viewAllProjects: 'Voir tous les projets',
+    viewAllTasks: 'Voir toutes les activités',
+    noProjects: 'Aucun projet pour le moment',
+    createProject: 'Créer un projet',
+    noTasksAssigned: 'Rien à signaler pour le moment',
 
     // Projects
     projectName: 'Nom du projet',
-    description: 'Description',
-    status: 'Statut',
+    description: "Description de l'activité",
+    status: 'Statut du projet',
     startDate: 'Date de début',
-    endDate: 'Date de fin',
-    budget: 'Budget',
+    endDate: 'Échéance finale',
     progress: 'Progression',
     create: 'Créer',
     edit: 'Modifier',
     delete: 'Supprimer',
     save: 'Enregistrer',
     cancel: 'Annuler',
-    projectManagement: 'Gestion des projets',
+    projectManagement: 'Gestion des Projets',
     allProjects: 'Tous les projets',
     myProjects: 'Mes projets',
     projectDetails: 'Détails du projet',
@@ -66,47 +106,60 @@ const translations = {
     projectDeleted: 'Projet supprimé avec succès',
 
     // Status
-    planning: 'Planification',
-    inProgress: 'En cours',
-    completed: 'Terminé',
-    cancelled: 'Annulé',
+    // Status
+    planning: 'Préparation',
+    inProgress: 'En action',
+    completed: 'Accompli ✨',
+    cancelled: 'Annulé (pour le moment)',
     onHold: 'En pause',
     active: 'Actif',
     inactive: 'Inactif',
     archived: 'Archivé',
     draft: 'Brouillon',
-    review: 'En revue',
+    review: 'En revue collaborative',
 
     // Tasks
-    assignedTo: 'Assignée à',
-    priority: 'Priorité',
-    dueDate: 'Échéance',
-    high: 'Haute',
-    medium: 'Moyenne',
-    low: 'Basse',
-    critical: 'Critique',
+    assignedTo: 'Responsable',
+    priority: "Niveau d'urgence",
+    dueDate: 'Date limite',
+    high: 'Urgente 🚀',
+    medium: 'Importante',
+    low: 'Tranquille',
+    critical: 'Capitale ⚡',
+    // Task Status
+    // Task Status mapping
     todo: 'À faire',
-    doing: 'En cours',
-    done: 'Terminé',
-    taskManagement: 'Gestion des tâches',
-    taskName: 'Nom de la tâche',
-    taskDescription: 'Description de la tâche',
-    taskCreated: 'Tâche créée avec succès',
-    taskUpdated: 'Tâche mise à jour avec succès',
-    taskDeleted: 'Tâche supprimée avec succès',
-    deleteTask: 'Supprimer la tâche',
-    deleteTaskConfirm: 'Êtes-vous sûr de vouloir supprimer cette tâche ?',
-    noTasks: 'Aucune tâche',
-    allTasks: 'Toutes les tâches',
-    myTasks: 'Mes tâches',
-    unassigned: 'Non assignée',
+    doing: 'En action',
+    done: 'Accompli ✨',
+
+    // Item Types
+    epic: 'Chantier Majeur',
+    story: 'Besoin Utilisateur',
+    task: 'Tâche',
+    bug: 'Ajustement Nécessaire',
+
+    // Task Management
+    taskManagement: 'Pilotage des activités',
+    taskManagementDesc: 'Pilotez ici les actions qui font avancer vos projets avec brio.',
+    noTasksDesc: 'Aucune activité pour le moment. Tout est calme et serein !',
+    taskName: "Intitulé de l'action",
+    taskDescription: "Décrivez les étapes ou le contenu de l'action",
+    taskCreated: 'Action enregistrée',
+    taskUpdated: 'Mise à jour effectuée',
+    taskDeleted: 'Action supprimée',
+    deleteTask: "Supprimer l'action",
+    deleteTaskConfirm: 'Voulez-vous vraiment retirer cette action ?',
+    noTasks: 'Aucune activité pour le moment',
+    allTasks: 'Toutes les activités',
+    myTasks: 'Mes priorités',
+    unassigned: "En attente d'attribution",
     estimation: 'Estimation',
     hours: 'heures',
     points: 'points',
-    storyPoints: 'Points d\'histoire',
+    storyPoints: "Points d'histoire",
 
     // Sprints
-    sprintManagement: 'Gestion des sprints',
+    sprintManagement: 'Gestion des Sprints',
     sprintName: 'Nom du sprint',
     sprintGoal: 'Objectif du sprint',
     sprintStart: 'Début du sprint',
@@ -124,10 +177,15 @@ const translations = {
     sprintStarted: 'Sprint démarré',
     sprintEnded: 'Sprint terminé',
     velocity: 'Vélocité',
-    capacity: 'Capacité',
+    capacity: "Capacité de l'équipe",
 
     // Users
-    userManagement: 'Gestion des utilisateurs',
+    userManagement: 'Gestion des collaborateurs',
+    userManagementSubtitle: 'Gérez ici les membres de votre organisation.',
+    inviteMember: 'Inviter un membre',
+    inviteMemberTitle: 'Ajouter un membre',
+    inviteMemberDesc:
+      'Ajoutez un nouveau collaborateur à votre équipe en remplissant ces informations.',
     userName: 'Nom complet',
     userEmail: 'Email',
     userRole: 'Rôle',
@@ -135,13 +193,13 @@ const translations = {
     userPhone: 'Téléphone',
     userPosition: 'Poste',
     userDepartment: 'Département',
-    createUser: 'Créer un utilisateur',
-    editUser: 'Modifier l\'utilisateur',
-    deleteUser: 'Supprimer l\'utilisateur',
-    deleteUserConfirm: 'Êtes-vous sûr de vouloir supprimer cet utilisateur ?',
-    userCreated: 'Utilisateur créé avec succès',
-    userUpdated: 'Utilisateur mis à jour avec succès',
-    userDeleted: 'Utilisateur supprimé avec succès',
+    createUser: 'Inviter un nouveau membre',
+    editUser: 'Modifier le profil du membre',
+    deleteUser: 'Retirer le membre',
+    deleteUserConfirm: 'Souhaitez-vous vraiment retirer ce collaborateur ?',
+    userCreated: 'Collaborateur ajouté avec succès',
+    userUpdated: 'Modifications enregistrées',
+    userDeleted: 'Collaborateur retiré avec succès',
     noUsers: 'Aucun utilisateur',
     allUsers: 'Tous les utilisateurs',
     activeUsers: 'Utilisateurs actifs',
@@ -151,30 +209,34 @@ const translations = {
     roleChanged: 'Rôle modifié avec succès',
 
     // Budget
-    budgetTotal: 'Budget total',
-    budgetSpent: 'Dépensé',
-    budgetRemaining: 'Restant',
-    expenses: 'Dépenses',
-    addExpense: 'Ajouter une dépense',
-    expenseCategory: 'Catégorie',
-    expenseAmount: 'Montant',
-    expenseDate: 'Date',
-    expenseDescription: 'Description',
-    expenseAdded: 'Dépense ajoutée avec succès',
-    expenseDeleted: 'Dépense supprimée avec succès',
+    budgetTotal: 'Budget total du projet',
+    budgetSpent: 'Dépenses engagées',
+    budgetRemaining: 'Budget restant',
+    budgetProof: 'Justificatifs',
+    budgetProofUpload: "Preuves de l'investissement (Factures, Reçus, TDR...)",
+    budgetProofClick: 'Cliquez pour partager vos justificatifs',
+    budgetProofHelp: 'Ajoutez vos preuves de succès financier',
+    expenses: 'Suivi des dépenses & Justificatifs',
+    addExpense: 'Déclarer un nouveau règlement',
+    expenseCategory: "Domaine d'investissement",
+    expenseAmount: 'Montant investi',
+    expenseDate: 'Date du règlement',
+    expenseDescription: "Nature de l'opération",
+    expenseAdded: 'Dépense enregistrée avec succès',
+    expenseDeleted: 'Opération supprimée avec succès',
     noExpenses: 'Aucune dépense',
     budgetAlert: 'Alerte budget',
-    budgetExceeded: 'Budget dépassé',
-    budgetWarning: 'Attention : budget proche de la limite',
+    budgetExceeded: 'Le budget a été dépassé.',
+    budgetWarning: 'Attention, le budget approche de sa limite.',
     spent: 'dépensés',
     ofBudget: 'du budget',
 
     // Timesheets
-    timesheetManagement: 'Gestion des feuilles de temps',
-    logTime: 'Saisir du temps',
-    hoursWorked: 'Heures travaillées',
+    timesheetManagement: 'Suivi du temps passé',
+    logTime: 'Déclarer mes heures',
+    hoursWorked: 'Temps passé (h)',
     date: 'Date',
-    timeEntry: 'Entrée de temps',
+    timeEntry: 'Saisie de temps',
     timeEntryAdded: 'Temps enregistré avec succès',
     timeEntryDeleted: 'Entrée supprimée avec succès',
     noTimeEntries: 'Aucune entrée de temps',
@@ -192,7 +254,7 @@ const translations = {
     allNotifications: 'Toutes les notifications',
 
     // Profile
-    myProfile: 'Mon profil',
+    myProfile: 'Votre Espace Personnel',
     editProfile: 'Modifier le profil',
     personalInfo: 'Informations personnelles',
     contactInfo: 'Coordonnées',
@@ -204,13 +266,13 @@ const translations = {
     newPassword: 'Nouveau mot de passe',
     confirmPassword: 'Confirmer le mot de passe',
     passwordChanged: 'Mot de passe modifié avec succès',
-    twoFactorAuth: 'Authentification à deux facteurs',
+    twoFactorAuth: 'Double Authentification (Sécurité renforcée)',
     enable2FA: 'Activer 2FA',
     disable2FA: 'Désactiver 2FA',
     weeklyAvailability: 'Disponibilité hebdomadaire',
 
     // Time
-    today: 'Aujourd\'hui',
+    today: "Aujourd'hui",
     yesterday: 'Hier',
     tomorrow: 'Demain',
     thisWeek: 'Cette semaine',
@@ -236,36 +298,52 @@ const translations = {
     unauthorized: 'Non autorisé',
     forbidden: 'Accès refusé',
     notFound: 'Non trouvé',
-    confirmAction: 'Confirmer l\'action',
+    confirmAction: "Confirmer l'action",
     actionCancelled: 'Action annulée',
-    changesNotSaved: 'Les modifications n\'ont pas été enregistrées',
+    changesNotSaved: 'Modifications non enregistrées',
 
     // Settings
-    generalSettings: 'Paramètres généraux',
-    notificationSettings: 'Paramètres de notifications',
-    securitySettings: 'Paramètres de sécurité',
-    appearanceSettings: 'Apparence',
-    language: 'Langue',
+    generalSettings: 'Identité de votre Espace',
+    generalSettingsDesc: 'Ajustez la configuration de votre environnement.',
+    notificationSettings: 'Gestion des Notifications',
+    notificationSettingsDesc:
+      'Choisissez comment vous souhaitez être informé des avancées de votre équipe.',
+    securitySettings: 'Sécurité & Accès',
+    securitySettingsDesc: 'Protégez vos données et vos accès.',
+    appearanceSettings: 'Apparence & Style',
+    appearanceSettingsDesc: 'Personnalisez votre interface.',
+    triggerEvents: 'Événements déclencheurs',
+    notifyTaskAssignedLabel: 'Tâche assignée',
+    notifyTaskAssignedDesc: 'Quand une tâche vous est assignée',
+    notifyTaskCompletedLabel: 'Tâche terminée',
+    notifyTaskCompletedDesc: 'Quand une tâche de votre projet est terminée',
+    notifyCommentMentionLabel: 'Mention dans un commentaire',
+    notifyCommentMentionDesc: 'Quand vous êtes @mentionné',
+    notifySprintStartLabel: 'Début de sprint',
+    notifySprintStartDesc: 'Quand un sprint démarre',
+    notifyBudgetAlertLabel: 'Alerte budget',
+    notifyBudgetAlertDesc: 'Quand le budget dépasse 80%',
+    language: "Langue de l'interface",
     timezone: 'Fuseau horaire',
-    currency: 'Devise',
+    currency: 'Devise par défaut',
     dateFormat: 'Format de date',
-    theme: 'Thème',
-    light: 'Clair',
-    dark: 'Sombre',
-    system: 'Système',
-    appName: 'Nom de l\'application',
-    appDescription: 'Description',
+    theme: 'Thème Visuel',
+    light: 'Clarté',
+    dark: 'Sérénité (Sombre)',
+    system: 'Adaptatif (Système)',
+    appName: "Nom de l'application",
+    appDescription: 'Description de la mission',
     settingsSaved: 'Paramètres enregistrés avec succès',
-    emailNotifications: 'Notifications par email',
-    pushNotifications: 'Notifications push',
-    sessionTimeout: 'Expiration de session',
-    passwordMinLength: 'Longueur min. mot de passe',
+    emailNotifications: 'Notifications par E-mail',
+    pushNotifications: 'Notifications Push',
+    sessionTimeout: 'Durée de session',
+    passwordMinLength: 'Longueur minimale du mot de passe',
     requireNumbers: 'Exiger des chiffres',
-    requireSymbols: 'Exiger des caractères spéciaux',
-    maxLoginAttempts: 'Tentatives de connexion max',
-    lockoutDuration: 'Durée de blocage',
-    primaryColor: 'Couleur principale',
-    sidebarCompact: 'Sidebar compacte',
+    requireSymbols: 'Exiger des symboles',
+    maxLoginAttempts: 'Tentatives de connexion max.',
+    lockoutDuration: 'Durée de verrouillage',
+    primaryColor: 'Couleur de Signature',
+    sidebarCompact: 'Barre latérale minimaliste',
     minutes: 'minutes',
     characters: 'caractères',
     attempts: 'tentatives',
@@ -285,59 +363,211 @@ const translations = {
     invalidCredentials: 'Identifiants invalides',
     accountLocked: 'Compte verrouillé',
     accountDisabled: 'Compte désactivé',
-    welcomeFirstLogin: 'Bienvenue ! Veuillez définir votre nouveau mot de passe.',
-    firstAdminCreated: 'Premier administrateur créé avec succès ! Vous pouvez maintenant vous connecter.',
-    invalidAuthResponse: 'Réponse d\'authentification invalide',
+    welcomeFirstLogin: 'Bienvenue !',
+    firstAdminCreated: 'Premier administrateur créé avec succès !',
+    requiredFields: 'Veuillez renseigner tous les champs obligatoires',
+    tempPassword: 'Mot de passe temporaire',
+    resetPasswordDesc: 'Un nouvel accès sécurisé sera généré.',
+    resetPasswordConfirm: 'Le collaborateur recevra ses nouveaux identifiants.',
+    passwordResetSuccess: "L'accès a été réinitialisé avec succès",
+    emailLabel: 'Email professionnel',
+    roleLabel: 'Rôle & Responsabilités',
+    invalidAuthResponse: "Réponse d'authentification invalide",
     serverConnectionError: 'Erreur de connexion au serveur',
     invalidCode: 'Code invalide',
-    backupCodesWarning: 'Attention: Il ne vous reste que {count} code(s) de secours. Pensez à en générer de nouveaux.',
+    backupCodesWarning: 'Attention : Il ne vous reste que {count} code(s) de secours.',
     twoFactorVerification: 'Vérification 2FA',
-    enterAuthCode: 'Entrez le code de votre application d\'authentification',
+    enterAuthCode: "Entrez le code de votre application d'authentification",
     twoFactorTitle: 'Authentification à deux facteurs',
     enterBackupCode: 'Entrez un de vos codes de secours',
-    enter6DigitCode: 'Entrez le code à 6 chiffres de votre application',
+    enter6DigitCode: 'Entrez le code à 6 chiffres',
     backupCode: 'Code de secours',
     verificationCode: 'Code de vérification',
     verifying: 'Vérification...',
     verify: 'Vérifier',
     backToLogin: 'Retour à la connexion',
-    useAuthApp: 'Utiliser l\'application d\'authentification',
+    useAuthApp: "Utiliser l'application d'authentification",
     useBackupCode: 'Utiliser un code de secours',
-    projectManagementPlatform: 'PM - Gestion de Projets',
+    projectManagementPlatform: 'Gestion de Projets',
     connectToAccessSpace: 'Connectez-vous pour accéder à votre espace',
-    enterCredentials: 'Entrez vos identifiants pour accéder à l\'application',
+    enterCredentials: "Entrez vos identifiants pour accéder à l'application",
+
+    // Humanized Keys for Projects Page
+    governanceTeam: 'Gouvernance & Équipe',
+    documentsFiles: 'Documents & Fichiers',
+    projectModel: 'Modèle de Projet',
+    projectLaunchDate: 'Date de lancement prévue',
+    estimatedDeadline: 'Échéance ou fin estimée',
+    specificFields: 'Champs spécifiques',
+    contextQuestion: 'Quel est le contexte de ce projet ?',
+    objectivesQuestion: 'Quels sont les objectifs à atteindre ?',
+    tdrQuestion: 'Cahier des charges ou Référence (TDR)',
+    technicalTeamQuestion: "Qui compose l'équipe technique ?",
+    steeringCommitteeQuestion: 'Qui sont les membres du comité de pilotage ?',
+    partnersQuestion: 'Partenaires et parties prenantes',
+    strategicImpact: 'Impact Stratégique',
+    ongoingMissions: 'Missions en cours',
+    totalInitiatives: 'Total des initiatives',
+
+    // Humanized Keys for Item Form Dialog
+    itemTitleQuestion: "Quel est l'intitulé de cet élément ?",
+    itemDescriptionPlaceholder: 'Précisez ici les détails et les attentes...',
+    itemPriorityQuestion: 'Quel est le niveau de priorité ?',
+    itemAssigneeQuestion: 'Qui aura le plaisir de porter cette action ?',
+    itemSuccessProof: 'Justificatif de succès',
+    itemSuccessProofPlaceholder: 'Détaillez ici les résultats attendus...',
+    itemIdentity: 'Identité',
+    itemDetails: 'Détails',
+    requiredField: 'Ce champ est indispensable',
+    generalInfos: 'Informations générales',
+    projectDescriptionQuestion: "Décrivez l'essentiel de votre mission",
+    projectTemplateQuestion: 'Quel modèle guidera cette initiative ?',
+    projectContexteQuestion: "Dans quel contexte ce projet s'inscrit-il ?",
+    projectObjectifsQuestion: 'Quels sont les objectifs à atteindre ?',
+    projectTDRQuestion: 'Cahier des charges ou Référence (TDR)',
+    projectTeamQuestion: 'Équipe & Expertises',
+    projectTeamPlaceholder: "Qui sont les membres de l'équipe ?",
+    projectCopilQuestion: 'Comité de Pilotage',
+    projectCopilPlaceholder: 'Ex: Direction, Responsable Financier',
+    projectPartnersQuestion: 'Partenaires',
+    projectPartnersPlaceholder: 'Ex: Ministère, ONG XYZ',
+    projectFilesQuestion: "Documents d'accompagnement",
+    projectFilesHelper: 'Ajoutez ici les documents relatifs à ce projet.',
+    chosenFilesLabel: 'Fichiers sélectionnés :',
+    projectQuestion: 'Sur quel projet travaillons-nous ?',
+    selectProject: 'Choisir le projet concerné',
+    typeQuestion: "Quel est le type d'action ?",
+    difficultyQuestion: 'Quel effort cela représente-t-il ?',
+    epicDifficultyQuestion: 'Charge globale estimée',
+    parentQuestion: "Cet élément fait-il partie d'un ensemble plus large ?",
+    noParent: 'Aucun lien parent',
+    sprintQuestion: "Dans quel cycle de travail l'inscrire ?",
+    noSprint: 'Non planifié (Backlog)',
+    deliverableQuestion: 'À quel livrable est-ce rattaché ?',
+    noDeliverable: 'Aucun livrable associé',
+    updating: 'Mise à jour en cours...',
+    creating: 'Création en cours...',
+    loadingData: 'Chargement des données...',
+    dataLoadError: 'Erreur lors du chargement des données.',
+    numericError: 'Une valeur chiffrée est attendue ici',
+    fixErrors: 'Quelques précisions manquent encore...',
+    successCreated: "L'élément a été créé avec succès",
+    successUpdated: "L'élément a été mis à jour avec succès",
+    reportsType: 'Type de rapport',
+    reportGlobal: 'Panorama Global',
+    reportGlobalDesc: "Vue d'ensemble de toutes les initiatives.",
+    reportProject: 'Fiche Initiative',
+    reportProjectDesc: 'Focus sur une mission spécifique.',
+    reportPerformance: 'Dynamique de Contribution',
+    reportPerformanceDesc: 'Impact et activité de chaque membre.',
+    parameters: 'Paramètres du Rapport',
+    accessDenied: 'Accès Restreint',
+    noPermissionReports: "Vous n'avez pas les droits pour accéder à ces rapports.",
+    noPermissionBudget: "Vous n'avez pas les droits pour consulter le budget.",
+    contactAdminError: 'Veuillez contacter un administrateur.',
+    backToDashboard: "Revenir à l'accueil",
+    impactSummaryTitle: "Résumé de l'Impact",
+    impactIndicator: 'Indicateur de Succès',
+    impactValue: 'Mesure de Valeur',
+    engagementIndicators: "Indicateurs d'Engagement",
+    initiativesPanorama: 'Panorama des Initiatives',
+    actionsInventory: 'Inventaire des Actions',
+    teamDynamicsTitle: 'Dynamique & Engagement Équipe',
+    selectExportFormat: 'Sous quel format préférez-vous votre bilan ?',
+    generateReportButton: 'Générer le Bilan',
+    generatingReport: 'Préparation de votre bilan...',
+    exportFormatPdf: 'Document PDF',
+    initiativeVolume: 'Nombre de projets lancés',
+    activeInitiatives: 'Projets actifs',
+    recordedSuccesses: 'Victoires enregistrées',
+    actionVolume: "Volume d'actions menées",
+    teamEnergy: "Activité de l'équipe",
+    impactVision: "Regard sur l'impact",
+    radiant: 'Rayonnant 🌟',
+    greatMomentum: 'Excellente progression ! 💪',
+    inProgressGrowth: 'En progression 🌱',
+    needSupport: 'Besoin de soutien 🤝',
+    inventoryActions: 'Inventaire des actions réalisées',
+    confidentialDocument: 'Ce document est confidentiel',
+    reportGeneratedAt: 'Généré le',
+    reportPeriod: 'Période du rapport',
+    adventureName: 'Nom du projet',
+    stepStatus: 'Statut',
+    stepUrgency: 'Niveau de priorité',
+    launchDate: 'Date de début',
+    successTarget: 'Échéance prévue',
+    totalAdventures: 'Total des projets',
+    activeAdventures: 'Projets actifs',
+    victories: 'Tâches terminées',
+    totalActions: 'Total des actions',
+    accomplishedActions: 'Actions accomplies',
+    successRate: 'Taux de succès',
+    mobilizedTalents: 'Membres impliqués',
+    indicator: 'Indicateur',
+    value: 'Valeur',
+    collaborator: 'Collaborateur',
+    dynamics: "Dynamique d'équipe",
+    evaluationLabel: 'Évaluation / Commentaires',
+    justifyExpense: 'Justifier une dépense',
+    expensePlaceholder: "Ex: Achat de licences pour booster l'équipe",
+    budgetProofLabel: 'Pièces justificatives (Factures, Reçus...)',
+    expenseTypeInternal: 'Contribution Interne',
+    expenseTypeExternal: 'Appui Externe',
+    expenseTypeEquipment: 'Équipement & Matériel',
+    expenseTypeService: 'Prestation Partenaire',
+    expenseTypeOther: 'Autre dépense',
+    budgetInitial: 'Budget initial',
+    budgetUsage: 'Utilisation du Budget',
+    exportFormatExcel: 'Format Excel (.xlsx)',
+    exportFormatCsv: 'Format CSV (.csv)',
+    previewContent: 'Aperçu du Rapport',
+    previewDescription: 'Voici les éléments qui composeront votre document.',
+    globalStats: 'Statistiques Globales',
+    projectsList: 'Liste des Projets',
+    projectsListDesc: 'Détails des projets en cours ou terminés.',
+    tasksDistribution: 'Répartition des Tâches',
+    tasksDistributionDesc: 'Visualisation de la charge de travail globale.',
+    projectInfo: 'Informations Projet',
+    projectInfoDesc: 'Dates, statut et objectifs principaux.',
+    tasksList: 'Liste des Tâches',
+    tasksListDesc: 'Liste détaillée des actions réalisées et à venir.',
+    userStats: 'Performances & Contributions',
+    userStatsDesc: "Focus sur l'activité et les réalisations individuelles.",
+
+    // Paramètres & Configuration
+    settings: "Configuration de l'Espace",
+    settingsSubtitle: 'Personnalisez votre espace de travail selon vos besoins.',
+    general: 'Général',
+    notifications: 'Notifications & Alertes',
+    profileSubtitle: "Gérez votre identité et visualisez l'impact de votre contribution.",
+    myActivity: 'Votre Parcours & Influence',
+    activitySubtitle: 'Un aperçu de vos succès et de votre engagement quotidien.',
+    activeMissions: 'Projets actifs',
+    activeNeeds: 'Tâches en cours',
+    successAccomplished: 'Tâches terminées',
+    valueAddedTime: 'Heures investies',
+    personalDetails: 'Détails de votre Identité',
+    identitySubtitle: "Vos informations de contact et votre rôle au sein de l'organisation.",
+    editMyProfile: 'Modifier mes Informations',
+    usageName: "Nom d'usage",
+    contactLine: 'Ligne de contact',
+    expertiseTitle: 'Titre & Expertise',
+    teamEntity: 'Entité ou Équipe',
+    engagementWeekly: "Temps d'engagement hebdomadaire",
+    accessLevel: "Niveau d'accès",
+    partnerSince: 'Membre depuis',
+    lastVisit: 'Dernière visite',
 
     // Menu & Navigation
-    rolesPermissions: 'Rôles & Permissions',
-    projectTemplates: 'Templates Projets',
-    deliverableTypes: 'Types Livrables',
-    sharepoint: 'SharePoint',
-    auditLogs: 'Audit & Logs',
-    maintenance: 'Maintenance',
-
-    // Dashboard specific
-    recentProjects: 'Projets récents',
-    yourActiveProjects: 'Vos derniers projets actifs',
-    noProjects: 'Aucun projet pour le moment',
-    createProject: 'Créer un projet',
-    createProjectForKanban: 'Créez un projet pour utiliser le Kanban',
-    viewAllProjects: 'Voir tous les projets',
-    tasksAssignedToYou: 'Tâches qui vous sont assignées',
-    noTasksAssigned: 'Aucune tâche assignée',
-    viewAllTasks: 'Voir toutes les tâches',
-
-    // Notification triggers
-    triggerEvents: 'Événements déclencheurs',
-    notifyTaskAssignedLabel: 'Tâche assignée',
-    notifyTaskAssignedDesc: 'Quand une tâche vous est assignée',
-    notifyTaskCompletedLabel: 'Tâche terminée',
-    notifyTaskCompletedDesc: 'Quand une tâche de votre projet est terminée',
-    notifyCommentMentionLabel: 'Mention dans un commentaire',
-    notifyCommentMentionDesc: 'Quand vous êtes @mentionné',
-    notifySprintStartLabel: 'Début de sprint',
-    notifySprintStartDesc: 'Quand un sprint démarre',
-    notifyBudgetAlertLabel: 'Alerte budget',
-    notifyBudgetAlertDesc: 'Quand le budget dépasse 80%',
+    rolesPermissions: "Rôles & Droits d'accès",
+    projectTemplates: 'Modèles de Projets',
+    deliverableTypes: 'Types de Livrables',
+    sharepoint: 'Espace Fichiers (SharePoint)',
+    auditLogs: 'Historique des actions',
+    maintenance: 'Mode Maintenance',
+    yourActiveProjects: 'Vos projets en cours',
+    createProjectForKanban: 'Créez un premier projet pour afficher le tableau par étapes',
+    tasksAssignedToYou: 'Vos prochaines tâches à réaliser',
 
     // Budget categories
     humanResources: 'Ressources humaines',
@@ -352,9 +582,11 @@ const translations = {
 
     // 2FA Setup
     twoFactorDescription: 'Ajoutez une couche de sécurité supplémentaire à votre compte',
-    twoFactorProtectedMessage: 'Votre compte est protégé par l\'authentification à deux facteurs. Un code sera demandé lors de chaque connexion.',
-    twoFactorSetupMessage: 'Protégez votre compte en activant l\'authentification à deux facteurs. Vous aurez besoin d\'une application comme Google Authenticator ou Authy.',
-    twoFactorSetupError: 'Erreur lors de l\'initialisation',
+    twoFactorProtectedMessage:
+      "Votre compte est protégé par l'authentification à deux facteurs. Un code sera demandé lors de chaque connexion.",
+    twoFactorSetupMessage:
+      "Protégez votre compte en activant l'authentification à deux facteurs. Vous aurez besoin d'une application comme Google Authenticator ou Authy.",
+    twoFactorSetupError: "Erreur lors de l'initialisation",
     twoFactorCodeLength: 'Le code doit contenir 6 chiffres',
     twoFactorEnabled: '2FA activé avec succès',
     twoFactorDisabled: '2FA désactivé',
@@ -367,29 +599,37 @@ const translations = {
     backupCodesError: 'Erreur lors de la régénération',
     codesCopied: 'Codes copiés',
     configure2FA: 'Configurer le 2FA',
-    configure2FATitle: 'Configurer l\'authentification 2FA',
+    configure2FATitle: "Configurer l'authentification 2FA",
     configuring: 'Configuration...',
     backupCodesTitle: 'Codes de récupération',
-    scanQRCodeMessage: 'Scannez le QR code avec votre application d\'authentification',
+    scanQRCodeMessage: "Scannez le QR code avec votre application d'authentification",
     saveBackupCodesMessage: 'Conservez ces codes en lieu sûr',
     orEnterManually: 'Ou entrez ce code manuellement :',
-    backupCodesWarningMessage: 'Ces codes ne seront plus affichés. Conservez-les en lieu sûr. Chaque code ne peut être utilisé qu\'une seule fois.',
+    backupCodesWarningMessage:
+      "Ces codes ne seront plus affichés. Conservez-les en lieu sûr. Chaque code ne peut être utilisé qu'une seule fois.",
     copyAllCodes: 'Copier tous les codes',
     verifyAndActivate: 'Vérifier et activer',
-    savedMyCodes: 'J\'ai sauvegardé mes codes',
+    savedMyCodes: "J'ai sauvegardé mes codes",
     disable2FATitle: 'Désactiver le 2FA',
-    disable2FAWarning: 'Cette action réduira la sécurité de votre compte. Confirmez avec votre mot de passe.',
+    disable2FAWarning:
+      'Cette action réduira la sécurité de votre compte. Confirmez avec votre mot de passe.',
     yourPassword: 'Votre mot de passe',
     twoFactorCodeOptional: 'Code 2FA (optionnel)',
     disabling: 'Désactivation...',
     generating: 'Génération...',
     generateNewCodes: 'Générer de nouveaux codes',
     newBackupCodesTitle: 'Nouveaux codes de secours',
-    oldCodesInvalidated: 'Les anciens codes ont été invalidés. Ces nouveaux codes ne seront plus affichés.',
+    oldCodesInvalidated:
+      'Les anciens codes ont été invalidés. Ces nouveaux codes ne seront plus affichés.',
+
+    // Push Notifications feedback
+    notificationsEnabled: 'Les notifications push ont été activées ! ✨',
+    notificationsDisabled: 'Les notifications push ont été désactivées.',
+    notificationsPermissionDenied: 'La permission a été refusée par votre navigateur.',
 
     // Missing keys (notifications & profile)
     allNotificationsMarkedAsRead: 'Toutes les notifications marquées comme lues',
-    emailNotEditable: 'L\'email ne peut pas être modifié',
+    emailNotEditable: "L'email ne peut pas être modifié",
     loadError: 'Erreur de chargement',
     loadingError: 'Erreur lors du chargement',
     nameRequired: 'Le nom est requis',
@@ -457,7 +697,6 @@ const translations = {
     results: 'résultats',
     noResults: 'Aucun résultat',
     project: 'Projet',
-    task: 'Tâche',
     user: 'Utilisateur',
     role: 'Rôle',
     sprint: 'Sprint',
@@ -469,7 +708,6 @@ const translations = {
     enabled: 'Activé',
     disabled: 'Désactivé',
     configure: 'Configurer',
-    general: 'Général',
     advanced: 'Avancé',
     more: 'Plus',
     less: 'Moins',
@@ -642,6 +880,11 @@ const translations = {
     budgetWarning: 'Warning: budget near limit',
     spent: 'spent',
     ofBudget: 'of budget',
+    accessDenied: 'Restricted Access',
+    noPermissionReports: 'You do not have permission to access these reports.',
+    noPermissionBudget: 'You do not have permission to view the budget.',
+    contactAdminError: 'Please contact an administrator.',
+    backToDashboard: 'Back to home',
 
     // Timesheets
     timesheetManagement: 'Timesheet Management',
@@ -764,7 +1007,8 @@ const translations = {
     invalidAuthResponse: 'Invalid authentication response',
     serverConnectionError: 'Server connection error',
     invalidCode: 'Invalid code',
-    backupCodesWarning: 'Warning: You only have {count} backup code(s) left. Consider generating new ones.',
+    backupCodesWarning:
+      'Warning: You only have {count} backup code(s) left. Consider generating new ones.',
     twoFactorVerification: '2FA Verification',
     enterAuthCode: 'Enter the code from your authentication app',
     twoFactorTitle: 'Two-factor authentication',
@@ -826,8 +1070,10 @@ const translations = {
 
     // 2FA Setup
     twoFactorDescription: 'Add an extra layer of security to your account',
-    twoFactorProtectedMessage: 'Your account is protected by two-factor authentication. A code will be required at each login.',
-    twoFactorSetupMessage: 'Protect your account by enabling two-factor authentication. You will need an app like Google Authenticator or Authy.',
+    twoFactorProtectedMessage:
+      'Your account is protected by two-factor authentication. A code will be required at each login.',
+    twoFactorSetupMessage:
+      'Protect your account by enabling two-factor authentication. You will need an app like Google Authenticator or Authy.',
     twoFactorSetupError: 'Error during setup',
     twoFactorCodeLength: 'Code must be 6 digits',
     twoFactorEnabled: '2FA enabled successfully',
@@ -847,7 +1093,8 @@ const translations = {
     scanQRCodeMessage: 'Scan the QR code with your authenticator app',
     saveBackupCodesMessage: 'Keep these codes in a safe place',
     orEnterManually: 'Or enter this code manually:',
-    backupCodesWarningMessage: 'These codes will not be shown again. Keep them safe. Each code can only be used once.',
+    backupCodesWarningMessage:
+      'These codes will not be shown again. Keep them safe. Each code can only be used once.',
     copyAllCodes: 'Copy all codes',
     verifyAndActivate: 'Verify and activate',
     savedMyCodes: 'I have saved my codes',
@@ -859,7 +1106,8 @@ const translations = {
     generating: 'Generating...',
     generateNewCodes: 'Generate new codes',
     newBackupCodesTitle: 'New backup codes',
-    oldCodesInvalidated: 'Old codes have been invalidated. These new codes will not be shown again.',
+    oldCodesInvalidated:
+      'Old codes have been invalidated. These new codes will not be shown again.',
 
     // Missing keys (notifications & profile)
     allNotificationsMarkedAsRead: 'All notifications marked as read',
@@ -951,7 +1199,7 @@ const translations = {
     showLess: 'Show less',
     expandAll: 'Expand all',
     collapseAll: 'Collapse all',
-  }
+  },
 };
 
 // Symboles des devises
@@ -985,21 +1233,15 @@ export function AppSettingsProvider({ children }) {
   // Charger les paramètres depuis l'API
   const loadSettings = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        setLoaded(true);
-        return;
-      }
-
       const response = await fetch('/api/settings', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(8000)
+        credentials: 'same-origin',
+        signal: AbortSignal.timeout(8000),
       });
 
-      if (response.ok) {
+      if (response && response.ok) {
         const data = await response.json();
         if (data.settings) {
-          setSettings(prev => ({
+          setSettings((prev) => ({
             ...prev,
             appName: data.settings.appName || prev.appName,
             appDescription: data.settings.appDescription || prev.appDescription,
@@ -1023,7 +1265,7 @@ export function AppSettingsProvider({ children }) {
     // Écouter les mises à jour des paramètres
     const handleSettingsUpdate = (event) => {
       if (event.detail) {
-        setSettings(prev => ({ ...prev, ...event.detail }));
+        setSettings((prev) => ({ ...prev, ...event.detail }));
         // Mettre à jour le titre si appName est dans les détails
         if (event.detail.appName) {
           document.title = event.detail.appName;
@@ -1046,7 +1288,7 @@ export function AppSettingsProvider({ children }) {
 
   // Mettre à jour les paramètres localement
   const updateSettings = useCallback((newSettings) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+    setSettings((prev) => ({ ...prev, ...newSettings }));
 
     // Mettre à jour le titre immédiatement si appName change
     if (newSettings.appName && typeof window !== 'undefined') {
@@ -1058,95 +1300,140 @@ export function AppSettingsProvider({ children }) {
   }, []);
 
   // Fonction de traduction
-  const t = useCallback((key) => {
-    const lang = settings.langue || 'fr';
-    return translations[lang]?.[key] || translations.fr[key] || key;
-  }, [settings.langue]);
+  const t = useCallback(
+    (key) => {
+      const lang = settings.langue || 'fr';
+      return translations[lang]?.[key] || translations.fr[key] || key;
+    },
+    [settings.langue]
+  );
 
   // Formater une date selon les paramètres
-  const formatDate = useCallback((date, options = {}) => {
-    if (!date) return '';
+  const formatDate = useCallback(
+    (date, options = {}) => {
+      if (!date) return '';
 
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '';
 
-    const { includeTime = false, relative = false } = options;
-    const locale = localeMap[settings.langue] || 'fr-FR';
-    const tz = settings.timezone || 'Africa/Porto-Novo';
+      const { includeTime = false, relative = false } = options;
+      const locale = localeMap[settings.langue] || 'fr-FR';
+      const tz = settings.timezone || 'Africa/Porto-Novo';
 
-    // Format relatif (aujourd'hui, hier, etc.)
-    if (relative) {
-      const now = new Date();
-      const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+      // Format relatif (aujourd'hui, hier, etc.)
+      if (relative) {
+        const now = new Date();
+        const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
 
-      if (diff === 0) return t('today');
-      if (diff === 1) return t('yesterday');
-      if (diff === -1) return t('tomorrow');
-    }
+        if (diff === 0) return t('today');
+        if (diff === 1) return t('yesterday');
+        if (diff === -1) return t('tomorrow');
+      }
 
-    // Déterminer le format
-    let formatOptions = { timeZone: tz };
+      // Déterminer le format
+      let formatOptions = { timeZone: tz };
 
-    switch (settings.formatDate) {
-      case 'MM/DD/YYYY':
-        formatOptions = { ...formatOptions, month: '2-digit', day: '2-digit', year: 'numeric' };
-        break;
-      case 'YYYY-MM-DD':
-        // ISO format
-        const isoDate = d.toLocaleDateString('en-CA', { timeZone: tz });
-        if (includeTime) {
-          const time = d.toLocaleTimeString(locale, { timeZone: tz, hour: '2-digit', minute: '2-digit' });
-          return `${isoDate} ${time}`;
+      switch (settings.formatDate) {
+        case 'MM/DD/YYYY':
+          formatOptions = { ...formatOptions, month: '2-digit', day: '2-digit', year: 'numeric' };
+          break;
+        case 'YYYY-MM-DD': {
+          // ISO format
+          const isoDate = d.toLocaleDateString('en-CA', { timeZone: tz });
+          if (includeTime) {
+            const time = d.toLocaleTimeString(locale, {
+              timeZone: tz,
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            return `${isoDate} ${time}`;
+          }
+          return isoDate;
         }
-        return isoDate;
-      case 'DD/MM/YYYY':
-      default:
-        formatOptions = { ...formatOptions, day: '2-digit', month: '2-digit', year: 'numeric' };
-    }
+        case 'DD/MM/YYYY':
+        default:
+          formatOptions = { ...formatOptions, day: '2-digit', month: '2-digit', year: 'numeric' };
+      }
 
-    if (includeTime) {
-      formatOptions.hour = '2-digit';
-      formatOptions.minute = '2-digit';
-    }
+      if (includeTime) {
+        formatOptions.hour = '2-digit';
+        formatOptions.minute = '2-digit';
+      }
 
-    return d.toLocaleDateString(locale, formatOptions);
-  }, [settings.formatDate, settings.timezone, settings.langue, t]);
+      return d.toLocaleDateString(locale, formatOptions);
+    },
+    [settings.formatDate, settings.timezone, settings.langue, t]
+  );
 
   // Formater un montant selon la devise
-  const formatCurrency = useCallback((amount, options = {}) => {
-    if (amount === null || amount === undefined) return '';
+  const formatCurrency = useCallback(
+    (amount, options = {}) => {
+      if (amount === null || amount === undefined) return '';
 
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '';
+      const num = parseFloat(amount);
+      if (isNaN(num)) return '';
 
-    const { compact = false } = options;
-    const devise = settings.devise || 'FCFA';
-    const locale = localeMap[settings.langue] || 'fr-FR';
+      const { compact = false } = options;
+      const devise = settings.devise || 'FCFA';
+      const locale = localeMap[settings.langue] || 'fr-FR';
 
-    // Format compact (1.5M, 2K, etc.)
-    if (compact && Math.abs(num) >= 1000) {
+      // Format compact (1.5M, 2K, etc.)
+      if (compact && Math.abs(num) >= 1000) {
+        const formatter = new Intl.NumberFormat(locale, {
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        });
+        return `${formatter.format(num)} ${currencySymbols[devise] || devise}`;
+      }
+
+      // Format standard
       const formatter = new Intl.NumberFormat(locale, {
-        notation: 'compact',
-        maximumFractionDigits: 1,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
       });
-      return `${formatter.format(num)} ${currencySymbols[devise] || devise}`;
-    }
 
-    // Format standard
-    const formatter = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
+      const symbol = currencySymbols[devise] || devise;
 
-    const symbol = currencySymbols[devise] || devise;
+      // Position du symbole selon la devise
+      if (devise === 'FCFA') {
+        return `${formatter.format(num)} ${symbol}`;
+      } else {
+        return `${symbol}${formatter.format(num)}`;
+      }
+    },
+    [settings.devise, settings.langue]
+  );
 
-    // Position du symbole selon la devise
-    if (devise === 'FCFA') {
-      return `${formatter.format(num)} ${symbol}`;
-    } else {
-      return `${symbol}${formatter.format(num)}`;
-    }
-  }, [settings.devise, settings.langue]);
+  // Obtenir le label humanisé pour un statut
+  const getStatusLabel = useCallback(
+    (statut) => {
+      const statusMap = {
+        'En attente': t('statusPending') || 'En attente',
+        'En cours': t('statusInProgress') || 'En action',
+        Terminé: t('statusCompleted') || 'Accompli ✨',
+        Annulé: t('statusCancelled') || 'Suspendu',
+        Bloqué: t('statusBlocked') || 'En pause 🛑',
+        'A faire': t('statusTodo') || 'À lancer',
+        'En revue': t('statusReview') || 'En lecture 📖',
+      };
+      return statusMap[statut] || statut;
+    },
+    [t]
+  );
+
+  // Obtenir le label humanisé pour une priorité
+  const getPriorityLabel = useCallback(
+    (priorité) => {
+      const priorityMap = {
+        Basse: t('priorityLow') || 'Tranquille',
+        Moyenne: t('priorityMedium') || 'Importante',
+        Haute: t('priorityHigh') || 'Urgente 🚀',
+        Critique: t('priorityCritical') || 'Capitale ⚡',
+      };
+      return priorityMap[priorité] || priorité;
+    },
+    [t]
+  );
 
   // Obtenir le fuseau horaire actuel
   const getTimezone = useCallback(() => {
@@ -1165,17 +1452,15 @@ export function AppSettingsProvider({ children }) {
     t,
     formatDate,
     formatCurrency,
+    getStatusLabel,
+    getPriorityLabel,
     getTimezone,
     getLanguage,
     currencySymbols,
     translations,
   };
 
-  return (
-    <AppSettingsContext.Provider value={value}>
-      {children}
-    </AppSettingsContext.Provider>
-  );
+  return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>;
 }
 
 export function useAppSettings() {
@@ -1194,6 +1479,7 @@ export function useTranslation() {
 
 // Hook simplifié pour le formatage
 export function useFormatters() {
-  const { formatDate, formatCurrency, getTimezone } = useAppSettings();
-  return { formatDate, formatCurrency, timezone: getTimezone() };
+  const { formatDate, formatCurrency, getStatusLabel, getPriorityLabel, getTimezone } =
+    useAppSettings();
+  return { formatDate, formatCurrency, getStatusLabel, getPriorityLabel, timezone: getTimezone() };
 }

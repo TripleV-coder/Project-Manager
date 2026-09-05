@@ -1,5 +1,10 @@
 import { useCallback, useMemo } from 'react';
-import { getMergedPermissions, isMenuVisible, getAccessibleData, hasPermission as checkPermission } from '@/lib/permissions';
+import {
+  getMergedPermissions,
+  isMenuVisible,
+  getAccessibleData,
+  hasPermission as checkPermission,
+} from '@/lib/permissions';
 
 /**
  * Custom hook for checking RBAC permissions in component context
@@ -27,9 +32,12 @@ export function useRBACPermissions(user, projectRole = null) {
   }, [user]);
 
   // OPTIMIZED: hasPermission avec useCallback stable
-  const hasPermission = useCallback((permission) => {
-    return checkPermission(normalizedUser, permission, projectRole);
-  }, [normalizedUser, projectRole]);
+  const hasPermission = useCallback(
+    (permission) => {
+      return checkPermission(normalizedUser, permission, projectRole);
+    },
+    [normalizedUser, projectRole]
+  );
 
   // OPTIMIZED: Calcul des menus accessibles avec useMemo
   const canAccessMenus = useMemo(() => {
@@ -48,7 +56,7 @@ export function useRBACPermissions(user, projectRole = null) {
         budget: false,
         reports: false,
         notifications: false,
-        admin: false
+        admin: false,
       };
     }
     return {
@@ -65,7 +73,7 @@ export function useRBACPermissions(user, projectRole = null) {
       budget: isMenuVisible(normalizedUser, 'budget', projectRole),
       reports: isMenuVisible(normalizedUser, 'reports', projectRole),
       notifications: isMenuVisible(normalizedUser, 'notifications', projectRole),
-      admin: isMenuVisible(normalizedUser, 'admin', projectRole)
+      admin: isMenuVisible(normalizedUser, 'admin', projectRole),
     };
   }, [normalizedUser, projectRole]);
 
@@ -87,7 +95,7 @@ export function useRBACPermissions(user, projectRole = null) {
         canManageSprints: false,
         canValidateDeliverables: false,
         canComment: false,
-        canManageFiles: false
+        canManageFiles: false,
       };
     }
     return getAccessibleData(normalizedUser, projectRole);
@@ -95,7 +103,9 @@ export function useRBACPermissions(user, projectRole = null) {
 
   // OPTIMIZED: Calcul des permissions fusionnées avec useMemo
   const mergedPerms = useMemo(() => {
-    return normalizedUser ? getMergedPermissions(normalizedUser, projectRole) : { permissions: {}, visibleMenus: {} };
+    return normalizedUser
+      ? getMergedPermissions(normalizedUser, projectRole)
+      : { permissions: {}, visibleMenus: {} };
   }, [normalizedUser, projectRole]);
 
   // OPTIMIZED: Calcul de toutes les permissions spécifiques avec useMemo
@@ -120,7 +130,7 @@ export function useRBACPermissions(user, projectRole = null) {
         canEditProject: false,
         canCreateProject: false,
         canDeleteProject: false,
-        canViewAllProjects: false
+        canViewAllProjects: false,
       };
     }
     return {
@@ -142,7 +152,7 @@ export function useRBACPermissions(user, projectRole = null) {
       canEditProject: checkPermission(normalizedUser, 'modifierCharteProjet', projectRole),
       canCreateProject: checkPermission(normalizedUser, 'creerProjet', projectRole),
       canDeleteProject: checkPermission(normalizedUser, 'supprimerProjet', projectRole),
-      canViewAllProjects: checkPermission(normalizedUser, 'voirTousProjets', projectRole)
+      canViewAllProjects: checkPermission(normalizedUser, 'voirTousProjets', projectRole),
     };
   }, [normalizedUser, projectRole]);
 
@@ -152,6 +162,6 @@ export function useRBACPermissions(user, projectRole = null) {
     canAccessMenus,
     accessibleData,
     // Spread all specific permissions
-    ...specificPermissions
+    ...specificPermissions,
   };
 }

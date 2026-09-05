@@ -1,11 +1,22 @@
 const nextConfig = {
-  // output: 'standalone', // Commenté pour le développement, décommenter pour production Docker
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
   images: {
-    unoptimized: true,
+    unoptimized: false,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
   },
   experimental: {
     // Remove if not using Server Components
     serverComponentsExternalPackages: ['mongodb', 'node-cache', 'joi'],
+    // Next 14.2.x still gates instrumentation.js's register() hook behind this
+    // flag (stabilized/default-on only starting Next 15) — required for
+    // assertEnvValid() to actually run at server startup.
+    instrumentationHook: true,
   },
   webpack(config, { dev }) {
     if (dev) {

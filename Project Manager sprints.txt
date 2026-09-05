@@ -1,0 +1,384 @@
+Voici tous les sprints du roadmap (déjà committé dans                                                       
+  docs/superpowers/specs/2026-05-03-project-9of10-roadmap-design.md) :                                        
+                                                                                                              
+  ---                                                                                                         
+  Roadmap "6,8/10 → 9/10" — 8 sprints, 35,5 j-h                                                               
+                                                                                                              
+  Sprint 0 — Prép & quick wins (3 j) ✅ FAIT                                                                  
+                                                                                                              
+  - Fix lint (0 errors / 0 warnings) ✅                                                                       
+  - .env sécurisé + secrets rotés (JWT, Socket) ✅                                                            
+  - Coverage Jest réparé ✅                                                                                   
+  - 426/426 tests verts ✅                                                                                    
+  - getClientIP durci ✅                                                                                      
+  - .gitignore nettoyé ✅                                                                                     
+  - Roadmap spec committée ✅                                                                                 
+                                                                                                              
+  Sprint 1 — Sécurité (3,5 j) → 6,5 → 9,5                                                                     
+                                                            
+  - Refresh tokens (access 15 min + refresh 7 j rotatifs)                                                     
+  - Chiffrement AES-256-GCM des secrets DB (SharePoint client_secret)
+  - Permissions AND vs OR dans withApiProtection
+  - CSP strict avec nonce (retrait unsafe-inline/unsafe-eval)                                                 
+  - CORS strict (rejet si ALLOWED_ORIGINS vide)
+  - User enumeration (message générique + délai constant)                                                     
+  - Anomaly alerting (5+ failed logins → notif admin)                                                         
+  - Suite OWASP Top 10 (security.test.ts)                                                                     
+                                                                                                              
+  Sprint 2 — Qualité & TypeScript (5 j) → 4,4 → 9,0                                                           
+                                                                                                              
+  - TS strict (strict, strictNullChecks, noImplicitAny)                                                       
+  - Migration progressive lib/ → .ts (cible 50 % LOC)       
+  - Logger structuré Pino (remplace tous les console.*)                                                       
+  - Husky strict + CI lint:strict bloquant                                                                    
+  - Standardiser ApiResponse<T> typé                                                                          
+  - JSDoc/TSDoc sur tous les exports lib/, hooks/, contexts/                                                  
+                                                                                                              
+  Sprint 3 — Architecture & god-pages (5 j) → 7,1 → 9,0                                                       
+  
+  - Décomposer 4 god-pages (1890→<250, 1498→<300, 1040→<300, 1031→<300 LOC)                                   
+  - Pattern Repository (lib/repositories/{Project,Task,Sprint,User}Repo.ts)
+  - Fusionner authCookie.js + requestAuth.js → lib/auth/index.ts                                              
+  - Splitter lib/workflows.js (756 LOC) par entité                                                            
+  - Refacto Sidebar (655 LOC) + ItemFormFields (390 LOC switch)                                               
+  - Stores Zustand par domaine                                                                                
+                                                                                                              
+  Sprint 4 — Tests & QA (5 j) → 4,5 → 9,0                                                                     
+  
+  - Coverage lib/ ≥ 85 %, app/api/ ≥ 80 %, components ≥ 70 %                                                  
+  - React Testing Library sur composants clés               
+  - MSW (mock service worker)                                                                                 
+  - MongoDB Memory Server pour tests intégration
+  - Playwright E2E — 5 parcours critiques (login+2FA, project flow, upload+notif, admin RBAC, export)         
+  - Storybook + tests visuels                                                                                 
+  - Tests contract OpenAPI (Spectral/Dredd)                                                                   
+                                                                                                              
+  Sprint 5 — Performance & scalabilité (4 j) → 6,0 → 9,0                                                      
+                                                            
+  - Pagination universelle (?page&limit, max 200)
+  - Redis (remplace node-cache + rate limit), fallback in-memory en dev
+  - BullMQ pour email/push async                                                                              
+  - Audit indexes Mongo + compound indexes manquants                                                          
+  - dynamic() imports pour pages lourdes, React.memo, useMemo                                                 
+  - next/image partout, virtualisation longues listes (@tanstack/react-virtual)                               
+  - Bundle analyzer (cible ≤ 250 KB gzip initial)                                                             
+  - Lighthouse perf ≥ 90                                                                                      
+                                                                                                              
+  Sprint 6 — Accessibilité & UX (4 j) → a11y 4,0 → 9,0 / UX 7,0 → 9,0                                         
+                                                            
+  - axe-core + jest-axe (0 critical/serious)                                                                  
+  - Audit ARIA + sémantique + skip links + landmarks        
+  - Contraste WCAG AA (sombre + clair)                                                                        
+  - Recréer Skeletons + remplacer 8 spinners
+  - Cmd+K command palette (cmdk déjà installé)                                                                
+  - Empty states illustrés (10 pages)                                                                         
+  - Mobile-first (tables → cards stackées <768 px, sidebar drawer)                                            
+  - Toast unifié (sonner)                                                                                     
+                                                                                                              
+  Sprint 7 — Observabilité & DevOps (3 j) → obs 5,0 → 9,0 / devops 7,0 → 9,0                                  
+                                                                                                              
+  - Pino logging structuré + request ID                                                                       
+  - prom-client + /api/metrics                              
+  - OpenTelemetry traces (OTLP exporter)                                                                      
+  - Sentry (front + back, source maps)                                                                        
+  - Healthcheck enrichi (DB/Redis/SMTP/queue)                                                                 
+  - CI GitHub Actions (lint/typecheck/test/coverage/build/e2e/Lighthouse/ZAP)                                 
+  - Docker prod-ready (multi-stage, distroless, SIGTERM, healthcheck)                                         
+  - Système de migration MongoDB versionnée                                                                   
+                                                                                                              
+  Sprint 8 — Documentation & polish features (3 j) → doc 5,5 → 9,0 / features 7,5 → 9,0                       
+                                                            
+  - Split README → ARCHITECTURE.md, SECURITY.md, DEPLOYMENT.md, CONTRIBUTING.md, API.md, docs/adr/            
+  - OpenAPI à jour + Spectral lint en CI                    
+  - TypeDoc → docs/api/                                                                                       
+  - Storybook déployé (Chromatic / GH Pages)                
+  - Polish features : email automation (assigned/overdue/mention), saved filters, vue calendrier, i18n via
+  next-intl                                                                                                   
+  
+  ---                                                                                                         
+  Quality gates (CI) appliqués partout                      
+                                      
+  ┌─────────────────┬────────────────────────────┐
+  │      Gate       │           Seuil            │                                                            
+  ├─────────────────┼────────────────────────────┤
+  │ Lint warnings   │ 0                          │                                                            
+  ├─────────────────┼────────────────────────────┤          
+  │ TypeScript      │ 0 erreur                   │
+  ├─────────────────┼────────────────────────────┤
+  │ Coverage        │ ≥ 80 % global, ≥ 85 % lib/ │
+  ├─────────────────┼────────────────────────────┤                                                            
+  │ E2E             │ 5/5 verts                  │
+  ├─────────────────┼────────────────────────────┤                                                            
+  │ Bundle initial  │ ≤ 250 KB gzip              │          
+  ├─────────────────┼────────────────────────────┤
+  │ Lighthouse perf │ ≥ 90                       │
+  ├─────────────────┼────────────────────────────┤
+  │ Lighthouse a11y │ ≥ 95                       │
+  ├─────────────────┼────────────────────────────┤
+  │ axe violations  │ 0 critical/serious         │
+  ├─────────────────┼────────────────────────────┤
+  │ npm audit       │ 0 high/critical            │
+  ├─────────────────┼────────────────────────────┤                                                            
+  │ OpenAPI         │ 0 erreur Spectral          │
+  └─────────────────┴────────────────────────────┘                                                            
+                                                            
+  Ordre d'exécution recommandé                                                                                
+  
+  0 → 1 → 2 → 4 → 3 → 5 → 6 → 7 → 8 (tests avant refacto = filet de sécurité)                                 
+                                                            
+  Hors scope explicite                                                                                        
+                                                            
+  Slack/Teams/GitHub, app mobile native, multi-tenancy, IA suggestions, Gantt avancé.                         
+  
+  ---                                                                                                         
+  Sprint 0 est terminé et committé. Prêt à enchaîner sur Sprint 1 — Sécurité ? Ou tu veux d'abord traiter les
+  274 fichiers modifiés pré-existants dans le working tree ?                                                  
+  
+✻ Cogitated for 53s                                                                                           
+                                                                                          
+※ recap: Goal is bringing the project from 6.8 to 9/10 across 12 dimensions over 8 sprints. Sprint 0 is done  
+  and committed; next action is starting Sprint 1 (security: refresh tokens, secret encryption, strict CSP,   
+  OWASP tests). (disable recaps in /config)                                                                   
+                                                                                                              
+❯ Suivant alors                                                                                               
+                                  
+● Sprint 1 démarre. Je vais d'abord explorer le code auth/RBAC existant pour ne rien casser.                  
+                                                                                          
+  Searched for 2 patterns, read 4 files (ctrl+o to expand)     
+                                                                                                              
+● Excellent — l'auth est déjà bien structurée avec tokenVersion (parfait pour blacklist refresh) et HttpOnly  
+  cookies. Pour minimiser le risque de régression, je vais procéder de manière non-disruptive :               
+                                                                                                              
+  Approche refresh tokens (additive, pas breaking) :                                                          
+  1. Ajouter un cookie refresh_token séparé, 7 j, HttpOnly                                                    
+  2. Le cookie auth_token actuel devient le access token (15 min en prod, configurable)                       
+  3. Nouvelle route POST /api/auth/refresh : vérifie le refresh, émet un nouveau couple, rotation             
+  4. Logout invalide le couple via tokenVersion++                                                             
+  5. Login émet les deux tokens                                                                               
+  6. Backward-compat : tokens existants continuent à fonctionner jusqu'à expiration naturelle
+                                                                                                              
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)     
+                                                                                                              
+● Bash(cd "/home/triple-v/Documents/Projets Personnels/Project-Manager" && grep -rn "tokenVersion"
+      --include="*.js" -l 2>&1 | head -10)                                                                    
+  ⎿  models/User.js                                                                
+     app/api/users/route.js                                                                                   
+     app/api/auth/first-admin/route.js                                                                        
+     … +5 lines (ctrl+o to expand)                                                                            
+                                                                                                              
+● Bash(cd "/home/triple-v/Documents/Projets Personnels/Project-Manager" && grep -n "tokenVersion"             
+      models/User.js)                                                              
+  ⎿  49:    tokenVersion: {                                                                                   
+                                                                                                              
+  Read 1 file (ctrl+o to expand)                                            
+                                                                                                              
+● Bonne base. Maintenant je crée le module refresh + nouvelle route + maj login/logout :                      
+                                                                                                              
+● Write(lib/auth/refresh.js)                                                                                  
+  ⎿  Wrote 92 lines to lib/auth/refresh.js                                                                    
+       1 // @ts-check                                                                                         
+       2 import { SignJWT, jwtVerify } from 'jose';                                                           
+       3                                                                                                      
+       4 if (!process.env.JWT_SECRET) {                                                                       
+       5   throw new Error('FATAL: JWT_SECRET is required for refresh tokens');
+       6 }                                                                                                    
+       7                                                                                                      
+       8 const REFRESH_SECRET = new TextEncoder().encode(                                                     
+       9   process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET + '_refresh'                              
+      10 );                                                                                                   
+     … +82 lines (ctrl+o to expand)                                                
+                                                                                                              
+● Now extend requestAuth.js with a helper to attach both cookies, and create the /api/auth/refresh route +
+  update login/logout:                                 
+                                            
+● Update(lib/requestAuth.js)                                               
+  ⎿  Added 6 lines                                     
+       8    getCookieConfig,                                               
+       9    getTokenFromCookies,                       
+      10  } from '@/lib/authCookie';          
+      11 +import {                                                                                     
+      12 +  ACCESS_TOKEN_TTL_MIN,                                                                             
+      13 +  buildRefreshCookie,                                                                        
+      14 +  generateJti,                                                                                      
+      15 +  signRefreshToken,                                                                                 
+      16 +} from '@/lib/auth/refresh';                                                                 
+      17  import User from '@/models/User';                                                                   
+      18                                                                           
+      19  const INVALID_BEARER_VALUES = new Set(['', 'null', 'undefined', 'cookie-authenticated']);           
+                                                                                   
+● Update(lib/requestAuth.js)                                                
+  ⎿  Added 28 lines, removed 2 lines                   
+      256  }                                                                
+      257                                              
+      258  /**                                
+      259 - * Clear auth cookies from a NextResponse.                                                  
+      259 + * Clear auth cookies from a NextResponse (both access and refresh).                        
+      260   * @param {import('next/server').NextResponse} response
+      261   * @returns {import('next/server').NextResponse} The response with cleared cookies
+      262   */                                                                                                
+      263  export function clearAuthCookies(response) {
+      264 -  response.headers.set('Set-Cookie', createAuthCookieClearHeader());                               
+      264 +  response.headers.append('Set-Cookie', createAuthCookieClearHeader());                     
+      265 +  response.headers.append('Set-Cookie', buildRefreshCookie('', { clear: true }));                  
+      266    return response;                                                      
+      267  }
+      268 +                                                                                            
+      269 +/**                                                                                         
+      270 + * Issue a fresh access+refresh token pair for a user, set both cookies.                    
+      271 + * Persists the refresh jti so future refreshes can reject reused tokens.                   
+      272 + * @param {import('next/server').NextResponse} response                                     
+      273 + * @param {object} user - Mongoose user with populated role_id                              
+      274 + * @returns {Promise<{ accessToken: string, refreshToken: string }>}                        
+      275 + */                                                                                         
+      276 +export async function issueAuthTokens(response, user) {                                     
+      277 +  const accessToken = await createUserAccessToken(user, ACCESS_TOKEN_TTL_MIN);              
+      278 +  const jti = generateJti();                                                                
+      279 +  const refreshToken = await signRefreshToken({                                             
+      280 +    userId: user._id.toString(),                                                            
+      281 +    tokenVersion: user.tokenVersion ?? 0,                                                   
+      282 +    jti,                                                                                    
+      283 +  });                                                                                       
+      284 +                                                                                            
+      285 +  user.currentRefreshJti = jti;                                                             
+      286 +  await user.save();                                                                        
+      287 +                                                                                            
+      288 +  attachAuthCookie(response, accessToken, { expiresIn: ACCESS_TOKEN_TTL_MIN * 60 });        
+      289 +  response.headers.append('Set-Cookie', buildRefreshCookie(refreshToken));                  
+      290 +                                                                                            
+      291 +  return { accessToken, refreshToken };                                                     
+      292 +}                                                                                           
+
+● Add currentRefreshJti to User model:                                      
+                                                       
+● Update(models/User.js)                                                    
+  ⎿  Added 5 lines                                     
+      50        type: Number,                                               
+      51        default: 0,                            
+      52      },                              
+      53 +    currentRefreshJti: {                                                                     
+      54 +      type: String,                                                                          
+      55 +      default: null,                                                                                
+      56 +      select: false,                                                                         
+      57 +    },                                                                                              
+      58                                                                           
+      59      // User profile                                                                                 
+      60      avatar: String,                                                      
+                                                                                                              
+● Create /api/auth/refresh route:                                                  
+                                                       
+● Write(app/api/auth/refresh/route.js)      
+  ⎿  Wrote 70 lines to app/api/auth/refresh/route.js   
+       1 import { NextResponse } from 'next/server';                        
+       2 import connectDB from '@/lib/mongodb';        
+       3 import { handleError } from '@/lib/apiResponse';
+       4 import { getRefreshTokenFromRequest, verifyRefreshToken } from '@/lib/auth/refresh';
+       5 import { issueAuthTokens, serializeAuthenticatedUser } from '@/lib/requestAuth';
+       6 import { applyRateLimit, handleRateLimitError } from '@/lib/apiMiddleware';                          
+       7 import { RATE_LIMIT_CONFIG } from '@/lib/rateLimit';
+       8 import User from '@/models/User';                                                                    
+       9                                                                           
+      10 // POST /api/auth/refresh — rotate access + refresh tokens                                           
+     … +61 lines (ctrl+o to expand)
+                                                                                                              
+● Now update login + logout to use the new dual-token flow:                        
+                                                       
+● Update(app/api/auth/login/route.js)                                      
+  ⎿  Added 1 line, removed 1 line                      
+       4  import { validateBody } from '@/lib/validate';                   
+       5  import { loginRequestSchema } from '@/lib/requestValidation';
+       6  import { verifyPassword } from '@/lib/auth';
+       7 -import { attachAuthCookie, createUserAccessToken } from '@/lib/requestAuth';                 
+       7 +import { createUserAccessToken, issueAuthTokens } from '@/lib/requestAuth';                  
+       8  import { logActivity } from '@/lib/auditService';                                                   
+       9  import User from '@/models/User';   
+      10                                                                                                      
+                                                                                   
+● Update(app/api/auth/login/route.js)                                                                         
+  ⎿  Added 1 line, removed 2 lines                                                 
+      84        });                                                                                           
+      85      }                                                                    
+      86                                      
+      87 -    const token = await createUserAccessToken(user);                                         
+      87      const response = NextResponse.json({
+      88        success: true,            
+      89        user: {                       
+     ...                                                                                                      
+       95        },
+       96      });                                                                                            
+       97                                                                          
+       99 -    attachAuthCookie(response, token);                                                             
+       98 +    await issueAuthTokens(response, user);                                                  
+       99  
+      100      await logActivity(user, 'connexion', 'système', user._id, `Connexion réussie`, {
+      101        request,
+
+● Update logout to also invalidate the refresh jti:                         
+                                                       
+● Write(app/api/auth/logout/route.js)                                       
+  ⎿  Added 14 lines, removed 3 lines                   
+       1  import { NextResponse } from 'next/server';                       
+       2 -import { clearAuthCookies } from '@/lib/requestAuth';                                        
+       2 +import connectDB from '@/lib/mongodb';                                                       
+       3 +import { authenticateRequest, clearAuthCookies } from '@/lib/requestAuth';                   
+       4 +import User from '@/models/User';                                                            
+       5                                                                                                      
+       4 -export async function POST() {                                                               
+       6 +export async function POST(request) {                                                               
+       7 +  try {                                                                                      
+       8 +    await connectDB();                                                                              
+       9 +    const user = await authenticateRequest(request).catch(() => null);                       
+      10 +    if (user) {                                                                                     
+      11 +      await User.findByIdAndUpdate(user._id, { currentRefreshJti: null });                   
+      12 +    }                                                                                        
+      13 +  } catch {                                                                                  
+      14 +    // best-effort logout invalidation                                                       
+      15 +  }                                                                                          
+      16 +                                                                                             
+      17    const response = NextResponse.json({
+      18      message: 'Déconnexion réussie',
+      19      success: true,
+      20    });
+      21  
+      22    clearAuthCookies(response);
+      11 -                                                                                             
+      23    return response;
+      24  }
+
+● Now run the tests to make sure I haven't broken anything:                 
+                                                       
+● Bash(cd "/home/triple-v/Documents/Projets Personnels/Project-Manager" && npm test -- --silent 2>&1 | tail
+      -25)                                             
+  ⎿        at Object.<anonymous> (app/api/__tests__/advancedApiSecurity.test.js:134:22)
+                                                       
+     FAIL tests/api/auth.test.js                                            
+     … +22 lines (ctrl+o to expand)                                         
+                                                       
+● 2 tests need updating because login signature changed (uses issueAuthTokens now, not attachAuthCookie). Let 
+  me check:                                            
+                                                                                                              
+● Bash(cd "/home/triple-v/Documents/Projets Personnels/Project-Manager" && grep -n 
+      "attachAuthCookie\|createUserAccessToken\|issueAuthTokens" tests/api/auth.test.js |…)                   
+  ⎿  5:import { attachAuthCookie, createUserAccessToken } from '@/lib/requestAuth';
+     12:  createUserAccessToken: jest.fn(),                                                                   
+     13:  attachAuthCookie: jest.fn(),                                                                        
+     … +3 lines (ctrl+o to expand)                                                                            
+  ⎿  API Error: 400 You have exceeded your daily token limit. You can resume at 2026-05-05 00:00 UTC.         
+                                                                                   
+✻ Cogitated for 9m 57s                                                                                        
+                                                                                                              
+  7 tasks (0 done, 1 in progress, 6 open)              
+  ◼ S1: Refresh tokens (access 15 min + refresh 7 j)                                                          
+  ◻ S1: Chiffrer secrets DB (AES-256-GCM)                                          
+  ◻ S1: Permissions AND vs OR dans withApiProtection                                                          
+  ◻ S1: CSP strict avec nonce + CORS strict
+  ◻ S1: Anti user enumeration sur login                                                                       
+  ◻ S1: Anomaly alerting (5+ failed logins)                                                                   
+  ◻ S1: Suite OWASP Top 10 tests
+                                                                                                              
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · ctrl+t to hide tasks
+
+
+

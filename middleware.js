@@ -1,20 +1,26 @@
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
+import { getTokenFromRequest } from '@/lib/authCookie';
 
 // Public routes (no authentication required)
 const publicRoutes = [
   '/login',
   '/first-admin',
-  '/first-login-reset',
+  // NOT '/first-login-reset' — no such page exists (app/first-login/page.js
+  // is the real page; '/api/auth/first-login-reset' below is the API route).
+  '/first-login',
   '/api/check',
   '/api/init',
+  '/api/health',
   '/api/auth/first-admin',
   '/api/auth/login',
+  '/api/auth/logout',
   '/api/auth/first-login-reset',
   '/api/health',
+  '/api/settings',
   '/api/settings/maintenance',
   '/welcome',
-  '/maintenance'
+  '/maintenance',
 ];
 
 // Synchronous JWT verification for middleware (Edge Runtime compatible)
@@ -38,17 +44,62 @@ export async function middleware(request) {
   // Create response
   const response = NextResponse.next();
 
+  // API Version header
+  if (pathname.startsWith('/api')) {
+    response.headers.set('X-API-Version', '1.1.0');
+  }
+
   // ==========================================
   // SECURITY HEADERS
   // ==========================================
 
   // Content Security Policy
-  // Note: 'unsafe-inline' and 'unsafe-eval' are required for Next.js development mode
-  // In production, we still need 'unsafe-inline' for inline styles (Tailwind CSS)
+  //
+  // Task 4.2 (2026-09-05) investigated wiring a per-request nonce into
+  // script-src with 'strict-dynamic' (the setup this file used to have) and
+  // found it CANNOT work for this app, so it was deliberately dropped rather
+  // than left silently broken. Evidence:
+  //   - Next 14.2.35 DOES have a built-in mechanism to auto-nonce its own
+  //     framework bootstrap scripts — it reads
+  //     req.headers['content-security-policy'] on the *incoming request*
+  //     (not the response!) and extracts the nonce
+  //     (node_modules/next/dist/server/app-render/get-script-nonce-from-header.js,
+  //     called from node_modules/next/dist/server/app-render/app-render.js
+  //     ~line 572: "Get the nonce from the incoming request if it has one").
+  //     That alone would be wireable by also forwarding the CSP onto the
+  //     request via NextResponse.next({ request: { headers } }).
+  //   - BUT that mechanism only runs during a live, per-request render. A
+  //     `npm run build` of this app shows nearly every route — /dashboard and
+  //     all of its sibling pages — is prerendered STATIC ("○"), not dynamic
+  //     ("ƒ"), because none of them call headers()/cookies()/searchParams.
+  //     Static HTML is generated once at build time, with no request (and
+  //     therefore no nonce) in scope.
+  //   - Confirmed empirically on the actual build output: every prerendered
+  //     page under .next/server/app/**.html (dashboard.html and ~25 sibling
+  //     dashboard pages, 500+ <script> tags total, including the inline
+  //     `self.__next_f.push(...)` RSC-hydration payload scripts every App
+  //     Router page ships) has ZERO `nonce` attributes.
+  //   - With 'strict-dynamic' present, browsers that support it ignore 'self'
+  //     entirely, so every one of those un-nonced scripts — including the
+  //     framework's own bootstrap chunks AND the inline hydration payload
+  //     React needs to hydrate the page — would be blocked. That's not a
+  //     partial degradation, it's a broken app on nearly every route.
+  //   - Dropping only 'strict-dynamic' (keeping 'nonce-X') doesn't fix it
+  //     either: per the CSP3 spec, the mere presence of a nonce/hash source
+  //     in a directive silently disables 'unsafe-inline' for that directive,
+  //     so the un-nonced inline hydration scripts would still be blocked.
+  //   - Fixing this properly would mean forcing every route to dynamic
+  //     rendering (a real perf/infra trade-off) or a template-level nonce
+  //     injection strategy — both out of scope for this task.
+  // Decision: relax script-src to 'self' 'unsafe-inline', the same trade-off
+  // already accepted below for style-src (Tailwind/Radix inline styles).
+  // This still blocks loading arbitrary third-party script origins; it does
+  // not protect against inline-script injection.
+  // TODO(Task 6.5): move this rationale into docs/DEPLOYMENT.md once that
+  // file exists.
   const socketUrl = process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || 'http://localhost:4000';
   const isDev = process.env.NODE_ENV !== 'production';
 
-  // Build script-src based on environment
   const scriptSrc = isDev
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
     : "script-src 'self' 'unsafe-inline'";
@@ -65,14 +116,18 @@ export async function middleware(request) {
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
-      isDev ? "" : "upgrade-insecure-requests"
-    ].filter(Boolean).join('; ')
+      "object-src 'none'",
+      isDev ? '' : 'upgrade-insecure-requests',
+    ]
+      .filter(Boolean)
+      .join('; ')
   );
 
   // XSS Protection
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-XSS-Protection', '1; mode=block');
+  // Deprecated header; modern guidance is to disable the legacy auditor.
+  response.headers.set('X-XSS-Protection', '0');
 
   // HSTS (Force HTTPS in production)
   if (process.env.NODE_ENV === 'production') {
@@ -86,26 +141,51 @@ export async function middleware(request) {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions Policy
-  response.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=()'
-  );
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
-  // CORS
+  // CORS — strict: in production ALLOWED_ORIGINS must be set explicitly.
+  // Cross-origin requests with a non-matching Origin are rejected at the edge.
   const origin = request.headers.get('origin');
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+  const rawAllowed = process.env.ALLOWED_ORIGINS;
+  const allowedOrigins = rawAllowed
+    ? rawAllowed
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : isDev
+      ? ['http://localhost:3000']
+      : [];
 
-  if (origin && allowedOrigins.includes(origin)) {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
-    response.headers.set(
-      'Access-Control-Allow-Methods',
-      'GET, POST, PUT, DELETE, PATCH, OPTIONS'
-    );
-    response.headers.set(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-Requested-With'
-    );
+  const isCrossOrigin =
+    !!origin &&
+    (() => {
+      try {
+        return new URL(origin).origin !== new URL(request.url).origin;
+      } catch {
+        return true;
+      }
+    })();
+
+  if (isCrossOrigin) {
+    if (allowedOrigins.includes(origin)) {
+      response.headers.set('Access-Control-Allow-Origin', origin);
+      response.headers.set('Vary', 'Origin');
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      response.headers.set(
+        'Access-Control-Allow-Methods',
+        'GET, POST, PUT, DELETE, PATCH, OPTIONS'
+      );
+      response.headers.set(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, X-Requested-With'
+      );
+    } else {
+      // Deny cross-origin from non-allowlisted origins (or when allowlist is empty)
+      return new NextResponse(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   // Handle preflight requests
@@ -116,11 +196,13 @@ export async function middleware(request) {
   // ==========================================
   // HTTPS Redirect
   // ==========================================
-  if (process.env.NODE_ENV === 'production' && request.headers.get('x-forwarded-proto') === 'http') {
-    return NextResponse.redirect(
-      new URL(request.url.replace('http://', 'https://')),
-      { status: 301 }
-    );
+  if (
+    process.env.NODE_ENV === 'production' &&
+    request.headers.get('x-forwarded-proto') === 'http'
+  ) {
+    return NextResponse.redirect(new URL(request.url.replace('http://', 'https://')), {
+      status: 301,
+    });
   }
 
   // ==========================================
@@ -135,22 +217,19 @@ export async function middleware(request) {
   // ==========================================
 
   // Public routes: no verification needed
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
+  if (publicRoutes.some((route) => pathname.startsWith(route))) {
     return response;
   }
 
-  // API routes: verify JWT token
+  // API routes: verify JWT token from Authorization header or HttpOnly cookie
   if (pathname.startsWith('/api')) {
-    const authHeader = request.headers.get('authorization');
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = getTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json(
         { error: 'Non autorisé', message: 'Token manquant' },
         { status: 401, headers: response.headers }
       );
     }
-
-    const token = authHeader.substring(7);
 
     const decoded = await verifyTokenMiddleware(token);
 
@@ -161,14 +240,19 @@ export async function middleware(request) {
       );
     }
 
-    // Add user info to response headers
-    response.headers.set('x-user-id', decoded.userId || decoded.sub || '');
-    response.headers.set('x-user-role', decoded.role || 'user');
+    // Forward identity to the route handler on the REQUEST (not the response —
+    // that would leak it to the browser and it wouldn't reach the handler).
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-id', decoded.userId || decoded.sub || '');
+    requestHeaders.set('x-user-role', decoded.role || 'user');
 
-    return response;
+    const authedResponse = NextResponse.next({ request: { headers: requestHeaders } });
+    // Re-apply the security headers we set on `response` onto the new response.
+    response.headers.forEach((value, key) => authedResponse.headers.set(key, value));
+    return authedResponse;
   }
 
-  // Frontend routes: check auth cookie or localStorage token
+  // Frontend routes: rely on HttpOnly auth cookie
   const authCookie = request.cookies.get('auth_token');
 
   if (!authCookie) {
@@ -181,6 +265,6 @@ export async function middleware(request) {
 // Configure matcher
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|public).*)'
-  ]
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
+  ],
 };

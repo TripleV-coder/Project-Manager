@@ -12,7 +12,9 @@ export default function MaintenanceModePage() {
     const checkMaintenanceStatus = async () => {
       try {
         // Vérifier si le mode maintenance est toujours actif
-        const response = await fetch('/api/settings/maintenance');
+        const response = await fetch('/api/settings/maintenance', {
+          credentials: 'same-origin',
+        });
         const data = await response.json();
 
         if (!data.data?.enabled) {
@@ -22,20 +24,20 @@ export default function MaintenanceModePage() {
         }
 
         // Vérifier si l'utilisateur est admin
-        const token = localStorage.getItem('pm_token');
-        if (token) {
-          const meResponse = await fetch('/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+        try {
+          const meResponse = await fetch('/api/auth/me', { credentials: 'same-origin' });
 
           if (meResponse.ok) {
             const userData = await meResponse.json();
-            if (userData.role?.permissions?.adminConfig) {
+            const userPerms = userData.role_id?.permissions || userData.role?.permissions || {};
+            if (userPerms.adminConfig) {
               // Admin peut accéder au dashboard
               router.push('/dashboard');
               return;
             }
           }
+        } catch (_meError) {
+          console.warn('Utilisateur non connecté ou session expirée');
         }
 
         setChecking(false);
@@ -69,13 +71,10 @@ export default function MaintenanceModePage() {
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          Maintenance en cours
-        </h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Maintenance en cours</h1>
 
         <p className="text-gray-600 mb-6">
-          L'application est actuellement en maintenance.
-          Nous serons de retour très bientôt.
+          L'application est actuellement en maintenance. Nous serons de retour très bientôt.
         </p>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

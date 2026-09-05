@@ -11,7 +11,7 @@ export function useOptimizedQuery(fetchFn, options = {}) {
     retry = 3,
     retryDelay = 1000,
     debounce = 0,
-    enabled = true
+    enabled = true,
   } = options;
 
   const [data, setData] = useState(null);
@@ -22,78 +22,82 @@ export function useOptimizedQuery(fetchFn, options = {}) {
   const abortControllerRef = useRef(null);
   const debounceTimerRef = useRef(null);
 
-  const fetchData = useCallback(async (params = {}) => {
-    if (!enabled) return;
+  const fetchData = useCallback(
+    async (params = {}) => {
+      if (!enabled) return;
 
-    // Generate cache key
-    const cacheKey = JSON.stringify(params);
+      // Generate cache key
+      const cacheKey = JSON.stringify(params);
 
-    // Check cache
-    const cached = cacheRef.current.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < cacheTime) {
-      setData(cached.data);
-      setLoading(false);
-      return cached.data;
-    }
-
-    // Abort previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    abortControllerRef.current = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    let lastError;
-
-    // Retry logic
-    for (let attempt = 0; attempt < retry; attempt++) {
-      try {
-        const result = await fetchFn(params, {
-          signal: abortControllerRef.current.signal
-        });
-
-        // Cache result
-        cacheRef.current.set(cacheKey, {
-          data: result,
-          timestamp: Date.now()
-        });
-
-        setData(result);
+      // Check cache
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < cacheTime) {
+        setData(cached.data);
         setLoading(false);
-        return result;
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          return; // Request aborted
-        }
+        return cached.data;
+      }
 
-        lastError = err;
+      // Abort previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
 
-        // Wait before retrying
-        if (attempt < retry - 1) {
-          await new Promise(resolve =>
-            setTimeout(resolve, retryDelay * (attempt + 1))
-          );
+      abortControllerRef.current = new AbortController();
+      setLoading(true);
+      setError(null);
+
+      let lastError;
+
+      // Retry logic
+      for (let attempt = 0; attempt < retry; attempt++) {
+        try {
+          const result = await fetchFn(params, {
+            signal: abortControllerRef.current.signal,
+          });
+
+          // Cache result
+          cacheRef.current.set(cacheKey, {
+            data: result,
+            timestamp: Date.now(),
+          });
+
+          setData(result);
+          setLoading(false);
+          return result;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            return; // Request aborted
+          }
+
+          lastError = err;
+
+          // Wait before retrying
+          if (attempt < retry - 1) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+          }
         }
       }
-    }
 
-    // All attempts failed
-    setError(lastError);
-    setLoading(false);
-    throw lastError;
-  }, [fetchFn, enabled, cacheTime, retry, retryDelay]);
+      // All attempts failed
+      setError(lastError);
+      setLoading(false);
+      throw lastError;
+    },
+    [fetchFn, enabled, cacheTime, retry, retryDelay]
+  );
 
-  const debouncedFetch = useCallback((...args) => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
+  const debouncedFetch = useCallback(
+    (...args) => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
 
-    debounceTimerRef.current = setTimeout(() => {
-      fetchData(...args);
-    }, debounce);
-  }, [fetchData, debounce]);
+      debounceTimerRef.current = setTimeout(() => {
+        fetchData(...args);
+      }, debounce);
+    },
+    [fetchData, debounce]
+  );
 
   const refetch = useCallback(() => {
     cacheRef.current.clear();
@@ -121,13 +125,13 @@ export function useOptimizedQuery(fetchFn, options = {}) {
     loading,
     error,
     refetch,
-    fetch: debounce > 0 ? debouncedFetch : fetchData
+    fetch: debounce > 0 ? debouncedFetch : fetchData,
   };
 }
 
 /**
  * Example usage:
- * 
+ *
  * function ProjectsList() {
  *   const { data, loading, error, refetch } = useOptimizedQuery(
  *     async (params, { signal }) => {

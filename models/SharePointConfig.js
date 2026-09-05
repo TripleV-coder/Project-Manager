@@ -1,87 +1,119 @@
 import mongoose from 'mongoose';
+import { decryptSecret, encryptSecret, isEncrypted } from '@/lib/crypto/secrets';
 
-const SharePointConfigSchema = new mongoose.Schema({
-  // Configuration unique (singleton)
-  _id: {
-    type: String,
-    default: 'sharepoint_config'
-  },
+const SharePointConfigSchema = new mongoose.Schema(
+  {
+    // Configuration unique (singleton)
+    _id: {
+      type: String,
+      default: 'sharepoint_config',
+    },
 
-  // Activation
-  enabled: {
-    type: Boolean,
-    default: false
-  },
+    // Activation
+    enabled: {
+      type: Boolean,
+      default: false,
+    },
 
-  // Identifiants Azure AD
-  tenant_id: {
-    type: String,
-    default: ''
-  },
-  client_id: {
-    type: String,
-    default: ''
-  },
-  client_secret: {
-    type: String,
-    default: '',
-    select: false // Ne pas retourner par défaut pour sécurité
-  },
-  site_id: {
-    type: String,
-    default: ''
-  },
+    // Identifiants Azure AD
+    tenant_id: {
+      type: String,
+      default: '',
+    },
+    client_id: {
+      type: String,
+      default: '',
+    },
+    client_secret: {
+      type: String,
+      default: '',
+      select: false, // Ne pas retourner par défaut pour sécurité
+    },
+    site_id: {
+      type: String,
+      default: '',
+    },
 
-  // Configuration de synchronisation
-  sync_enabled: {
-    type: Boolean,
-    default: false
-  },
-  sync_interval: {
-    type: Number,
-    default: 60, // minutes
-    min: 5,
-    max: 1440 // 24 heures
-  },
+    // Configuration de synchronisation
+    sync_enabled: {
+      type: Boolean,
+      default: false,
+    },
+    sync_interval: {
+      type: Number,
+      default: 60, // minutes
+      min: 5,
+      max: 1440, // 24 heures
+    },
 
-  // Statut de connexion
-  connection_status: {
-    connected: { type: Boolean, default: false },
-    last_test: { type: Date },
-    last_error: { type: String },
-    site_name: { type: String },
-    site_url: { type: String }
-  },
+    // Statut de connexion
+    connection_status: {
+      connected: { type: Boolean, default: false },
+      last_test: { type: Date },
+      last_error: { type: String },
+      site_name: { type: String },
+      site_url: { type: String },
+    },
 
-  // Statistiques de synchronisation
-  sync_stats: {
-    last_sync: { type: Date },
-    files_synced: { type: Number, default: 0 },
-    files_failed: { type: Number, default: 0 },
-    total_size: { type: Number, default: 0 },
-    errors: [{
-      date: Date,
-      file_name: String,
-      error: String
-    }]
-  },
+    // Statistiques de synchronisation
+    sync_stats: {
+      last_sync: { type: Date },
+      files_synced: { type: Number, default: 0 },
+      files_failed: { type: Number, default: 0 },
+      total_size: { type: Number, default: 0 },
+      errors: [
+        {
+          date: Date,
+          file_name: String,
+          error: String,
+        },
+      ],
+    },
 
-  // Métadonnées
-  updated_by: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    // Métadonnées
+    updated_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    updated_at: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  updated_at: {
-    type: Date,
-    default: Date.now
+  {
+    _id: false,
+    timestamps: false,
   }
-}, {
-  _id: false,
-  timestamps: false
+);
+
+// Encrypt client_secret on save when plaintext is supplied
+SharePointConfigSchema.pre('save', function (next) {
+  if (this.isModified('client_secret') && this.client_secret && !isEncrypted(this.client_secret)) {
+    this.client_secret = encryptSecret(this.client_secret);
+  }
+  next();
+});
+
+// Encrypt client_secret on findOneAndUpdate / findByIdAndUpdate
+SharePointConfigSchema.pre(['findOneAndUpdate', 'updateOne', 'updateMany'], function (next) {
+  const update = this.getUpdate() || {};
+  const set = update.$set || update;
+  if (
+    set &&
+    typeof set.client_secret === 'string' &&
+    set.client_secret &&
+    !isEncrypted(set.client_secret)
+  ) {
+    set.client_secret = encryptSecret(set.client_secret);
+    if (update.$set) update.$set = set;
+    this.setUpdate(update);
+  }
+  next();
 });
 
 // Méthode statique pour obtenir la configuration (singleton)
-SharePointConfigSchema.statics.getConfig = async function(includeSecret = false) {
+// includeSecret: when true, decrypts client_secret for use (never expose to clients).
+SharePointConfigSchema.statics.getConfig = async function (includeSecret = false) {
   let config = await this.findById('sharepoint_config');
 
   if (!config) {
@@ -90,34 +122,40 @@ SharePointConfigSchema.statics.getConfig = async function(includeSecret = false)
 
   if (includeSecret) {
     config = await this.findById('sharepoint_config').select('+client_secret');
+    if (config && config.client_secret) {
+      config.client_secret = decryptSecret(config.client_secret, {
+        strict: process.env.NODE_ENV === 'production',
+      });
+    }
   }
 
   return config;
 };
 
 // Méthode statique pour mettre à jour la configuration
-SharePointConfigSchema.statics.updateConfig = async function(data, userId) {
+SharePointConfigSchema.statics.updateConfig = async function (data, userId) {
   const updateData = {
     ...data,
     updated_by: userId,
-    updated_at: new Date()
+    updated_at: new Date(),
   };
 
-  const config = await this.findByIdAndUpdate(
-    'sharepoint_config',
-    updateData,
-    { new: true, upsert: true, runValidators: true }
-  );
+  const config = await this.findByIdAndUpdate('sharepoint_config', updateData, {
+    new: true,
+    upsert: true,
+    runValidators: true,
+  });
 
   return config;
 };
 
 // Méthode pour vérifier si SharePoint est configuré
-SharePointConfigSchema.statics.isConfigured = async function() {
+SharePointConfigSchema.statics.isConfigured = async function () {
   const config = await this.findById('sharepoint_config').select('+client_secret');
 
   if (!config) return false;
 
+  // Truthy check is sufficient — both encrypted ciphertext and plaintext are non-empty strings
   return !!(
     config.enabled &&
     config.tenant_id &&
@@ -128,29 +166,32 @@ SharePointConfigSchema.statics.isConfigured = async function() {
 };
 
 // Méthode pour mettre à jour le statut de connexion
-SharePointConfigSchema.statics.updateConnectionStatus = async function(status) {
+SharePointConfigSchema.statics.updateConnectionStatus = async function (status) {
   return this.findByIdAndUpdate(
     'sharepoint_config',
     {
       connection_status: {
         ...status,
-        last_test: new Date()
+        last_test: new Date(),
       },
-      updated_at: new Date()
+      updated_at: new Date(),
     },
     { new: true }
   );
 };
 
 // Méthode pour mettre à jour les stats de sync
-SharePointConfigSchema.statics.updateSyncStats = async function(stats) {
+SharePointConfigSchema.statics.updateSyncStats = async function (stats) {
   const config = await this.findById('sharepoint_config');
 
   const errors = stats.errors || [];
   const existingErrors = config?.sync_stats?.errors || [];
 
   // Garder seulement les 50 dernières erreurs
-  const allErrors = [...errors.map(e => ({ ...e, date: new Date() })), ...existingErrors].slice(0, 50);
+  const allErrors = [...errors.map((e) => ({ ...e, date: new Date() })), ...existingErrors].slice(
+    0,
+    50
+  );
 
   return this.findByIdAndUpdate(
     'sharepoint_config',
@@ -160,12 +201,21 @@ SharePointConfigSchema.statics.updateSyncStats = async function(stats) {
         files_synced: (config?.sync_stats?.files_synced || 0) + (stats.files_synced || 0),
         files_failed: (config?.sync_stats?.files_failed || 0) + (stats.files_failed || 0),
         total_size: stats.total_size || config?.sync_stats?.total_size || 0,
-        errors: allErrors
+        errors: allErrors,
       },
-      updated_at: new Date()
+      updated_at: new Date(),
     },
     { new: true }
   );
 };
 
-export default mongoose.models.SharePointConfig || mongoose.model('SharePointConfig', SharePointConfigSchema);
+const SharePointConfig =
+  mongoose.models.SharePointConfig || mongoose.model('SharePointConfig', SharePointConfigSchema);
+
+SharePointConfig.getConfig = SharePointConfigSchema.statics.getConfig;
+SharePointConfig.updateConfig = SharePointConfigSchema.statics.updateConfig;
+SharePointConfig.isConfigured = SharePointConfigSchema.statics.isConfigured;
+SharePointConfig.updateConnectionStatus = SharePointConfigSchema.statics.updateConnectionStatus;
+SharePointConfig.updateSyncStats = SharePointConfigSchema.statics.updateSyncStats;
+
+export default SharePointConfig;

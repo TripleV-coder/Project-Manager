@@ -31,7 +31,7 @@ async function checkMongoDB() {
 
   const result = spawnSync(checkCommand, [mongoCommand], {
     shell: true,
-    stdio: 'pipe'
+    stdio: 'pipe',
   });
 
   if (result.status !== 0) {
@@ -48,7 +48,7 @@ async function checkMongoDB() {
 
 function createDataDir() {
   const dataDir = path.join(process.cwd(), 'data', 'db');
-  
+
   if (!fs.existsSync(dataDir)) {
     log('yellow', '📁 Creating MongoDB data directory...');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -58,29 +58,29 @@ function createDataDir() {
 
 function startMongoDB() {
   log('yellow', '🗄️  Starting MongoDB...');
-  
+
   const dataDir = path.join(process.cwd(), 'data', 'db');
   const logPath = path.join(process.cwd(), 'data', 'mongodb.log');
-  
+
   const args = ['--dbpath', dataDir, '--logpath', logPath, '--logappend'];
-  
+
   if (process.platform !== 'win32') {
     args.push('--fork');
   }
-  
+
   try {
     const mongod = spawn('mongod', args, {
       stdio: 'ignore',
       detached: true,
     });
-    
+
     mongod.unref();
-    
+
     // Wait for MongoDB to start
     setTimeout(() => {
       log('green', '✓ MongoDB running on localhost:27017');
     }, 2000);
-    
+
     return true;
   } catch (error) {
     log('red', `✗ Failed to start MongoDB: ${error.message}`);
@@ -90,10 +90,10 @@ function startMongoDB() {
 
 function createEnvFile() {
   const envPath = path.join(process.cwd(), '.env');
-  
+
   if (!fs.existsSync(envPath)) {
     log('yellow', '📝 Creating .env file...');
-    
+
     const envContent = `# MongoDB Connection (Local)
 MONGO_URL=mongodb://localhost:27017/project-manager
 
@@ -110,7 +110,7 @@ NODE_ENV=development
 # Next.js Application URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 `;
-    
+
     fs.writeFileSync(envPath, envContent);
     log('green', '✓ Created .env');
     log('yellow', '⚠️  Remember to update JWT_SECRET in production!');
@@ -119,14 +119,14 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 function installDependencies() {
   const nodeModulesPath = path.join(process.cwd(), 'node_modules');
-  
+
   if (!fs.existsSync(nodeModulesPath)) {
     log('yellow', '📦 Installing dependencies...');
-    
+
     const npm = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install'], {
       stdio: 'inherit',
     });
-    
+
     return new Promise((resolve) => {
       npm.on('close', (code) => {
         if (code === 0) {
@@ -139,13 +139,13 @@ function installDependencies() {
       });
     });
   }
-  
+
   return Promise.resolve(true);
 }
 
 function cleanNextCache() {
   const nextDir = path.join(process.cwd(), '.next');
-  
+
   if (fs.existsSync(nextDir)) {
     log('yellow', '🧹 Cleaning Next.js cache...');
     fs.rmSync(nextDir, { recursive: true, force: true });
@@ -154,36 +154,36 @@ function cleanNextCache() {
 
 async function startApp() {
   header('🚀 PM - Gestion de Projets - Startup Script');
-  
+
   // Check prerequisites
   await checkMongoDB();
   createDataDir();
-  
+
   // Start MongoDB
   if (!startMongoDB()) {
     process.exit(1);
   }
-  
+
   // Setup
   createEnvFile();
   const installed = await installDependencies();
   if (!installed) process.exit(1);
-  
+
   cleanNextCache();
-  
+
   // Ready to start
   header('✓ Everything ready!');
-  
+
   log('yellow', 'Starting application...');
   log('blue', '📱 App URL: http://localhost:3000');
   log('blue', '🗄️  MongoDB: mongodb://localhost:27017/project-manager\n');
-  
+
   // Start Next.js dev server
   spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
     stdio: 'inherit',
     shell: true,
   });
-  
+
   // Cleanup on exit
   process.on('SIGINT', () => {
     log('yellow', '\n\nShutting down...');

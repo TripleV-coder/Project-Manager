@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   Bar,
   XAxis,
@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   ComposedChart,
-  Line
+  Line,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { TrendingUp, Target } from 'lucide-react';
@@ -20,17 +20,17 @@ import { TrendingUp, Target } from 'lucide-react';
  * Velocity Chart Component
  * Shows team velocity across sprints with average velocity line
  */
-export default function VelocityChart({ sprints = [], tasks = [] }) {
+function VelocityChart({ sprints = [], tasks = [] }) {
   const chartData = useMemo(() => {
     // Only include completed sprints or active sprint
     const relevantSprints = sprints
-      .filter(s => s.statut === 'Terminé' || s.statut === 'Actif')
+      .filter((s) => s.statut === 'Terminé' || s.statut === 'Actif')
       .sort((a, b) => new Date(a.date_début) - new Date(b.date_début))
       .slice(-10); // Last 10 sprints
 
-    return relevantSprints.map(sprint => {
-      const sprintTasks = tasks.filter(t => t.sprint_id === sprint._id);
-      const completedTasks = sprintTasks.filter(t => t.statut === 'Terminé');
+    return relevantSprints.map((sprint) => {
+      const sprintTasks = tasks.filter((t) => t.sprint_id === sprint._id);
+      const completedTasks = sprintTasks.filter((t) => t.statut === 'Terminé');
 
       // Calculate from tasks
       const plannedFromTasks = sprintTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
@@ -38,7 +38,10 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
 
       // Prefer stored metrics if available
       const planned = sprint.story_points_planifiés || plannedFromTasks;
-      const completed = sprint.story_points_complétés !== undefined ? sprint.story_points_complétés : completedFromTasks;
+      const completed =
+        sprint.story_points_complétés !== undefined
+          ? sprint.story_points_complétés
+          : completedFromTasks;
       const velocity = sprint.velocity || completed;
 
       // Calculate engagement based on best available data
@@ -53,14 +56,14 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
         statut: sprint.statut,
         engagement: engagement,
         // Add date for better sorting/debugging
-        date_début: sprint.date_début
+        date_début: sprint.date_début,
       };
     });
   }, [sprints, tasks]);
 
   const averageVelocity = useMemo(() => {
     if (chartData.length === 0) return 0;
-    const completedSprints = chartData.filter(d => d.statut === 'Terminé');
+    const completedSprints = chartData.filter((d) => d.statut === 'Terminé');
     if (completedSprints.length === 0) return 0;
     const total = completedSprints.reduce((sum, d) => sum + d.complété, 0);
     return Math.round(total / completedSprints.length);
@@ -68,14 +71,14 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
 
   const predictedCapacity = useMemo(() => {
     // Use last 3 sprints for more accurate prediction
-    const lastSprints = chartData.filter(d => d.statut === 'Terminé').slice(-3);
+    const lastSprints = chartData.filter((d) => d.statut === 'Terminé').slice(-3);
     if (lastSprints.length === 0) return averageVelocity;
     const total = lastSprints.reduce((sum, d) => sum + d.complété, 0);
     return Math.round(total / lastSprints.length);
   }, [chartData, averageVelocity]);
 
   const trend = useMemo(() => {
-    const completedSprints = chartData.filter(d => d.statut === 'Terminé');
+    const completedSprints = chartData.filter((d) => d.statut === 'Terminé');
     if (completedSprints.length < 2) return 0;
     const lastTwo = completedSprints.slice(-2);
     return lastTwo[1].complété - lastTwo[0].complété;
@@ -88,7 +91,9 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
           <div className="flex flex-col items-center justify-center h-64 text-gray-500">
             <TrendingUp className="w-12 h-12 mb-2 text-gray-300" />
             <p>Aucun sprint terminé pour calculer la vélocité</p>
-            <p className="text-sm text-gray-400 mt-1">La vélocité sera affichée après le premier sprint complété</p>
+            <p className="text-sm text-gray-400 mt-1">
+              La vélocité sera affichée après le premier sprint complété
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -112,7 +117,9 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
             </div>
             <div className="flex justify-between border-t pt-1 mt-1">
               <span className="text-gray-600">Engagement:</span>
-              <span className={`font-medium ${data?.engagement >= 80 ? 'text-green-600' : data?.engagement >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
+              <span
+                className={`font-medium ${data?.engagement >= 80 ? 'text-green-600' : data?.engagement >= 60 ? 'text-yellow-600' : 'text-red-600'}`}
+              >
                 {data?.engagement}%
               </span>
             </div>
@@ -132,9 +139,7 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
               <TrendingUp className="w-5 h-5 text-green-600" />
               Vélocité de l'équipe
             </CardTitle>
-            <CardDescription>
-              Story points complétés par sprint
-            </CardDescription>
+            <CardDescription>Story points complétés par sprint</CardDescription>
           </div>
           <div className="flex gap-6">
             <div className="text-center">
@@ -146,8 +151,11 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
               <div className="text-xs text-gray-500">Prédiction</div>
             </div>
             <div className="text-center">
-              <div className={`text-2xl font-bold flex items-center gap-1 ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {trend >= 0 ? '+' : ''}{trend}
+              <div
+                className={`text-2xl font-bold flex items-center gap-1 ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}
+              >
+                {trend >= 0 ? '+' : ''}
+                {trend}
                 {trend !== 0 && (
                   <Target className={`w-4 h-4 ${trend >= 0 ? 'rotate-0' : 'rotate-180'}`} />
                 )}
@@ -173,7 +181,12 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
               <YAxis
                 tick={{ fontSize: 12 }}
                 stroke="#9ca3af"
-                label={{ value: 'Story Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                label={{
+                  value: 'Story Points',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { textAnchor: 'middle' },
+                }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
@@ -181,20 +194,15 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
                 y={averageVelocity}
                 stroke="#f59e0b"
                 strokeDasharray="5 5"
-                label={{ value: `Moyenne: ${averageVelocity}`, position: 'right', fill: '#f59e0b', fontSize: 11 }}
+                label={{
+                  value: `Moyenne: ${averageVelocity}`,
+                  position: 'right',
+                  fill: '#f59e0b',
+                  fontSize: 11,
+                }}
               />
-              <Bar
-                dataKey="planifié"
-                fill="#e5e7eb"
-                name="Planifié"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="complété"
-                fill="#4f46e5"
-                name="Complété"
-                radius={[4, 4, 0, 0]}
-              />
+              <Bar dataKey="planifié" fill="#e5e7eb" name="Planifié" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="complété" fill="#4f46e5" name="Complété" radius={[4, 4, 0, 0]} />
               <Line
                 type="monotone"
                 dataKey="complété"
@@ -229,7 +237,8 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
             <div className="text-lg font-semibold text-indigo-600">
               {chartData.length > 0
                 ? Math.round(chartData.reduce((sum, d) => sum + d.engagement, 0) / chartData.length)
-                : 0}%
+                : 0}
+              %
             </div>
             <div className="text-xs text-gray-500">Engagement moyen</div>
           </div>
@@ -238,3 +247,5 @@ export default function VelocityChart({ sprints = [], tasks = [] }) {
     </Card>
   );
 }
+
+export default memo(VelocityChart);

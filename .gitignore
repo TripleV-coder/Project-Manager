@@ -18,12 +18,26 @@ node_modules/
 
 # Testing
 /coverage
+/playwright-report/
+/test-results/
+/playwright/.cache/
 
 # Next.js
 /.next/
+/.next-prod/
 /out/
 next-env.d.ts
 *.tsbuildinfo
+.swc/
+build.log
+lint_results.txt
+
+# Local MongoDB runtime data (created by scripts/start-dev.js --dbpath)
+/data/
+
+# User-uploaded files (runtime, written by app/api/files/upload)
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # Production builds
 /build
@@ -76,14 +90,18 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
-node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
+android-sdk/
+
+# Next.js native binaries (architecture-specific)
 node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
--e 
+node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
+
 # Environment files
+.env
+.env.*
 *.env
 *.env.*
--e 
-# Environment files
-*.env
-*.env.*
+!.env.example
+
+# Backup files
+*.backup-*

@@ -2,21 +2,60 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Plus, Search, Mail, Shield, UserCheck, UserX, Key, AlertCircle } from 'lucide-react';
+import {
+  Users,
+  Plus,
+  Search,
+  Mail,
+  Shield,
+  UserCheck,
+  UserX,
+  Key,
+  AlertCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useRBACPermissions } from '@/hooks/useRBACPermissions';
 import TablePagination from '@/components/ui/table-pagination';
+import { clearAuthSession } from '@/lib/client-auth';
+import { authFetch } from '@/lib/auth-fetch';
 import { useFormatters, useTranslation } from '@/contexts/AppSettingsContext';
+import { extractApiData } from '@/lib/utils';
 
 export default function UsersPage() {
   const router = useRouter();
@@ -38,7 +77,7 @@ export default function UsersPage() {
     nom_complet: '',
     email: '',
     role_id: '',
-    status: 'Actif'
+    status: 'Actif',
   });
   const [creatingUser, setCreatingUser] = useState(false);
 
@@ -50,38 +89,21 @@ export default function UsersPage() {
   const permissions = useRBACPermissions(user);
   const canManageUsers = permissions.hasPermission;
 
-  /**
-   * Extrait les données d'une réponse API de manière sécurisée
-   */
-  const extractApiData = (response, keys = ['data']) => {
-    if (!response) return [];
-    if (Array.isArray(response)) return response;
-    for (const key of keys) {
-      if (response[key] && Array.isArray(response[key])) {
-        return response[key];
-      }
-    }
-    return [];
-  };
-
   const loadData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const [userRes, usersRes, rolesRes] = await Promise.all([
-        fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch(`/api/users?limit=${itemsPerPage}&page=${currentPage}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) }),
-        fetch('/api/roles', { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(10000) })
+        authFetch('/api/auth/me', { signal: AbortSignal.timeout(10000) }),
+        authFetch(`/api/users?limit=${itemsPerPage}&page=${currentPage}`, {
+          signal: AbortSignal.timeout(10000),
+        }),
+        authFetch('/api/roles', { signal: AbortSignal.timeout(10000) }),
       ]);
 
       // Vérification des réponses
       if (!userRes.ok) {
         if (userRes.status === 401) {
+          clearAuthSession();
           router.push('/login');
           return;
         }
@@ -141,20 +163,18 @@ export default function UsersPage() {
 
   const handleCreateUser = async () => {
     if (!newUser.nom_complet || !newUser.email || !newUser.role_id) {
-      toast.error('Veuillez remplir tous les champs obligatoires');
+      toast.error(t('requiredFields'));
       return;
     }
 
     setCreatingUser(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/users', {
+      const response = await authFetch('/api/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newUser)
+        body: JSON.stringify(newUser),
       });
 
       const data = await response.json();
@@ -163,7 +183,7 @@ export default function UsersPage() {
         setCreateDialogOpen(false);
         setNewUser({ nom_complet: '', email: '', role_id: '', status: 'Actif' });
         await loadData();
-        toast.success('Utilisateur créé avec succès ! Mot de passe temporaire: 00000000');
+        toast.success(data.message || t('userCreated'));
       } else {
         toast.error(data.error || 'Erreur lors de la création');
       }
@@ -180,13 +200,11 @@ export default function UsersPage() {
 
     setResettingPassword(true);
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(`/api/users/${selectedUserForReset._id}/reset-password`, {
+      const response = await authFetch(`/api/users/${selectedUserForReset._id}/reset-password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+        },
       });
 
       const data = await response.json();
@@ -195,7 +213,7 @@ export default function UsersPage() {
         setResetPasswordDialogOpen(false);
         setSelectedUserForReset(null);
         await loadData();
-        toast.success('Mot de passe réinitialisé ! Mot de passe temporaire: 00000000');
+        toast.success(data.message || t('passwordResetSuccess'));
       } else {
         toast.error(data.error || 'Erreur lors de la réinitialisation');
       }
@@ -216,9 +234,10 @@ export default function UsersPage() {
     setCurrentPage(1);
   };
 
-  const filteredUsers = users.filter(u =>
-    (u.nom_complet || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    (u) =>
+      (u.nom_complet || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalPages = Math.ceil((searchTerm ? filteredUsers.length : totalUsers) / itemsPerPage);
@@ -237,23 +256,23 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{t('userManagement')}</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{totalUsers} {t('users').toLowerCase()}</p>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {t('userManagement')}
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{t('userManagementSubtitle')}</p>
         </div>
         {canManageUsers('adminConfig') && (
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
                 <Plus className="w-4 h-4 mr-1" />
-                {t('createUser')}
+                {t('inviteMember')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{t('createUser')}</DialogTitle>
-                <DialogDescription>
-                  {t('welcomeFirstLogin')}
-                </DialogDescription>
+                <DialogTitle>{t('inviteMemberTitle')}</DialogTitle>
+                <DialogDescription>{t('inviteMemberDesc')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
@@ -275,14 +294,17 @@ export default function UsersPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t('role')}</Label>
-                  <Select value={newUser.role_id} onValueChange={(val) => setNewUser({ ...newUser, role_id: val })}>
+                  <Select
+                    value={newUser.role_id}
+                    onValueChange={(val) => setNewUser({ ...newUser, role_id: val })}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder={t('select')} />
                     </SelectTrigger>
                     <SelectContent>
-                      {roles.map(r => (
+                      {roles.map((r) => (
                         <SelectItem key={r._id} value={r._id}>
-                          {r.nom} - {r.description}
+                          {r.nom} : {r.description}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -290,7 +312,10 @@ export default function UsersPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t('status')}</Label>
-                  <Select value={newUser.status} onValueChange={(val) => setNewUser({ ...newUser, status: val })}>
+                  <Select
+                    value={newUser.status}
+                    onValueChange={(val) => setNewUser({ ...newUser, status: val })}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -302,8 +327,18 @@ export default function UsersPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={creatingUser}>{t('cancel')}</Button>
-                <Button onClick={handleCreateUser} disabled={creatingUser} className="bg-indigo-600 hover:bg-indigo-700">
+                <Button
+                  variant="outline"
+                  onClick={() => setCreateDialogOpen(false)}
+                  disabled={creatingUser}
+                >
+                  {t('cancel')}
+                </Button>
+                <Button
+                  onClick={handleCreateUser}
+                  disabled={creatingUser}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
                   {creatingUser ? t('loading') : t('create')}
                 </Button>
               </DialogFooter>
@@ -317,7 +352,10 @@ export default function UsersPage() {
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <Input
           value={searchTerm}
-          onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setCurrentPage(1);
+          }}
           placeholder={t('searchPlaceholder')}
           className="pl-8 h-9 text-sm"
         />
@@ -333,7 +371,9 @@ export default function UsersPage() {
                 <TableHead className="text-xs font-medium">{t('email')}</TableHead>
                 <TableHead className="text-xs font-medium">{t('role')}</TableHead>
                 <TableHead className="text-xs font-medium">{t('status')}</TableHead>
-                <TableHead className="text-xs font-medium hidden md:table-cell">{t('updatedAt')}</TableHead>
+                <TableHead className="text-xs font-medium hidden md:table-cell">
+                  {t('updatedAt')}
+                </TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -371,25 +411,33 @@ export default function UsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2">
-                      <Badge variant={u.status === 'Actif' ? 'default' : 'secondary'} className="text-[10px]">
+                      <Badge
+                        variant={u.status === 'Actif' ? 'default' : 'secondary'}
+                        className="text-[10px]"
+                      >
                         {u.status === 'Actif' ? (
-                          <><UserCheck className="w-3 h-3 mr-1" /> {t('active')}</>
+                          <>
+                            <UserCheck className="w-3 h-3 mr-1" /> {t('active')}
+                          </>
                         ) : (
-                          <><UserX className="w-3 h-3 mr-1" /> {t('disabled')}</>
+                          <>
+                            <UserX className="w-3 h-3 mr-1" /> {t('disabled')}
+                          </>
                         )}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-2 text-xs text-gray-500 hidden md:table-cell">
                       {u.dernière_connexion
                         ? formatDate(u.dernière_connexion, { includeTime: true })
-                        : '-'
-                      }
+                        : '-'}
                     </TableCell>
                     <TableCell className="py-2">
                       {canManageUsers('adminConfig') && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">⋮</Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                              ⋮
+                            </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
@@ -436,19 +484,29 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>{t('resetPassword')}</DialogTitle>
             <DialogDescription>
-              {t('confirmAction')} - {selectedUserForReset?.nom_complet}
+              {t('resetPasswordConfirm')} : {selectedUserForReset?.nom_complet}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-amber-900">{t('newPassword')}</p>
-              <p className="text-sm text-amber-700">{t('password')}: <code className="bg-white px-2 py-0.5 rounded font-mono">00000000</code></p>
+              <p className="text-sm text-amber-700">{t('resetPasswordDesc')}</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>{t('cancel')}</Button>
-            <Button onClick={handleResetPassword} disabled={resettingPassword} className="bg-amber-600 hover:bg-amber-700">
+            <Button
+              variant="outline"
+              onClick={() => setResetPasswordDialogOpen(false)}
+              disabled={resettingPassword}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={resettingPassword}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
               {resettingPassword ? t('loading') : t('reset')}
             </Button>
           </DialogFooter>

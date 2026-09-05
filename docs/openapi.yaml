@@ -1,0 +1,954 @@
+openapi: 3.1.0
+info:
+  title: PM Gestion API
+  version: 1.1.0
+  description: API de gestion de projets — Authentification JWT, RBAC 2-tier, real-time Socket.IO
+  contact:
+    name: TripleV
+    url: https://github.com/TripleV-coder/Project-Manager
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development
+  - url: '{baseUrl}/api'
+    description: Production
+    variables:
+      baseUrl:
+        default: https://your-domain.com
+
+security:
+  - BearerAuth: []
+  - CookieAuth: []
+
+tags:
+  - name: Auth
+    description: Authentication & session management
+  - name: Projects
+    description: Project CRUD & membership
+  - name: Tasks
+    description: Task management & assignment
+  - name: Sprints
+    description: Agile sprint lifecycle
+  - name: Users
+    description: User management
+  - name: Comments
+    description: Comments & mentions
+  - name: Notifications
+    description: In-app & push notifications
+  - name: Timesheets
+    description: Time tracking & validation
+  - name: Budget
+    description: Expenses & budget tracking
+  - name: Deliverables
+    description: Deliverables & types
+  - name: Files
+    description: File management & upload
+  - name: Audit
+    description: Audit logs & analytics
+  - name: Roles
+    description: RBAC role management
+  - name: Settings
+    description: Application settings
+  - name: Push
+    description: Web Push subscription
+  - name: SharePoint
+    description: SharePoint integration
+  - name: System
+    description: Health, init, socket
+
+paths:
+  # ── Auth ──────────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with credentials
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, mot_de_passe]
+              properties:
+                email: { type: string, format: email }
+                mot_de_passe: { type: string }
+                twoFactorToken: { type: string, description: TOTP code if 2FA enabled }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '423':
+          description: Account locked (too many attempts)
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout and invalidate session
+      responses:
+        '200': { description: Logged out }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /auth/first-admin:
+    post:
+      tags: [Auth]
+      summary: Create first admin (only works when no admin exists)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nom_complet, email, mot_de_passe]
+              properties:
+                nom_complet: { type: string }
+                email: { type: string, format: email }
+                mot_de_passe: { type: string }
+      responses:
+        '201': { description: Admin created }
+        '409': { description: Admin already exists }
+
+  /auth/first-login-reset:
+    post:
+      tags: [Auth]
+      summary: Reset temporary password on first login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mot_de_passe_actuel, nouveau_mot_de_passe]
+              properties:
+                mot_de_passe_actuel: { type: string }
+                nouveau_mot_de_passe: { type: string }
+      responses:
+        '200': { description: Password updated }
+
+  # ── Projects ──────────────────────────────────────────
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects (filtered by membership/admin)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: statut, in: query, schema: { type: string, enum: [Planification, En cours, En pause, Terminé, Annulé] } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '201': { description: Project created }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects/{id}:
+    get:
+      tags: [Projects]
+      summary: Get project details
+      parameters:
+        - { $ref: '#/components/parameters/ResourceId' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Projects]
+      summary: Update a project
+      parameters:
+        - { $ref: '#/components/parameters/ResourceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '200': { description: Project updated }
+    delete:
+      tags: [Projects]
+      summary: Delete a project
+      parameters:
+        - { $ref: '#/components/parameters/ResourceId' }
+      responses:
+        '204': { description: Project deleted }
+
+  # ── Tasks ─────────────────────────────────────────────
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+        - { name: projet_id, in: query, schema: { type: string } }
+        - { name: statut, in: query, schema: { type: string } }
+        - { name: sprint_id, in: query, schema: { type: string } }
+        - { name: assigné_à, in: query, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Tasks]
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '201': { description: Task created }
+
+  /tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get task details
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+    put:
+      tags: [Tasks]
+      summary: Update a task
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Task updated }
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Task deleted }
+
+  # ── Sprints ───────────────────────────────────────────
+  /sprints:
+    get:
+      tags: [Sprints]
+      summary: List sprints
+      parameters:
+        - { name: projet_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Sprints]
+      summary: Create a sprint
+      responses:
+        '201': { description: Sprint created }
+
+  /sprints/{id}:
+    get:
+      tags: [Sprints]
+      summary: Get sprint details
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sprint' }
+    put:
+      tags: [Sprints]
+      summary: Update a sprint
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Sprint updated }
+    delete:
+      tags: [Sprints]
+      summary: Delete a sprint
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Sprint deleted }
+
+  /sprints/{id}/start:
+    post:
+      tags: [Sprints]
+      summary: Start a sprint
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Sprint started }
+
+  /sprints/{id}/end:
+    post:
+      tags: [Sprints]
+      summary: End a sprint
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Sprint ended, incomplete tasks unassigned }
+
+  # ── Users ─────────────────────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Users]
+      summary: Create a managed user
+      responses:
+        '201': { description: User created }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user details
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+    put:
+      tags: [Users]
+      summary: Update user
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: User updated }
+    delete:
+      tags: [Users]
+      summary: Deactivate user
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: User deactivated }
+
+  # ── Comments ──────────────────────────────────────────
+  /comments:
+    get:
+      tags: [Comments]
+      summary: List comments
+      parameters:
+        - { name: entity_type, in: query, schema: { type: string, enum: [tâche, projet, livrable] } }
+        - { name: entity_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Comments]
+      summary: Create a comment
+      responses:
+        '201': { description: Comment created }
+
+  /comments/{id}:
+    put:
+      tags: [Comments]
+      summary: Update a comment
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Comment updated }
+    delete:
+      tags: [Comments]
+      summary: Delete a comment
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Comment deleted }
+
+  # ── Notifications ─────────────────────────────────────
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List user notifications
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+
+  /notifications/{id}:
+    put:
+      tags: [Notifications]
+      summary: Mark notification as read
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Notification updated }
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Notification deleted }
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      responses:
+        '200': { description: All notifications marked as read }
+
+  # ── Timesheets ────────────────────────────────────────
+  /timesheets:
+    get:
+      tags: [Timesheets]
+      summary: List timesheets
+      parameters:
+        - { name: projet_id, in: query, schema: { type: string } }
+        - { name: date_start, in: query, schema: { type: string, format: date } }
+        - { name: date_end, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Timesheets]
+      summary: Create a timesheet entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [projet_id, date, heures]
+              properties:
+                projet_id: { type: string }
+                task_id: { type: string }
+                sprint_id: { type: string }
+                date: { type: string, format: date }
+                heures: { type: number, minimum: 0.25, maximum: 24 }
+                description: { type: string }
+      responses:
+        '201': { description: Timesheet entry created }
+
+  /timesheets/{id}:
+    put:
+      tags: [Timesheets]
+      summary: Update a timesheet entry
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Entry updated }
+    delete:
+      tags: [Timesheets]
+      summary: Delete a timesheet entry
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Entry deleted }
+
+  # ── Budget / Expenses ─────────────────────────────────
+  /expenses:
+    get:
+      tags: [Budget]
+      summary: List expenses
+      parameters:
+        - { name: projet_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Budget]
+      summary: Create an expense
+      responses:
+        '201': { description: Expense created }
+
+  /expenses/{id}:
+    put:
+      tags: [Budget]
+      summary: Update an expense
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Expense updated }
+    delete:
+      tags: [Budget]
+      summary: Delete an expense
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Expense deleted }
+
+  # ── Deliverables ──────────────────────────────────────
+  /deliverables:
+    get:
+      tags: [Deliverables]
+      summary: List deliverables
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Deliverables]
+      summary: Create a deliverable
+      responses:
+        '201': { description: Deliverable created }
+
+  /deliverables/{id}:
+    put:
+      tags: [Deliverables]
+      summary: Update a deliverable
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Deliverable updated }
+    delete:
+      tags: [Deliverables]
+      summary: Delete a deliverable
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Deliverable deleted }
+
+  /deliverable-types:
+    get:
+      tags: [Deliverables]
+      summary: List deliverable types
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Deliverables]
+      summary: Create a deliverable type
+      responses:
+        '201': { description: Type created }
+
+  /deliverable-types/{id}:
+    put:
+      tags: [Deliverables]
+      summary: Update a deliverable type
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Type updated }
+    delete:
+      tags: [Deliverables]
+      summary: Delete a deliverable type
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Type deleted }
+
+  # ── Files ─────────────────────────────────────────────
+  /files:
+    get:
+      tags: [Files]
+      summary: List files
+      parameters:
+        - { name: projet_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+
+  /files/upload:
+    post:
+      tags: [Files]
+      summary: Upload a file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                projet_id: { type: string }
+      responses:
+        '201': { description: File uploaded }
+
+  # ── Audit ─────────────────────────────────────────────
+  /audit:
+    get:
+      tags: [Audit]
+      summary: List audit logs
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: user_id, in: query, schema: { type: string } }
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: date_start, in: query, schema: { type: string, format: date } }
+        - { name: date_end, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+
+  /audit/stats:
+    get:
+      tags: [Audit]
+      summary: Get audit statistics
+      responses:
+        '200': { description: Aggregated audit metrics }
+
+  /audit/actions:
+    get:
+      tags: [Audit]
+      summary: List distinct audit action types
+      responses:
+        '200': { description: List of action types }
+
+  /audit/summary:
+    get:
+      tags: [Audit]
+      summary: Get audit summary
+      responses:
+        '200': { description: Audit summary data }
+
+  /audit/export:
+    get:
+      tags: [Audit]
+      summary: Export audit logs as CSV
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /audit/user/{userId}:
+    get:
+      tags: [Audit]
+      summary: Get audit logs for a specific user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+
+  # ── Roles ─────────────────────────────────────────────
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List roles
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Roles]
+      summary: Create a role
+      responses:
+        '201': { description: Role created }
+
+  /roles/{id}:
+    put:
+      tags: [Roles]
+      summary: Update a role
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '200': { description: Role updated }
+    delete:
+      tags: [Roles]
+      summary: Delete a role
+      parameters: [{ $ref: '#/components/parameters/ResourceId' }]
+      responses:
+        '204': { description: Role deleted }
+
+  # ── Settings ──────────────────────────────────────────
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Get application settings
+      responses:
+        '200': { description: App settings object }
+    put:
+      tags: [Settings]
+      summary: Update application settings
+      responses:
+        '200': { description: Settings updated }
+
+  # ── Push Notifications ────────────────────────────────
+  /push/vapid-key:
+    get:
+      tags: [Push]
+      summary: Get VAPID public key for push subscription
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publicKey: { type: string }
+
+  /push/subscribe:
+    post:
+      tags: [Push]
+      summary: Register a push subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscription: { type: object }
+      responses:
+        '200': { description: Subscription registered }
+
+  /push/unsubscribe:
+    post:
+      tags: [Push]
+      summary: Remove a push subscription
+      responses:
+        '200': { description: Subscription removed }
+
+  # ── SharePoint ────────────────────────────────────────
+  /sharepoint/config:
+    get:
+      tags: [SharePoint]
+      summary: Get SharePoint configuration
+      responses:
+        '200': { description: SharePoint config }
+    post:
+      tags: [SharePoint]
+      summary: Update SharePoint configuration
+      responses:
+        '200': { description: Config updated }
+
+  # ── Project Templates ─────────────────────────────────
+  /project-templates:
+    get:
+      tags: [Projects]
+      summary: List project templates
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
+    post:
+      tags: [Projects]
+      summary: Create a project template
+      responses:
+        '201': { description: Template created }
+
+  # ── Activity ──────────────────────────────────────────
+  /activity:
+    get:
+      tags: [System]
+      summary: Get recent activity feed
+      responses:
+        '200': { description: Activity list }
+
+  # ── System ────────────────────────────────────────────
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                  timestamp: { type: string, format: date-time }
+
+  /init:
+    get:
+      tags: [System]
+      summary: Check initialization status
+      security: []
+      responses:
+        '200': { description: Init status }
+
+  /socket:
+    get:
+      tags: [System]
+      summary: Socket.IO polling fallback
+      responses:
+        '200': { description: Socket info }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{24}$'
+      description: MongoDB ObjectId
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid token
+    Forbidden:
+      description: Insufficient permissions
+    NotFound:
+      description: Resource not found
+    ValidationError:
+      description: Request body validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, enum: [false] }
+              errors:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field: { type: string }
+                    message: { type: string }
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        nom_complet: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+        statut: { type: string, enum: [Actif, Inactif, Suspendu] }
+        département: { type: string }
+        poste: { type: string }
+        compétences: { type: array, items: { type: string } }
+
+    Role:
+      type: object
+      properties:
+        _id: { type: string }
+        nom: { type: string }
+        description: { type: string }
+        permissions:
+          type: object
+          description: 32 atomic boolean permissions
+
+    Project:
+      type: object
+      properties:
+        _id: { type: string }
+        nom: { type: string }
+        description: { type: string }
+        statut: { type: string, enum: [Planification, En cours, En pause, Terminé, Annulé] }
+        priorité: { type: string, enum: [Basse, Moyenne, Haute, Critique] }
+        template_id: { type: string }
+        chef_projet: { $ref: '#/components/schemas/User' }
+        membres:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id: { type: string }
+              project_role_id: { type: string }
+        budget:
+          type: object
+          properties:
+            prévisionnel: { type: number }
+            réel: { type: number }
+            devise: { type: string, default: FCFA }
+        date_début: { type: string, format: date }
+        date_fin_prévue: { type: string, format: date }
+
+    ProjectInput:
+      type: object
+      required: [nom, template_id, chef_projet]
+      properties:
+        nom: { type: string, minLength: 2, maxLength: 200 }
+        description: { type: string }
+        template_id: { type: string }
+        chef_projet: { type: string }
+        statut: { type: string }
+        priorité: { type: string }
+        date_début: { type: string, format: date }
+        date_fin_prévue: { type: string, format: date }
+
+    Task:
+      type: object
+      properties:
+        _id: { type: string }
+        titre: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [épic, story, tâche, bug] }
+        statut: { type: string, enum: [À faire, En Cours, En Revue, Terminé, Bloqué] }
+        priorité: { type: string, enum: [Basse, Moyenne, Haute, Critique] }
+        projet_id: { type: string }
+        sprint_id: { type: string }
+        assigné_à: { type: string }
+        story_points: { type: integer }
+        estimation_heures: { type: number }
+        date_échéance: { type: string, format: date }
+
+    TaskInput:
+      type: object
+      required: [titre, projet_id]
+      properties:
+        titre: { type: string, minLength: 2, maxLength: 200 }
+        description: { type: string }
+        type: { type: string }
+        priorité: { type: string }
+        projet_id: { type: string }
+        sprint_id: { type: string }
+        assigné_à: { type: string }
+        story_points: { type: integer }
+        estimation_heures: { type: number }
+
+    Sprint:
+      type: object
+      properties:
+        _id: { type: string }
+        nom: { type: string }
+        objectif: { type: string }
+        projet_id: { type: string }
+        statut: { type: string, enum: [Planifié, Actif, Terminé] }
+        date_début: { type: string, format: date }
+        date_fin: { type: string, format: date }
+        capacité_équipe: { type: number }
+
+    PaginatedResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data: { type: array, items: { type: object } }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        totalPages: { type: integer }
+        hasNextPage: { type: boolean }

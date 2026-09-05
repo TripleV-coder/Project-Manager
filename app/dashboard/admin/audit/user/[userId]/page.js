@@ -7,45 +7,41 @@ import { ArrowLeft, Activity, AlertTriangle, Globe, Smartphone, Clock } from 'lu
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import { toast } from 'sonner';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 export default function UserActivityPage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const params = useParams();
   const userId = params.userId;
 
-  const [_user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState([]);
   const [suspiciousActivities, setSuspiciousActivities] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [stats, setStats] = useState(null);
-
-  const [filters] = useState({
-    action: '',
-    entityType: '',
-    severity: '',
-    limit: 50,
-    skip: 0
-  });
+  const [filters, _setFilters] = useState({});
 
   // Check authorization first
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('pm_token');
-
-        if (!token) {
-          router.push('/login');
-          return;
-        }
-
-        const userRes = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const userRes = await authFetch('/api/auth/me', {});
 
         if (!userRes.ok) {
           router.push('/login');
@@ -60,8 +56,6 @@ export default function UserActivityPage() {
           router.push('/dashboard');
           return;
         }
-
-        setUser(userData);
       } catch (error) {
         console.error('Error checking auth:', error);
         router.push('/login');
@@ -69,6 +63,7 @@ export default function UserActivityPage() {
     };
 
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   // Load user activity
@@ -76,7 +71,6 @@ export default function UserActivityPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('pm_token');
 
         // Get user activities
         const queryParams = new URLSearchParams();
@@ -84,9 +78,7 @@ export default function UserActivityPage() {
           if (value) queryParams.append(key, value);
         });
 
-        const activitiesRes = await fetch(`/api/audit/user/${userId}?${queryParams}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const activitiesRes = await authFetch(`/api/audit/user/${userId}?${queryParams}`, {});
 
         if (activitiesRes.ok) {
           const data = await activitiesRes.json();
@@ -94,9 +86,10 @@ export default function UserActivityPage() {
         }
 
         // Get suspicious activities
-        const suspiciousRes = await fetch(`/api/audit/suspicious?userId=${userId}&hoursWindow=72`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const suspiciousRes = await authFetch(
+          `/api/audit/suspicious?userId=${userId}&hoursWindow=72`,
+          {}
+        );
 
         if (suspiciousRes.ok) {
           const data = await suspiciousRes.json();
@@ -104,9 +97,7 @@ export default function UserActivityPage() {
         }
 
         // Get user sessions
-        const sessionsRes = await fetch(`/api/audit/sessions?userId=${userId}&limit=20`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const sessionsRes = await authFetch(`/api/audit/sessions?userId=${userId}&limit=20`, {});
 
         if (sessionsRes.ok) {
           const data = await sessionsRes.json();
@@ -114,8 +105,8 @@ export default function UserActivityPage() {
 
           // Calculate stats from sessions
           const totalSessions = data.sessions?.length || 0;
-          const activeSessions = data.sessions?.filter(s => s.statut === 'actif').length || 0;
-          const uniqueIPs = new Set(data.sessions?.map(s => s.ip_address) || []).size;
+          const activeSessions = data.sessions?.filter((s) => s.statut === 'actif').length || 0;
+          const uniqueIPs = new Set(data.sessions?.map((s) => s.ip_address) || []).size;
 
           setStats({
             totalSessions,
@@ -123,8 +114,8 @@ export default function UserActivityPage() {
             uniqueIPs,
             avgSessionDuration: Math.round(
               (data.sessions?.reduce((sum, s) => sum + (s.duration_minutes || 0), 0) || 0) /
-              (totalSessions || 1)
-            )
+                (totalSessions || 1)
+            ),
           });
         }
 
@@ -139,16 +130,22 @@ export default function UserActivityPage() {
     if (userId) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, filters]);
 
   // Get severity color
   const getSeverityColor = (severity) => {
     switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800';
-      case 'error': return 'bg-orange-100 text-orange-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'info': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'critical':
+        return 'bg-red-100 text-red-800';
+      case 'error':
+        return 'bg-orange-100 text-orange-800';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'info':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -156,12 +153,9 @@ export default function UserActivityPage() {
   const getActionColor = (action) => {
     if (['création', 'upload_fichier', 'validation'].includes(action))
       return 'bg-green-100 text-green-800';
-    if (['suppression', 'modification'].includes(action))
-      return 'bg-blue-100 text-blue-800';
-    if (['connexion'].includes(action))
-      return 'bg-purple-100 text-purple-800';
-    if (['access_denied', 'login_failed'].includes(action))
-      return 'bg-red-100 text-red-800';
+    if (['suppression', 'modification'].includes(action)) return 'bg-blue-100 text-blue-800';
+    if (['connexion'].includes(action)) return 'bg-purple-100 text-purple-800';
+    if (['access_denied', 'login_failed'].includes(action)) return 'bg-red-100 text-red-800';
     return 'bg-gray-100 text-gray-800';
   };
 
@@ -175,7 +169,7 @@ export default function UserActivityPage() {
 
   // Prepare activity chart data
   const activityByDate = {};
-  activities.forEach(activity => {
+  activities.forEach((activity) => {
     const date = new Date(activity.timestamp).toLocaleDateString();
     activityByDate[date] = (activityByDate[date] || 0) + 1;
   });
@@ -183,7 +177,7 @@ export default function UserActivityPage() {
 
   // Prepare activity by type data
   const activityByType = {};
-  activities.forEach(activity => {
+  activities.forEach((activity) => {
     activityByType[activity.action] = (activityByType[activity.action] || 0) + 1;
   });
   const typeData = Object.entries(activityByType).map(([name, value]) => ({ name, value }));
@@ -262,7 +256,13 @@ export default function UserActivityPage() {
             <div className="space-y-2">
               {suspiciousActivities.map((anomaly, idx) => (
                 <div key={idx} className="text-sm py-2 border-b last:border-b-0">
-                  <Badge className={anomaly.severity === 'critical' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
+                  <Badge
+                    className={
+                      anomaly.severity === 'critical'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-yellow-100 text-yellow-800'
+                    }
+                  >
                     {anomaly.type}
                   </Badge>
                   <p className="mt-1">{anomaly.message}</p>
@@ -352,7 +352,13 @@ export default function UserActivityPage() {
                         {session.duration_minutes ? `${session.duration_minutes}min` : 'Active'}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge className={session.statut === 'actif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                        <Badge
+                          className={
+                            session.statut === 'actif'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }
+                        >
                           {session.statut}
                         </Badge>
                       </td>
@@ -380,9 +386,7 @@ export default function UserActivityPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge className={getActionColor(activity.action)}>
-                          {activity.action}
-                        </Badge>
+                        <Badge className={getActionColor(activity.action)}>{activity.action}</Badge>
                         <Badge className={getSeverityColor(activity.severity)}>
                           {activity.severity}
                         </Badge>

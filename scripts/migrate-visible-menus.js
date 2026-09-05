@@ -22,13 +22,13 @@ const DEFAULT_VISIBLE_MENUS = {
   budget: true,
   reports: true,
   notifications: true,
-  admin: false
+  admin: false,
 };
 
 async function migrateVisibleMenus() {
   try {
     console.log('🔄 Connecting to MongoDB...');
-    
+
     // Connect to MongoDB
     const mongoUri = process.env.MONGODB_URI;
     if (!mongoUri) {
@@ -47,12 +47,13 @@ async function migrateVisibleMenus() {
 
     for (const role of roles) {
       // Check if visibleMenus exists and needs updating
-      const needsUpdate = !role.visibleMenus || 
-                          role.visibleMenus.sprints !== true ||
-                          role.visibleMenus.backlog !== true ||
-                          role.visibleMenus.roadmap !== true ||
-                          role.visibleMenus.budget !== true ||
-                          role.visibleMenus.reports !== true;
+      const needsUpdate =
+        !role.visibleMenus ||
+        role.visibleMenus.sprints !== true ||
+        role.visibleMenus.backlog !== true ||
+        role.visibleMenus.roadmap !== true ||
+        role.visibleMenus.budget !== true ||
+        role.visibleMenus.reports !== true;
 
       if (needsUpdate) {
         // Merge existing visibleMenus with defaults
@@ -60,7 +61,7 @@ async function migrateVisibleMenus() {
           ...DEFAULT_VISIBLE_MENUS,
           ...role.visibleMenus,
           // Special cases: keep admin as false for non-admin roles
-          admin: role.visibleMenus?.admin || false
+          admin: role.visibleMenus?.admin || false,
         };
 
         role.visibleMenus = updatedMenus;

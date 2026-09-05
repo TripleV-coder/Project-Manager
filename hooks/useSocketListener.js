@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { useSocket } from '@/context/SocketContext';
+import { useSocket } from '@/contexts/SocketContext';
 
 /**
  * Hook to subscribe to socket events
  * Automatically cleans up listeners on unmount
- * 
+ *
  * @param {string|string[]} events - Event name(s) to listen to
  * @param {function} callback - Callback function when event is received
  * @param {boolean} enabled - Whether to listen (default: true)
@@ -17,12 +17,12 @@ export function useSocketListener(events, callback, enabled = true) {
 
     const eventList = Array.isArray(events) ? events : [events];
 
-    eventList.forEach(event => {
+    eventList.forEach((event) => {
       on(event, callback);
     });
 
     return () => {
-      eventList.forEach(event => {
+      eventList.forEach((event) => {
         off(event, callback);
       });
     };

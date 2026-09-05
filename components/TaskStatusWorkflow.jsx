@@ -8,19 +8,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import {
-  ChevronDown,
-  Clock,
-  AlertTriangle,
-  ArrowRight
-} from 'lucide-react';
+import { ChevronDown, Clock, AlertTriangle, ArrowRight } from 'lucide-react';
 import { formatStatusInfo } from '@/lib/statusTransitionUtils';
 import { getStatusConfig, WORKFLOW_CONFIG } from '@/lib/workflows';
+import { authFetch } from '@/lib/auth-fetch';
 
 /**
  * TaskStatusWorkflow
@@ -37,7 +33,7 @@ export default function TaskStatusWorkflow({
   readOnly = false,
   showHistory = true,
   showAutoTransition = true,
-  showEscalation = true
+  showEscalation = true,
 }) {
   const [loading, setLoading] = useState(false);
   const [statusInfo, setStatusInfo] = useState(null);
@@ -58,28 +54,26 @@ export default function TaskStatusWorkflow({
 
   const completionPercentage = useMemo(() => {
     if (!checklist || checklist.length === 0) return 0;
-    const completed = checklist.filter(item => item.complété).length;
+    const completed = checklist.filter((item) => item.complété).length;
     return (completed / checklist.length) * 100;
   }, [checklist]);
 
   const workflowConfig = WORKFLOW_CONFIG.task;
   const statusTransitions = workflowConfig.transitions[task?.statut] || {};
   const availableNextStatuses = Object.keys(statusTransitions).filter(
-    status => statusTransitions[status].allowed !== false
+    (status) => statusTransitions[status].allowed !== false
   );
 
   const handleStatusChange = async (newStatus) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('pm_token');
-      
-      const response = await fetch(`/api/tasks/${task._id}`, {
+
+      const response = await authFetch(`/api/tasks/${task._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ statut: newStatus })
+        body: JSON.stringify({ statut: newStatus }),
       });
 
       if (!response.ok) {
@@ -89,9 +83,9 @@ export default function TaskStatusWorkflow({
 
       const data = await response.json();
       toast.success('Status updated successfully');
-      
+
       if (onStatusChange) {
-        onStatusChange(data.task);
+        onStatusChange(data.data || data.task);
       }
     } catch (error) {
       toast.error(error.message);
@@ -115,9 +109,7 @@ export default function TaskStatusWorkflow({
           {/* Current Status Display */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Badge className={currentStatusConfig.color}>
-                {currentStatusConfig.label}
-              </Badge>
+              <Badge className={currentStatusConfig.color}>{currentStatusConfig.label}</Badge>
               <span className="text-sm text-muted-foreground">
                 {currentStatusConfig.description}
               </span>
@@ -126,16 +118,12 @@ export default function TaskStatusWorkflow({
             {!readOnly && availableNextStatuses.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading}
-                  >
+                  <Button variant="outline" size="sm" disabled={loading}>
                     Change <ChevronDown className="w-4 h-4 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {availableNextStatuses.map(status => {
+                  {availableNextStatuses.map((status) => {
                     const statusConfig = getStatusConfig('task', status);
                     return (
                       <DropdownMenuItem
@@ -163,9 +151,7 @@ export default function TaskStatusWorkflow({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Completion</span>
-                <span className="font-medium">
-                  {Math.round(completionPercentage)}%
-                </span>
+                <span className="font-medium">{Math.round(completionPercentage)}%</span>
               </div>
               <Progress value={completionPercentage} className="h-2" />
             </div>
@@ -178,13 +164,10 @@ export default function TaskStatusWorkflow({
                 Available next status:
               </p>
               <div className="flex flex-wrap gap-2">
-                {availableNextStatuses.map(status => {
+                {availableNextStatuses.map((status) => {
                   const statusConfig = getStatusConfig('task', status);
                   return (
-                    <div
-                      key={status}
-                      className="flex items-center gap-2 text-xs"
-                    >
+                    <div key={status} className="flex items-center gap-2 text-xs">
                       <ArrowRight className="w-3 h-3 text-muted-foreground" />
                       <Badge variant="outline" className={statusConfig.color}>
                         {statusConfig.label}
@@ -203,23 +186,16 @@ export default function TaskStatusWorkflow({
         <Alert className="bg-blue-50 border-blue-200">
           <Clock className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-900">
-            <div className="font-semibold mb-1">
-              Auto-transition scheduled
-            </div>
+            <div className="font-semibold mb-1">Auto-transition scheduled</div>
             <div className="text-sm">
-              Will automatically change to{' '}
-              <strong>{statusInfo.autoTransition.targetStatus}</strong>
+              Will automatically change to <strong>{statusInfo.autoTransition.targetStatus}</strong>
               {statusInfo.autoTransition.readyInDays > 0 ? (
-                <>
-                  {' '}in {statusInfo.autoTransition.readyInDays} days
-                </>
+                <> in {statusInfo.autoTransition.readyInDays} days</>
               ) : (
                 <> when ready</>
               )}
             </div>
-            <div className="text-xs mt-2 opacity-75">
-              {statusInfo.autoTransition.reason}
-            </div>
+            <div className="text-xs mt-2 opacity-75">{statusInfo.autoTransition.reason}</div>
           </AlertDescription>
         </Alert>
       )}
@@ -229,9 +205,7 @@ export default function TaskStatusWorkflow({
         <Alert className="bg-amber-50 border-amber-200">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-900">
-            <div className="font-semibold mb-1">
-              Escalation needed
-            </div>
+            <div className="font-semibold mb-1">Escalation needed</div>
             <div className="text-sm">
               {statusInfo.escalation.action}: {statusInfo.escalation.reason}
             </div>
@@ -257,13 +231,10 @@ export default function TaskStatusWorkflow({
                   <div className="w-0.5 h-12 bg-border" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">
-                    {currentStatusConfig.label}
-                  </p>
+                  <p className="text-sm font-medium">{currentStatusConfig.label}</p>
                   <p className="text-xs text-muted-foreground">
-                    Since {task.updated_at
-                      ? new Date(task.updated_at).toLocaleDateString()
-                      : 'unknown'}
+                    Since{' '}
+                    {task.updated_at ? new Date(task.updated_at).toLocaleDateString() : 'unknown'}
                   </p>
                 </div>
               </div>
@@ -276,9 +247,7 @@ export default function TaskStatusWorkflow({
                 <div>
                   <p className="text-sm font-medium">Created</p>
                   <p className="text-xs text-muted-foreground">
-                    {task.created_at
-                      ? new Date(task.created_at).toLocaleDateString()
-                      : 'unknown'}
+                    {task.created_at ? new Date(task.created_at).toLocaleDateString() : 'unknown'}
                   </p>
                 </div>
               </div>
@@ -298,12 +267,11 @@ export default function TaskStatusWorkflow({
               <strong>Current Status:</strong> {currentStatusConfig.label}
             </p>
             <p>
-              <strong>Auto-advance:</strong> When 80% of checklist is complete,
-              task automatically moves to Review
+              <strong>Auto-advance:</strong> When 80% of checklist is complete, task automatically
+              moves to Review
             </p>
             <p>
-              <strong>Completion:</strong> Task marked as completed only after
-              passing review
+              <strong>Completion:</strong> Task marked as completed only after passing review
             </p>
           </div>
         </CardContent>

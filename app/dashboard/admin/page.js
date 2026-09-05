@@ -5,23 +5,18 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, Users, FileText, Cloud, Activity, Settings, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('pm_token');
-        if (!token) {
-          router.push('/login');
-          return;
-        }
-
-        const response = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(8000)
+        const response = await authFetch('/api/auth/me', {
+          signal: AbortSignal.timeout(8000),
         });
 
         if (!response.ok) {
@@ -46,6 +41,7 @@ export default function AdminDashboard() {
     };
 
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const adminSections = [
@@ -54,43 +50,43 @@ export default function AdminDashboard() {
       description: 'Configurez les rôles système et leurs 23 permissions atomiques',
       icon: Shield,
       href: '/dashboard/admin/roles',
-      color: 'bg-indigo-100 text-indigo-600'
+      color: 'bg-indigo-100 text-indigo-600',
     },
     {
       title: 'Audit & Logs',
-      description: 'Consultez l\'historique des activités et les logs de sécurité',
+      description: "Consultez l'historique des activités et les logs de sécurité",
       icon: Activity,
       href: '/dashboard/admin/audit',
-      color: 'bg-green-100 text-green-600'
+      color: 'bg-green-100 text-green-600',
     },
     {
       title: 'Types de Livrables',
       description: 'Gérez les types de livrables disponibles pour les projets',
       icon: FileText,
       href: '/dashboard/admin/deliverable-types',
-      color: 'bg-blue-100 text-blue-600'
+      color: 'bg-blue-100 text-blue-600',
     },
     {
       title: 'Modèles de Projets',
       description: 'Créez et gérez les modèles de projets réutilisables',
       icon: Settings,
       href: '/dashboard/admin/templates',
-      color: 'bg-purple-100 text-purple-600'
+      color: 'bg-purple-100 text-purple-600',
     },
     {
       title: 'Configuration SharePoint',
       description: 'Intégrez SharePoint pour la gestion centralisée des fichiers',
       icon: Cloud,
       href: '/dashboard/admin/sharepoint',
-      color: 'bg-orange-100 text-orange-600'
+      color: 'bg-orange-100 text-orange-600',
     },
     {
       title: 'Utilisateurs',
       description: 'Gérez les utilisateurs et leurs accès au système',
       icon: Users,
       href: '/dashboard/users',
-      color: 'bg-pink-100 text-pink-600'
-    }
+      color: 'bg-pink-100 text-pink-600',
+    },
   ];
 
   if (loading) {
@@ -106,7 +102,9 @@ export default function AdminDashboard() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Administration</h1>
-        <p className="text-gray-600">Gérez les paramètres système et la configuration de l'application</p>
+        <p className="text-gray-600">
+          Gérez les paramètres système et la configuration de l'application
+        </p>
       </div>
 
       {/* Admin Sections Grid */}
@@ -125,9 +123,7 @@ export default function AdminDashboard() {
                 <CardDescription>{section.description}</CardDescription>
               </CardHeader>
               <CardContent>
-                <span className="text-sm text-indigo-600 group-hover:underline">
-                  Accéder
-                </span>
+                <span className="text-sm text-indigo-600 group-hover:underline">Accéder</span>
               </CardContent>
             </Card>
           </Link>

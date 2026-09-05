@@ -9,26 +9,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 
 export default function MaintenancePage() {
   const router = useRouter();
+  const { authFetch } = useAuthFetch();
   const [loading, setLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState(
-    'L\'application est actuellement en maintenance. Nous serons de retour bientôt.'
+    "L'application est actuellement en maintenance. Nous serons de retour bientôt."
   );
 
   const checkAuth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(8000)
+      const response = await authFetch('/api/auth/me', {
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
@@ -45,29 +40,29 @@ export default function MaintenancePage() {
     } catch (error) {
       console.error('Erreur:', error);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const loadMaintenanceStatus = useCallback(async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/admin/maintenance', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(8000)
+      const response = await authFetch('/api/admin/maintenance', {
+        signal: AbortSignal.timeout(8000),
       });
       const data = await response.json();
-      
+
       if (data.enabled !== undefined) {
         setMaintenanceMode(data.enabled);
       }
       if (data.message) {
         setMaintenanceMessage(data.message);
       }
-      
+
       setLoading(false);
     } catch (error) {
       console.error('Erreur:', error);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -77,26 +72,20 @@ export default function MaintenancePage() {
 
   const handleToggleMaintenance = async () => {
     try {
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch('/api/admin/maintenance', {
+      const response = await authFetch('/api/admin/maintenance', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           enabled: !maintenanceMode,
-          message: maintenanceMessage
-        })
+          message: maintenanceMessage,
+        }),
       });
 
       if (response.ok) {
         setMaintenanceMode(!maintenanceMode);
-        toast.success(
-          !maintenanceMode ? 
-            'Mode maintenance activé' : 
-            'Mode maintenance désactivé'
-        );
+        toast.success(!maintenanceMode ? 'Mode maintenance activé' : 'Mode maintenance désactivé');
       } else {
         toast.error('Erreur lors de la modification');
       }
@@ -118,7 +107,9 @@ export default function MaintenancePage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Mode Maintenance</h1>
-        <p className="text-gray-600">Activer le mode maintenance pour bloquer l'accès à l'application</p>
+        <p className="text-gray-600">
+          Activer le mode maintenance pour bloquer l'accès à l'application
+        </p>
       </div>
 
       <div className="space-y-6">
@@ -128,17 +119,16 @@ export default function MaintenancePage() {
               <div>
                 <CardTitle>Statut actuel</CardTitle>
                 <CardDescription>
-                  {maintenanceMode ? 
-                    'L\'application est en mode maintenance' : 
-                    'L\'application est accessible aux utilisateurs'
-                  }
+                  {maintenanceMode
+                    ? "L'application est en mode maintenance"
+                    : "L'application est accessible aux utilisateurs"}
                 </CardDescription>
               </div>
-              <div className={`px-4 py-2 rounded-full font-medium ${
-                maintenanceMode ? 
-                  'bg-orange-100 text-orange-800' : 
-                  'bg-green-100 text-green-800'
-              }`}>
+              <div
+                className={`px-4 py-2 rounded-full font-medium ${
+                  maintenanceMode ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'
+                }`}
+              >
                 {maintenanceMode ? 'Maintenance' : 'Opérationnel'}
               </div>
             </div>
@@ -154,10 +144,7 @@ export default function MaintenancePage() {
                   </p>
                 </div>
               </div>
-              <Switch
-                checked={maintenanceMode}
-                onCheckedChange={handleToggleMaintenance}
-              />
+              <Switch checked={maintenanceMode} onCheckedChange={handleToggleMaintenance} />
             </div>
 
             {maintenanceMode && (
@@ -166,7 +153,8 @@ export default function MaintenancePage() {
                 <div>
                   <p className="font-medium text-orange-900">Mode maintenance actif</p>
                   <p className="text-sm text-orange-700 mt-1">
-                    Les utilisateurs non-administrateurs verront le message de maintenance ci-dessous
+                    Les utilisateurs non-administrateurs verront le message de maintenance
+                    ci-dessous
                   </p>
                 </div>
               </div>
@@ -191,10 +179,7 @@ export default function MaintenancePage() {
                 placeholder="Entrez le message à afficher..."
               />
             </div>
-            <Button 
-              onClick={handleToggleMaintenance}
-              className="bg-indigo-600 hover:bg-indigo-700"
-            >
+            <Button onClick={handleToggleMaintenance} className="bg-indigo-600 hover:bg-indigo-700">
               Enregistrer le message
             </Button>
           </CardContent>
@@ -203,7 +188,9 @@ export default function MaintenancePage() {
         <Card>
           <CardHeader>
             <CardTitle>Aperçu</CardTitle>
-            <CardDescription>Ce que les utilisateurs verront pendant la maintenance</CardDescription>
+            <CardDescription>
+              Ce que les utilisateurs verront pendant la maintenance
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="p-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">

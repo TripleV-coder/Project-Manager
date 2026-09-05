@@ -1,26 +1,25 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { ChevronDown } from 'lucide-react';
-import {
-  getStatusConfig,
-  getAvailableTransitions
-} from '@/lib/workflows';
+import { authFetch } from '@/lib/auth-fetch';
+
+import { getStatusConfig, getAvailableTransitions } from '@/lib/workflows';
 
 /**
  * WorkflowStatusBadge
  * Universal status badge that works with any entity type
  * Uses centralized workflow configuration for all validation and UI
- * 
+ *
  * Props:
  * - type: Entity type (task, timesheet, expense, sprint, project, deliverable)
  * - status: Current status value
@@ -34,7 +33,7 @@ import {
  * - showTimeUntilAuto: If true, show countdown to auto-transition
  * - autoTransitionInfo: Object with {targetStatus, readyInDays} for display
  */
-export default function WorkflowStatusBadge({
+function WorkflowStatusBadge({
   type = 'task',
   status,
   entityId,
@@ -45,7 +44,7 @@ export default function WorkflowStatusBadge({
   endpoint = null,
   autoRefresh = false,
   showTimeUntilAuto = false,
-  autoTransitionInfo = null
+  autoTransitionInfo = null,
 }) {
   const [loading, setLoading] = useState(false);
   const effectiveType = entityType || type;
@@ -78,21 +77,19 @@ export default function WorkflowStatusBadge({
           expense: `expenses/${entityId}/status`,
           sprint: `sprints/${entityId}`,
           project: `projects/${entityId}`,
-          deliverable: `deliverables/${entityId}`
+          deliverable: `deliverables/${entityId}`,
         };
 
         const basePath = typeMap[effectiveType] || `${effectiveType}s/${entityId}`;
         apiEndpoint = `/api/${basePath}`;
       }
 
-      const token = localStorage.getItem('pm_token');
-      const response = await fetch(apiEndpoint, {
+      const response = await authFetch(apiEndpoint, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ statut: newStatus, status: newStatus })
+        body: JSON.stringify({ statut: newStatus, status: newStatus }),
       });
 
       if (!response.ok) {
@@ -102,7 +99,7 @@ export default function WorkflowStatusBadge({
 
       const data = await response.json();
       toast.success('Status updated successfully');
-      
+
       if (onStatusChange) {
         onStatusChange(newStatus, data);
       }
@@ -124,9 +121,7 @@ export default function WorkflowStatusBadge({
   if (!canTransition) {
     return (
       <div className="flex items-center gap-2">
-        <Badge className={statusConfig.color}>
-          {statusConfig.label}
-        </Badge>
+        <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
         {showTimeUntilAuto && autoTransitionInfo && autoTransitionInfo.readyInDays > 0 && (
           <span className="text-xs text-muted-foreground">
             Auto in {autoTransitionInfo.readyInDays}d
@@ -151,7 +146,7 @@ export default function WorkflowStatusBadge({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {availableTransitions.map(targetStatus => {
+          {availableTransitions.map((targetStatus) => {
             const targetConfig = getStatusConfig(effectiveType, targetStatus);
             return (
               <DropdownMenuItem
@@ -182,3 +177,5 @@ export default function WorkflowStatusBadge({
     </div>
   );
 }
+
+export default memo(WorkflowStatusBadge);
