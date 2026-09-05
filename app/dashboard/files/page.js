@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Files,
@@ -532,11 +533,15 @@ export default function FilesPage() {
                   <div className="flex flex-col items-center">
                     <div className="relative w-full">
                       {file.type?.startsWith('image/') && file.url ? (
-                        <img
-                          src={file.url}
-                          alt={file.nom}
-                          className="w-full h-24 object-cover rounded-lg mb-3"
-                        />
+                        <div className="relative w-full h-24 mb-3 rounded-lg overflow-hidden">
+                          <Image
+                            src={file.url}
+                            alt={file.nom}
+                            fill
+                            className="object-cover"
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                          />
+                        </div>
                       ) : (
                         <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center mb-3 mx-auto group-hover:bg-indigo-50 transition-colors">
                           <IconComponent className="w-8 h-8 text-gray-600" />
@@ -744,11 +749,15 @@ export default function FilesPage() {
             </DialogHeader>
             <div className="py-4">
               {previewFile.type?.startsWith('image/') ? (
-                <img
-                  src={previewFile.url}
-                  alt={previewFile.nom}
-                  className="max-w-full max-h-[60vh] mx-auto rounded-lg"
-                />
+                <div className="relative w-full h-[60vh] flex items-center justify-center">
+                  <Image
+                    src={previewFile.url}
+                    alt={previewFile.nom}
+                    fill
+                    className="object-contain rounded-lg"
+                    sizes="(max-width: 768px) 90vw, (max-width: 1200px) 80vw, 70vw"
+                  />
+                </div>
               ) : (
                 <div className="text-center py-12">
                   <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
