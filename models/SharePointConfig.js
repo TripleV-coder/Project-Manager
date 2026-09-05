@@ -123,7 +123,9 @@ SharePointConfigSchema.statics.getConfig = async function (includeSecret = false
   if (includeSecret) {
     config = await this.findById('sharepoint_config').select('+client_secret');
     if (config && config.client_secret) {
-      config.client_secret = decryptSecret(config.client_secret);
+      config.client_secret = decryptSecret(config.client_secret, {
+        strict: process.env.NODE_ENV === 'production',
+      });
     }
   }
 
