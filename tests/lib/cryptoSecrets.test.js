@@ -76,4 +76,12 @@ describe('lib/crypto/secrets — AES-256-GCM', () => {
     const ct = encryptSecret('payload');
     expect(decryptSecret(ct)).toBe('payload');
   });
+
+  test('strict mode rejects unencrypted input', () => {
+    expect(() => decryptSecret('plaintext-value', { strict: true })).toThrow(/encrypted secret/i);
+  });
+
+  test('non-strict still returns legacy plaintext', () => {
+    expect(decryptSecret('plaintext-value')).toBe('plaintext-value');
+  });
 });
