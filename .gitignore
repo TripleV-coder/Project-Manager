@@ -99,9 +99,9 @@ node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node
 # Environment files
 .env
 .env.*
-!.env.example
 *.env
 *.env.*
+!.env.example
 
 # Backup files
 *.backup-*
