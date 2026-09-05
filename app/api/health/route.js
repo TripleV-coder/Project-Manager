@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/lib/db';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('health');
 
 /**
  * Health check endpoint for monitoring and uptime services
@@ -62,7 +65,7 @@ export async function GET() {
 
     return NextResponse.json(health, { status: statusCode });
   } catch (error) {
-    console.error('[Health Check] Error:', error);
+    log.error('[Health Check] Error:', error);
 
     return NextResponse.json(
       {
@@ -89,7 +92,7 @@ export async function HEAD() {
     return new NextResponse(null, { status: 200 });
   } catch (error) {
     // Log l'erreur pour le monitoring mais ne pas exposer les détails
-    console.error('[Health Check HEAD] Database connection failed:', error.message);
+    log.error('[Health Check HEAD] Database connection failed:', error);
     return new NextResponse(null, { status: 503 });
   }
 }

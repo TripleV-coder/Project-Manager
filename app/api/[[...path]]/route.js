@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('api-404');
 
 /**
  * ==========================================
@@ -52,7 +55,7 @@ export async function OPTIONS(request) {
 
 function handleNotFound(request) {
   const url = new URL(request.url);
-  console.warn(
+  log.warn(
     `[API 404] Route non trouvée dans la nouvelle architecture: ${request.method} ${url.pathname}`
   );
 
