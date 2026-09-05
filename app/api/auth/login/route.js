@@ -76,19 +76,20 @@ export async function POST(request) {
     const isValid = await verifyPassword(password, user.password);
 
     if (!isValid) {
-      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-      const lockoutThresholdReached = user.failedLoginAttempts >= 5;
-      if (lockoutThresholdReached) {
-        user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 mins
-      }
-      await user.save();
+      await user.incLoginAttempts();
 
       // Anomaly alert: at the lockout threshold, fan out a notification to
       // Super Admins so the team can react (account takeover attempt, leaked
       // credential dump replay, etc). Best-effort — failure is swallowed.
-      if (lockoutThresholdReached) {
+      //
+      // Note: incLoginAttempts() issues an atomic updateOne and does NOT
+      // mutate this in-memory document, so user.failedLoginAttempts here is
+      // still the pre-increment value — we add 1 to approximate the
+      // post-increment count for this notification only.
+      const willLock = (user.failedLoginAttempts || 0) + 1 >= 5;
+      if (willLock) {
         const ip = getClientIP(request) || 'unknown';
-        notifyAboutFailedLogins(user._id, user.failedLoginAttempts, ip).catch(() => {});
+        notifyAboutFailedLogins(user._id, (user.failedLoginAttempts || 0) + 1, ip).catch(() => {});
       }
 
       await settleAtLeast(startedAt, MIN_LOGIN_DURATION_MS);
@@ -96,10 +97,7 @@ export async function POST(request) {
     }
 
     // Success — reset failed-attempt state.
-    user.failedLoginAttempts = 0;
-    user.lockUntil = undefined;
-    user.dernière_connexion = new Date();
-    await user.save();
+    await user.resetLoginAttempts();
 
     // 2FA gate takes precedence over must-change: a 2FA user always proves
     // their second factor before anything else.

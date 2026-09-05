@@ -47,6 +47,8 @@ function mockUser(overrides = {}) {
     tokenVersion: 0,
     failedLoginAttempts: 0,
     save: jest.fn().mockResolvedValue(undefined),
+    incLoginAttempts: jest.fn().mockResolvedValue(undefined),
+    resetLoginAttempts: jest.fn().mockResolvedValue(undefined),
     role_id: { nom: 'Membre', permissions: {} },
     ...overrides,
   };
@@ -108,4 +110,19 @@ test('normal user gets a full session', async () => {
 
   expect(data.requirePasswordChange).toBe(false);
   expect(issueAuthTokens).toHaveBeenCalledTimes(1);
+});
+
+test('a wrong password increments failedLoginAttempts via the model method', async () => {
+  const { verifyPassword } = require('@/lib/auth');
+  verifyPassword.mockResolvedValueOnce(false);
+  const inc = jest.fn().mockResolvedValue(undefined);
+  User.findOne.mockReturnValue({
+    select: () => ({
+      populate: () => Promise.resolve(mockUser({ failedLoginAttempts: 2, incLoginAttempts: inc })),
+    }),
+  });
+
+  const res = await login(req({ email: 'a@b.com', password: 'wrong' }));
+  expect(res.status).toBe(401);
+  expect(inc).toHaveBeenCalled();
 });

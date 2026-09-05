@@ -3,6 +3,7 @@ import { POST } from '@/app/api/auth/login/route';
 import User from '@/models/User';
 import { verifyPassword } from '@/lib/auth';
 import { issueAuthTokens, createUserAccessToken } from '@/lib/requestAuth';
+import { notifyAboutFailedLogins } from '@/lib/auditNotificationService';
 
 jest.mock('@/lib/auth', () => ({
   verifyPassword: jest.fn().mockResolvedValue(false),
@@ -108,6 +109,7 @@ describe('POST /api/auth/login', () => {
       status: 'Actif',
       password: 'hashedpassword',
       save: jest.fn().mockResolvedValue(true),
+      resetLoginAttempts: jest.fn().mockResolvedValue(undefined),
     };
 
     User.findOne.mockImplementation(() => {
@@ -134,13 +136,18 @@ describe('POST /api/auth/login', () => {
   });
 
   it('devrait gérer le lockout après 5 tentatives échouées', async () => {
+    // incLoginAttempts() is a Mongoose instance method backed by an atomic
+    // updateOne — it does NOT mutate the in-memory doc's fields. The route
+    // only ever delegates to it and reads the stale in-memory
+    // failedLoginAttempts (+1) to decide whether to fire the admin alert.
+    const incLoginAttempts = jest.fn().mockResolvedValue(undefined);
     const mockUser = {
       _id: 'userId123',
       email: 'test@example.com',
       status: 'Actif',
       password: 'hashedpassword',
       failedLoginAttempts: 4,
-      save: jest.fn().mockResolvedValue(true),
+      incLoginAttempts,
     };
 
     User.findOne.mockImplementation(() => {
@@ -156,8 +163,7 @@ describe('POST /api/auth/login', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(401);
-    expect(mockUser.failedLoginAttempts).toBe(5);
-    expect(mockUser.lockUntil).toBeDefined();
-    expect(mockUser.save).toHaveBeenCalled();
+    expect(incLoginAttempts).toHaveBeenCalled();
+    expect(notifyAboutFailedLogins).toHaveBeenCalledWith('userId123', 5, expect.any(String));
   });
 });

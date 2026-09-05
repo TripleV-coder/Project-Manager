@@ -70,13 +70,17 @@ describe('OWASP A03:2021 — Injection', () => {
 
 describe('OWASP A04:2021 — Insecure Design', () => {
   test('login endpoint enforces lockout (defense-in-depth, not just rate limit)', async () => {
-    // The login route increments loginAttempts and sets lockUntil at 5 — pin
-    // the constant so a refactor can't quietly raise the ceiling.
-    const src = await import('fs').then((fs) =>
-      fs.readFileSync('app/api/auth/login/route.js', 'utf8')
-    );
-    expect(src).toMatch(/failedLoginAttempts\s*>=\s*5/);
-    expect(src).toMatch(/15\s*\*\s*60\s*\*\s*1000/); // 15-minute lockout
+    // Lockout config now lives in models/User.js (incLoginAttempts), which the
+    // login route delegates to on a bad password. Pin both ends: the route
+    // must call the model method, and the model must still lock at 5 attempts
+    // / 15 minutes — so a refactor can't quietly raise the ceiling.
+    const fs = await import('fs');
+    const routeSrc = fs.readFileSync('app/api/auth/login/route.js', 'utf8');
+    const userModelSrc = fs.readFileSync('models/User.js', 'utf8');
+
+    expect(routeSrc).toMatch(/user\.incLoginAttempts\(\)/);
+    expect(userModelSrc).toMatch(/maxAttempts\s*=\s*5/);
+    expect(userModelSrc).toMatch(/lockoutMinutes\s*=\s*15/);
   });
 });
 
@@ -150,7 +154,7 @@ describe('OWASP A09:2021 — Security Logging and Monitoring Failures', () => {
       fs.readFileSync('app/api/auth/login/route.js', 'utf8')
     );
     expect(src).toMatch(/notifyAboutFailedLogins/);
-    expect(src).toMatch(/lockoutThresholdReached/);
+    expect(src).toMatch(/willLock/);
   });
 
   test('audit service exists and is wired into login flow', async () => {
