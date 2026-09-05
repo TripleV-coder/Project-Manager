@@ -92,7 +92,8 @@ export async function middleware(request) {
   // XSS Protection
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-XSS-Protection', '1; mode=block');
+  // Deprecated header; modern guidance is to disable the legacy auditor.
+  response.headers.set('X-XSS-Protection', '0');
 
   // HSTS (Force HTTPS in production)
   if (process.env.NODE_ENV === 'production') {
@@ -205,11 +206,16 @@ export async function middleware(request) {
       );
     }
 
-    // Add user info to response headers
-    response.headers.set('x-user-id', decoded.userId || decoded.sub || '');
-    response.headers.set('x-user-role', decoded.role || 'user');
+    // Forward identity to the route handler on the REQUEST (not the response —
+    // that would leak it to the browser and it wouldn't reach the handler).
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-id', decoded.userId || decoded.sub || '');
+    requestHeaders.set('x-user-role', decoded.role || 'user');
 
-    return response;
+    const authedResponse = NextResponse.next({ request: { headers: requestHeaders } });
+    // Re-apply the security headers we set on `response` onto the new response.
+    response.headers.forEach((value, key) => authedResponse.headers.set(key, value));
+    return authedResponse;
   }
 
   // Frontend routes: rely on HttpOnly auth cookie
