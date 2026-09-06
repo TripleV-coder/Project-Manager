@@ -10,6 +10,12 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^jose$': '<rootDir>/node_modules/jose/dist/node/cjs/index.js',
+    // jsdom's test environment forces the `browser` package.json export
+    // condition, which for jspdf resolves to its ESM bundle (jspdf.es.min.js)
+    // — Jest's CJS-by-default runtime can't require() that without a real
+    // ESM pipeline. Force the `node` build, which is plain CommonJS. Same
+    // root cause and same fix pattern as the `jose` entry above.
+    '^jspdf$': '<rootDir>/node_modules/jspdf/dist/jspdf.node.min.js',
   },
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   collectCoverageFrom: [
