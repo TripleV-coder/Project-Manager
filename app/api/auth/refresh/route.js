@@ -12,7 +12,11 @@ export async function POST(request) {
   try {
     await connectDB();
 
-    const rl = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.auth);
+    // Dedicated preset, not `auth`: every active session refreshes roughly
+    // once per access-token lifetime on its own, so this endpoint sees far
+    // more routine traffic per IP than a one-off action like login or
+    // first-login-reset and needs its own, more generous budget.
+    const rl = await applyRateLimit(request, null, RATE_LIMIT_CONFIG.refresh);
     if (!rl.allowed) return handleRateLimitError(rl);
 
     // Hand-rolled route (not wrapped by withApiProtection) — apply the same
