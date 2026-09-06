@@ -107,3 +107,26 @@ test('/first-login is reachable with NO auth_token cookie (must-change-password 
   const res = await middleware(pageRequestNoCookie('/first-login'));
   expect(res.headers.get('Location')).toBeNull();
 });
+
+test('/api/auth/refresh is reachable with NO auth_token cookie or access token', async () => {
+  // Regression for the refresh-token flow being unreachable: you call this
+  // route precisely when the access token has already expired, so it must
+  // not be gated by the same verifyTokenMiddleware() check that every other
+  // /api/* route gets. The route itself authenticates via the separate
+  // refresh_token cookie (see app/api/auth/refresh/route.js), not the
+  // access token, so making it public here does not open an
+  // unauthenticated-access hole. Mirrors the '/first-login' regression test
+  // above: absence of a 401/redirect is what's under test, not a 200.
+  const req = {
+    nextUrl: { pathname: '/api/auth/refresh' },
+    url: 'http://localhost/api/auth/refresh',
+    method: 'POST',
+    headers: { get: () => null },
+    cookies: { get: () => undefined },
+  };
+
+  const res = await middleware(req);
+
+  expect(res.status).not.toBe(401);
+  expect(res.headers.get('Location')).toBeNull();
+});
