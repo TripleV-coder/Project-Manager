@@ -15,6 +15,11 @@ const publicRoutes = [
   '/api/auth/first-admin',
   '/api/auth/login',
   '/api/auth/logout',
+  // Public at the middleware layer: it authenticates against the separate,
+  // longer-lived refresh_token cookie, not the access token — so it must be
+  // reachable precisely when the access token has already expired (see
+  // app/api/auth/refresh/route.js and lib/auth-fetch.js's refresh-and-retry).
+  '/api/auth/refresh',
   '/api/auth/first-login-reset',
   '/api/health',
   '/api/settings',

@@ -18,8 +18,10 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
+import { useAuthFetch } from '@/hooks/useAuthFetch';
 import { getAvailableMenus } from '@/lib/menuConfig';
 import { clearAuthSession, markAuthSession } from '@/lib/client-auth';
+import { AuthRedirectError } from '@/lib/auth-fetch';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useAppSettings, useTranslation } from '@/contexts/AppSettingsContext';
 import { CommandPalette } from '@/components/CommandPalette';
@@ -27,6 +29,7 @@ import { CommandPalette } from '@/components/CommandPalette';
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { authFetch } = useAuthFetch();
   const { sidebarCompact } = usePreferences();
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
@@ -45,8 +48,11 @@ export default function DashboardLayout({ children }) {
 
   const loadUser = useCallback(async () => {
     try {
-      // Load user with timeout
-      const userResponse = await fetch('/api/auth/me', {
+      // Load user with timeout. Goes through authFetch (not a plain fetch)
+      // so a 401 here — the access token having expired while the tab sat
+      // idle, the exact case a dashboard mount hits — gets one refresh-and-
+      // retry attempt instead of an immediate forced logout.
+      const userResponse = await authFetch('/api/auth/me', {
         signal: AbortSignal.timeout(8000),
       });
 
@@ -96,13 +102,18 @@ export default function DashboardLayout({ children }) {
           // Silently handle notification fetch errors
         });
     } catch (error) {
+      // authFetch already redirected to /login and cleared the session
+      // before throwing this — nothing left to do here.
+      if (error instanceof AuthRedirectError) {
+        return;
+      }
       console.error('Layout error:', error);
       if (error.name !== 'AbortError') {
         setLoading(false);
         setUser(null);
       }
     }
-  }, [router]);
+  }, [router, authFetch]);
 
   useEffect(() => {
     loadUser();

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
 import { clearAuthSession, hasAuthSessionMarker } from '@/lib/client-auth';
-import { AuthRedirectError } from '@/lib/auth-fetch';
+import { AuthRedirectError, fetchWithRefresh } from '@/lib/auth-fetch';
 
 export function useAuthFetch() {
   const router = useRouter();
@@ -15,21 +15,11 @@ export function useAuthFetch() {
         throw new AuthRedirectError();
       }
 
-      const response = await fetch(url, {
-        ...options,
-        credentials: 'same-origin',
-        headers: {
-          ...options.headers,
-        },
-      });
-
-      if (response.status === 401) {
+      return fetchWithRefresh(url, options, () => {
         clearAuthSession();
         router.push('/login');
         throw new AuthRedirectError();
-      }
-
-      return response;
+      });
     },
     [router]
   );
